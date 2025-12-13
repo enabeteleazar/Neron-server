@@ -1,0 +1,21 @@
+services:
+  node-red:
+    image: nodered/node-red:latest
+    env_file:
+      - ${ENV_DIR}/.env
+
+    container_name: neron-node-red
+    restart: unless-stopped
+
+    volumes:
+      - ./data:/data
+
+    ports:
+      - "${NODE_RED_PORT}:1880"
+
+    networks:
+      - ${HOMEBOX_NETWORK}
+
+networks:
+  Homebox:
+    external: true

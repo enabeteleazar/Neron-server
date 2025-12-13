@@ -1,0 +1,48 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: llama-ollama
+    restart: unless-stopped
+    ports:
+      - "${OLLAMA_PORT}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    networks:
+      - Homebox
+    # GPU NVIDIA (optionnel)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  telegram-bot:
+    build: .
+    container_name: llama-telegram-bot
+    restart: unless-stopped
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - OLLAMA_URL=${OLLAMA_URL}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+    networks:
+      - Homebox
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    depends_on:
+      - ollama
+
+volumes:
+  ollama_data:
+    driver: local
+
+networks:
+  Homebox:
+    external: true
+

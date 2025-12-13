@@ -1,0 +1,27 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    env_file:
+      - /home/eleazar/homebox/.env
+
+    container_name: homeassistant
+    restart: unless-stopped
+
+    privileged: false
+
+    environment:
+      TZ: Europe/Paris
+
+    volumes:
+      - ${BASE_DIR}/homeassistant/config:/config
+      - /run/dbus:/run/dbus:ro
+
+    ports:
+      - "${HOMEASSISTANT_PORT}:8123"
+
+    networks:
+      - ${HOMEBOX_NETWORK}
+
+networks:
+  Homebox:
+    external: true

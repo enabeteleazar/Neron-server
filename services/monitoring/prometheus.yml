@@ -1,0 +1,24 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape Prometheus lui-même
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape cAdvisor (métriques Docker)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+
+  # Scrape Portainer (si API activée)
+#  - job_name: 'portainer'
+#    static_configs:
+#      - targets: ['portainer:9000']
+
+  # Node Exporter (optionnel, pour métriques système)
+#  - job_name: 'node'
+#    static_configs:
+#      - targets: ['node-exporter:9100']

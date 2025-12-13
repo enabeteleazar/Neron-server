@@ -1,0 +1,27 @@
+services:
+  portainer:
+    image: portainer/portainer-ce:latest
+    env_file:
+      - /home/eleazar/homebox/.env
+
+    container_name: portainer
+    restart: unless-stopped
+
+    privileged: true
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - /var/run/docker.sock:/var/run/docker.sock:ro # socket associé à Docker
+      - ${BASE_DIR}/portainer/data:/data  # Chemin absolu cohérent
+
+    ports:
+      - "${PORTAINER_PORT}:9000"
+
+    networks:
+      - ${HOMEBOX_NETWORK}
+
+networks:
+  Homebox:
+    external: true

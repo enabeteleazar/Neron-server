@@ -1,0 +1,22 @@
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    env_file:
+      - ${ENV_DIR}/.env
+
+    container_name: neron-n8n
+    restart: unless-stopped
+
+    volumes:
+      - ./data:/home/n8n/.n8n
+
+    ports:
+      - "${N8N_PORT}:5678"
+
+    networks:
+      - ${HOMEBOX_NETWORK}
+
+networks:
+  Homebox:
+    external: true

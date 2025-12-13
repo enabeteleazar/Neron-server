@@ -1,0 +1,27 @@
+services:
+  neron-core:
+    build: .
+    env_file:
+      - ${ENV_VARIABLE}/.env.global
+
+    container_name: neron-core
+    restart: unless-stopped
+
+    volumes:
+      - ./data:/app/data
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+    ports:
+      - "${NERON_CORE_PORT}:4000"
+
+    networks:
+      - ${NETWORK_HOMEBOX}
+
+networks:
+  Homebox:
+    external: true
