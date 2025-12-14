@@ -1,0 +1,71 @@
+# =========================
+# Dossier projets
+# =========================
+project/
+
+# =========================
+# Données générés par les services
+# =========================
+neron/*/model
+neron/*/data
+services/*/model/
+services/*/data/
+services/*/node-red/data/
+services/*/n8n/.n8n
+services/homeassistant/config/.storage/
+
+# =========================
+# Modèles et données LLM
+# =========================
+localai/models/
+
+# =========================
+# Fichiers temporaires et logs
+# =========================
+*.log
+*.tmp
+*.swp
+*.DS_Store
+*.bak
+*.old
+*.pyc
+__pycache__/
+
+# =========================
+# Environnements et secrets
+# =========================
+.env
+.env.global
+.env.local
+*.secret
+
+# =========================
+# Docker et conteneurs
+# =========================
+docker-compose.override.yml
+*.pid
+*.sock
+
+# =========================
+# Node / Frontend
+# =========================
+node_modules/
+dist/
+build/
+npm-debug.log
+yarn-error.log
+
+# =========================
+# Python
+# =========================
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+*.pytest_cache/
+
+# =========================
+# Autres fichiers système
+# =========================
+Thumbs.db
+desktop.ini
+
