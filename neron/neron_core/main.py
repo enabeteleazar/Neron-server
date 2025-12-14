@@ -60,7 +60,7 @@ def status() -> Dict[str, str]:
 # ENDPOINT METIER
 # ======================
 
-@app.post("chat")
+@app.post("/chat")
 async def chat(request: MessageRequest):
     """Endpoint pour envoyer un message à Ollama via l'orchestrateur"""
     try:
