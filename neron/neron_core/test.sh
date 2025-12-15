@@ -23,8 +23,14 @@ echo ""
 # active le venv
 source venv/bin/activate
 
+# Verification rapide
+python3 -c "import fastapi" || {
+     echo -e "${RED}Erreur: fastapi n'est pas installé dans le venv.${NC}"
+     exit 1
+}
+
 # Lancement de main.py
-python3 neron/neron_core/main.py &
+python3 -m neron.neron_core.main &
 PID=$!
 
 # Attendre que le serveur démarre
