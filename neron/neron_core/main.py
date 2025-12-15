@@ -8,6 +8,8 @@ from typing import Dict
 # Import du modele et de l'orchestrator
 from neron.models.message import NeronMessage
 from neron.neron_core.orchestrator import Orchestrator
+from neron.neron_core.state import NERON_VERSION
+from neron.neron_core.state import NERON_NAME   
 
 # Initialise de l'orchestrator
 orchestrator = Orchestrator()
@@ -39,9 +41,9 @@ app.add_middleware(
 @app.get("/")
 def read_root():
     return {
-        "service": "neron-core",
+        "service": NERON_NAME,
         "status": "online",
-        "version": "1.0.0"
+        "version": NERON_VERSION
     }
 
 @app.get("/health")
