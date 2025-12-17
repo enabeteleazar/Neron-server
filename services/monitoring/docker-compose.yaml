@@ -2,7 +2,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     env_file:
-      - /home/eleazar/homebox/.env
+      - ${BASE_DIR}.env
     container_name: cadvisor
     restart: unless-stopped
     ports:
@@ -18,7 +18,7 @@ services:
   prometheus:
     image: prom/prometheus:latest
     env_file:
-      - /home/eleazar/homebox/.env
+      - ${BASE_DIR}.env
     container_name: prometheus
     restart: unless-stopped
     ports:

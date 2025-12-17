@@ -2,7 +2,7 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     env_file:
-      - /home/eleazar/homebox/.env
+      - ${BASE_DIR}.env
 
     container_name: homeassistant
     restart: unless-stopped
