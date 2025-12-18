@@ -2,7 +2,11 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     env_file:
+<<<<<<< HEAD
+      - ${BASE_DIR}/.env
+=======
       - ${NERON_BASE}${NERON_ENV}/.env
+>>>>>>> release/1.2.0
 
     container_name: portainer_${NERON_ENV}
     restart: unless-stopped
@@ -14,7 +18,11 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
       - /var/run/docker.sock:/var/run/docker.sock:ro # socket associé à Docker
+<<<<<<< HEAD
+      - ${BASE_DIR}services/portainer/data:/data  # Chemin absolu cohérent
+=======
       - ${NERON_BASE}/${NERON_ENV}/services/portainer/data:/data  # Chemin absolu cohérent
+>>>>>>> release/1.2.0
 
     ports:
       - "${PORTAINER_HTTP}:9000"
