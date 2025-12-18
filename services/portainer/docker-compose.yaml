@@ -2,9 +2,9 @@ services:
   portainer:
     image: portainer/portainer-ce:latest
     env_file:
-      - /home/eleazar/homebox/.env
+      - ${NERON_BASE}${NERON_ENV}/.env
 
-    container_name: portainer
+    container_name: portainer_${NERON_ENV}
     restart: unless-stopped
 
     privileged: true
@@ -14,14 +14,16 @@ services:
     volumes:
       - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
       - /var/run/docker.sock:/var/run/docker.sock:ro # socket associé à Docker
-      - ${BASE_DIR}/portainer/data:/data  # Chemin absolu cohérent
+      - ${NERON_BASE}/${NERON_ENV}/services/portainer/data:/data  # Chemin absolu cohérent
 
     ports:
-      - "${PORTAINER_PORT}:9000"
+      - "${PORTAINER_HTTP}:9000"
+      - "${PORTAINER_HTTPS}:9443"
 
     networks:
-      - ${HOMEBOX_NETWORK}
+      - Homebox
 
 networks:
   Homebox:
+    name: ${HOMEBOX_NETWORK}
     external: true
