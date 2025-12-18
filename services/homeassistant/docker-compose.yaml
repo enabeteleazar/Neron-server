@@ -2,9 +2,13 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     env_file:
+<<<<<<< HEAD
       - ${BASE_DIR}.env
+=======
+      - ${NERON_BASE}${NERON_ENV}/.env
+>>>>>>> release/1.2.0
 
-    container_name: homeassistant
+    container_name: homeassistant_${NERON_ENV}
     restart: unless-stopped
 
     privileged: false
@@ -13,15 +17,16 @@ services:
       TZ: Europe/Paris
 
     volumes:
-      - ${BASE_DIR}/homeassistant/config:/config
+      - ${NERON_BASE}${NERON_ENV}/services/homeassistant/config:/config
       - /run/dbus:/run/dbus:ro
 
     ports:
-      - "${HOMEASSISTANT_PORT}:8123"
+      - "${HOMEASSISTANT_HTTP}:8123"
 
     networks:
-      - ${HOMEBOX_NETWORK}
+      - Homebox
 
 networks:
   Homebox:
+    name: ${HOMEBOX_NETWORK}
     external: true
