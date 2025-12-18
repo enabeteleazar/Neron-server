@@ -1,10 +1,10 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: llama-ollama
+    container_name: llama-ollama_${NERON_ENV}
     restart: unless-stopped
     ports:
-      - "${OLLAMA_PORT}:11434"
+      - "${OLLAMA_HTTP}:11434"
     volumes:
       - ollama_data:/root/.ollama
     environment:
@@ -22,7 +22,7 @@ services:
 
   telegram-bot:
     build: .
-    container_name: llama-telegram-bot
+    container_name: llama-telegram-bot_${NERON_ENV}
     restart: unless-stopped
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
@@ -44,5 +44,6 @@ volumes:
 
 networks:
   Homebox:
+    name: ${HOMEBOX_NETWORK}
     external: true
 
