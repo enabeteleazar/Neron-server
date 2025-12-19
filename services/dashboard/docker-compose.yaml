@@ -2,11 +2,7 @@ services:
   dashboard-frontend:
     build: ./frontend
     env_file:
-<<<<<<< HEAD
-      - ${BASE_DIR}.env
-=======
       - ${NERON_BASE}${NERON_ENV}/.env
->>>>>>> release/1.2.0
 
     container_name: dashboard-frontend_${NERON_ENV}
     restart: unless-stopped
@@ -17,11 +13,7 @@ services:
     depends_on:
       - dashboard-backend_${NERON_ENV}
     networks:
-<<<<<<< HEAD
-      - ${HOMEBOX_NETWORK}
-=======
       - Homebox
->>>>>>> release/1.2.0
 
   dashboard-backend:
     build: ./backend
