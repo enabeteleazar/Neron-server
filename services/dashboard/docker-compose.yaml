@@ -2,37 +2,25 @@ services:
   dashboard-frontend:
     build: ./frontend
     env_file:
-<<<<<<< HEAD
-      - ${BASE_DIR}.env
-=======
-      - ${NERON_BASE}${NERON_ENV}/.env
->>>>>>> release/1.2.0
+      - ${NERON_BASE}.env
 
-    container_name: dashboard-frontend_${NERON_ENV}
+    container_name: dashboard-frontend
     restart: unless-stopped
 
     ports:
       - "${DASHBOARD_FRONTEND_HTTP}:80"
 
     depends_on:
-      - dashboard-backend_${NERON_ENV}
+      - dashboard-backend
     networks:
-<<<<<<< HEAD
-      - ${HOMEBOX_NETWORK}
-=======
       - Homebox
->>>>>>> release/1.2.0
 
   dashboard-backend:
     build: ./backend
     env_file:
-<<<<<<< HEAD
-      - ${BASE_DIR}.env
-=======
-      - ${NERON_BASE}${NERON_ENV}/.env
->>>>>>> release/1.2.0
+      - ${NERON_BASE}.env
 
-    container_name: dashboard-backend_${NERON_ENV}
+    container_name: dashboard-backend
     restart: unless-stopped
 
     privileged: true
@@ -47,12 +35,7 @@ services:
       - "${DASHBOARD_BACKEND_HTTP}:5000"
 
     networks:
-<<<<<<< HEAD
-      - ${HOMEBOX_NETWORK}
-=======
       - Homebox
-
->>>>>>> release/1.2.0
 
 networks:
   Homebox:
