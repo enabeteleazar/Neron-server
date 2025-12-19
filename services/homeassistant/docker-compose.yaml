@@ -2,10 +2,10 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     env_file:
-      - ${NERON_BASE}${NERON_ENV}/.env
+      - ${NERON_BASE}.env
 
 
-    container_name: homeassistant_${NERON_ENV}
+    container_name: homeassistant
     restart: unless-stopped
 
     privileged: false
@@ -14,7 +14,7 @@ services:
       TZ: Europe/Paris
 
     volumes:
-      - ${NERON_BASE}/data/homeassistant/config:/config
+      - ${NERON_BASE}data/homeassistant/config:/config
       - /run/dbus:/run/dbus:ro
 
     ports:
