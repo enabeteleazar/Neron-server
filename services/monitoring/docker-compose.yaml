@@ -1,25 +1,5 @@
 services:
 
-  grafana:
-    image: grafana/grafana:latest
-    env_file:
-      - ${NERON_BASE}.env
-
-    container_name: grafana
-    restart: unless-stopped
-    ports:
-      - "${GRAFANA_HTTP}:3000"
-
-    volumes:
-      - ../../../data/grafana/data:/var/lib/grafana
-
-    environment:
-      - GF_SECURITY_ADMIN_USER_admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
-
-    networks:
-      - Homebox
-
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     env_file:
@@ -49,7 +29,7 @@ services:
       - "${PROMETHEUS_HTTP}:9090"
 
     volumes:
-      - /prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
       - Homebox
 
