@@ -11,16 +11,18 @@ const API_URL =
     ? "http://localhost:5000/api"
     : `http://${window.location.hostname}:5000/api`;
 
-function App() {
-  const [systemData, setSystemData] = useState({
-    cpu: { percent: 0 },
-    ram: { percent: 0 },
-    load: { load1: 0 },
-    disk: { percent: 0 },
-    network: { rx: "0 MB", tx: "0 MB" },
-    status: "up",
-  });
+// État système par défaut (ANTI-CRASH)
+const DEFAULT_SYSTEM_DATA = {
+  cpu: { percent: 0 },
+  ram: { percent: 0 },
+  load: { load1: 0, load5: 0, load15: 0 },
+  disk: { percent: 0 },
+  network: { rx: "0 MB", tx: "0 MB" },
+  status: "unknown",
+};
 
+function App() {
+  const [systemData, setSystemData] = useState(DEFAULT_SYSTEM_DATA);
   const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -30,11 +32,37 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/system`);
       if (!res.ok) throw new Error("Erreur API système");
+
       const data = await res.json();
-      setSystemData(data);
+
+      // Sécurisation profonde
+      setSystemData({
+        cpu: {
+          percent: Number(data?.cpu?.percent) || 0,
+        },
+        ram: {
+          percent: Number(data?.ram?.percent) || 0,
+        },
+        load: {
+          load1: Number(data?.load?.load1) || 0,
+          load5: Number(data?.load?.load5) || 0,
+          load15: Number(data?.load?.load15) || 0,
+        },
+        disk: {
+          percent: Number(data?.disk?.percent) || 0,
+        },
+        network: {
+          rx: data?.network?.rx ?? "0 MB",
+          tx: data?.network?.tx ?? "0 MB",
+        },
+        status: data?.status ?? "unknown",
+      });
+
+      setError(null);
     } catch (err) {
-      console.error(err);
-      setError(err.message);
+      console.error("System API error:", err);
+      setError("Système indisponible");
+      setSystemData(DEFAULT_SYSTEM_DATA);
     }
   };
 
@@ -42,14 +70,18 @@ function App() {
     try {
       const res = await fetch(`${API_URL}/docker`);
       if (!res.ok) throw new Error("Erreur API Docker");
+
       const data = await res.json();
+
       setContainers(Array.isArray(data) ? data : []);
+      setError(null);
+    } catch (err) {
+      console.error("Docker API error:", err);
+      setError("Services indisponibles");
+      setContainers([]);
+    } finally {
       setLoading(false);
       setLastUpdate(new Date());
-    } catch (err) {
-      console.error(err);
-      setError(err.message);
-      setLoading(false);
     }
   };
 
@@ -81,15 +113,15 @@ function App() {
       {/* ÉTAT GLOBAL */}
       <Section title="État global du serveur">
         <ServerTile
-          cpu={systemData.cpu.percent}
-          ram={systemData.ram.percent}
-          status={systemData.status}
+          cpu={systemData?.cpu?.percent ?? 0}
+          ram={systemData?.ram?.percent ?? 0}
+          status={systemData?.status ?? "unknown"}
         />
       </Section>
 
       {/* MÉTRIQUES SYSTÈME */}
       <Section title="Métriques système">
-        <SystemOverview data={systemData} />
+        <SystemOverview data={systemData ?? DEFAULT_SYSTEM_DATA} />
       </Section>
 
       {/* SERVICES */}
