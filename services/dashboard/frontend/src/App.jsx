@@ -1,69 +1,62 @@
 import React, { useState, useEffect } from "react";
-import Tile from "./components/Tile";
-import ServerTile from "./components/ServerTile";
+import ServerTile from "./components/services/ServerTile";
+import TileGrid from "./components/services/TileGrid";
+import Section from "./components/layout/Section";
+import SystemOverview from "./components/system/SystemOverview";
 import "./App.css";
 
-// Utiliser l'IP du serveur pour que le navigateur puisse accéder à l'API
-// Remplacer par l'IP de votre serveur Homebox
-const API_URL = window.location.hostname === "localhost" 
-  ? "http://localhost:5000/api"
-  : `http://${window.location.hostname}:5000/api`;
+// API dynamique (localhost ou serveur)
+const API_URL =
+  window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : `http://${window.location.hostname}:5000/api`;
 
 function App() {
   const [systemData, setSystemData] = useState({
-    cpu_percent: 0,
-    ram_percent: 0,
-    temp: 0,
-    status: "up"
+    cpu: { percent: 0 },
+    ram: { percent: 0 },
+    load: { load1: 0 },
+    disk: { percent: 0 },
+    network: { rx: "0 MB", tx: "0 MB" },
+    status: "up",
   });
-  
+
   const [containers, setContainers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  // Fonction pour récupérer les données système
   const fetchSystemData = async () => {
     try {
-      const response = await fetch(`${API_URL}/system`);
-      if (!response.ok) throw new Error("Erreur API système");
-      const data = await response.json();
+      const res = await fetch(`${API_URL}/system`);
+      if (!res.ok) throw new Error("Erreur API système");
+      const data = await res.json();
       setSystemData(data);
     } catch (err) {
-      console.error("Erreur système:", err);
+      console.error(err);
       setError(err.message);
     }
   };
 
-  // Fonction pour récupérer les containers Docker
   const fetchContainers = async () => {
     try {
-      const response = await fetch(`${API_URL}/docker`);
-      if (!response.ok) throw new Error("Erreur API Docker");
-      const data = await response.json();
-      
-      if (data.error) {
-        console.error("Erreur Docker:", data.error);
-        setContainers([]);
-      } else {
-        setContainers(data);
-      }
-      
+      const res = await fetch(`${API_URL}/docker`);
+      if (!res.ok) throw new Error("Erreur API Docker");
+      const data = await res.json();
+      setContainers(Array.isArray(data) ? data : []);
       setLoading(false);
       setLastUpdate(new Date());
     } catch (err) {
-      console.error("Erreur containers:", err);
+      console.error(err);
       setError(err.message);
       setLoading(false);
     }
   };
 
-  // Récupération initiale des données
   useEffect(() => {
     fetchSystemData();
     fetchContainers();
 
-    // Auto-refresh toutes les 5 secondes
     const interval = setInterval(() => {
       fetchSystemData();
       fetchContainers();
@@ -74,49 +67,43 @@ function App() {
 
   return (
     <div className="dashboard-container">
-      <div className="dashboard-header">
-        <h1 className="dashboard-title">Dashboard HomeBox</h1>
+      {/* HEADER */}
+      <header className="dashboard-header">
+        <h1 className="dashboard-title">HomeBox Dashboard</h1>
         <div className="dashboard-info">
           <span className="last-update">
-            Dernière mise à jour: {lastUpdate.toLocaleTimeString()}
+            Dernière mise à jour : {lastUpdate.toLocaleTimeString()}
           </span>
           {error && <span className="error-badge">⚠️ {error}</span>}
         </div>
-      </div>
+      </header>
 
-      <div className="dashboard-grid">
-        {/* Grande tuile serveur */}
+      {/* ÉTAT GLOBAL */}
+      <Section title="État global du serveur">
         <ServerTile
-          cpu={systemData.cpu_percent}
-          ram={systemData.ram_percent}
-          temp={systemData.temp}
+          cpu={systemData.cpu.percent}
+          ram={systemData.ram.percent}
           status={systemData.status}
         />
+      </Section>
 
-        {/* Tuiles des containers Docker */}
+      {/* MÉTRIQUES SYSTÈME */}
+      <Section title="Métriques système">
+        <SystemOverview data={systemData} />
+      </Section>
+
+      {/* SERVICES */}
+      <Section title="Services HomeBox">
         {loading ? (
-          <div className="loading-message">Chargement des containers...</div>
+          <div className="loading-message">Chargement des services...</div>
         ) : containers.length === 0 ? (
           <div className="no-containers">
-            Aucun container détecté. Vérifiez Docker.
+            Aucun conteneur détecté
           </div>
         ) : (
-          containers.map((container, index) => (
-            <Tile
-              key={index}
-              title={container.name}
-              port={container.port}
-              status={container.status}
-              uptime={container.uptime}
-              image={container.image}
-              onActionComplete={() => {
-                fetchSystemData();
-                fetchContainers();
-              }}
-            />
-          ))
+          <TileGrid containers={containers} />
         )}
-      </div>
+      </Section>
     </div>
   );
 }
