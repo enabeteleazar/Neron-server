@@ -14,7 +14,7 @@ services:
       TZ: Europe/Paris
 
     volumes:
-      - ${NERON_BASE}data/homeassistant/config:/config
+      - ../../../data/homeassistant/config:/config
       - /run/dbus:/run/dbus:ro
 
     ports:
