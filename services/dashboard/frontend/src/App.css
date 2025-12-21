@@ -1,143 +1,252 @@
-/* ==== DESIGN SYSTEM ==== */
-:root {
-  --color-bg: #f5f6fa;
-  --color-primary: #ffffff;
-  --color-border: #dcdcdc;
-  --color-up: #30c253;
-  --color-down: #e03131;
-  --color-warning: #f5a623;
-  --tile-radius: 16px;
-  --tile-padding: 16px;
-  --tile-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-  --spacing-sm: 8px;
-  --spacing-md: 16px;
-  --spacing-lg: 24px;
-}
-
-/* ==== GLOBAL ==== */
-* {
-  box-sizing: border-box;
-}
-
+/* ===== GLOBAL ===== */
 body {
   margin: 0;
-  background: var(--color-bg);
-  font-family: "Segoe UI", Arial, sans-serif;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f5f6fa;
+  color: #333;
 }
 
 .dashboard-container {
-  padding: var(--spacing-lg);
+  padding: 20px;
   max-width: 1400px;
   margin: 0 auto;
 }
 
-/* ==== HEADER ==== */
+/* ===== HEADER ===== */
 .dashboard-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-lg);
-  flex-wrap: wrap;
-  gap: var(--spacing-md);
+  margin-bottom: 30px;
 }
 
 .dashboard-title {
-  margin: 0;
-  font-size: 1.8rem;
-  font-weight: 600;
-  color: #333;
+  font-size: 2rem;
+  font-weight: bold;
 }
 
 .dashboard-info {
   display: flex;
-  gap: var(--spacing-md);
   align-items: center;
+  gap: 15px;
 }
 
 .last-update {
-  font-size: 0.85rem;
-  color: #666;
-  background: white;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--color-border);
+  font-size: 0.9rem;
+  color: #555;
 }
 
 .error-badge {
+  background-color: #ff6b6b;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 5px;
+  font-weight: bold;
   font-size: 0.85rem;
-  color: var(--color-down);
-  background: #ffe0e0;
-  padding: 6px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--color-down);
 }
 
-/* ==== SECTIONS ==== */
+/* ===== SECTIONS ===== */
 .dashboard-section {
-  margin-bottom: 32px;
+  margin-bottom: 40px;
 }
 
 .dashboard-section h2 {
-  margin-bottom: 12px;
-  color: #333;
-  font-size: 1.2rem;
-  font-weight: 600;
+  font-size: 1.4rem;
+  margin-bottom: 15px;
 }
 
-.tile-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: var(--spacing-lg);
-}
-
-.tile-grid.empty {
-  grip-column: 1 / -1;
-}
-
-/* ==== SYSTEM METRICS ==== */
-.system-overview {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 16px;
-}
-
-.metric-card {
-  background: white;
+/* ===== SERVER TILE ===== */
+.server-tile-container {
+  background-color: #ffffff;
   border-radius: 12px;
-  padding: 14px;
-  box-shadow: var(--tile-shadow);
-  text-align: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  padding: 20px;
 }
 
-.metric-label {
-  font-size: 0.75rem;
-  color: #777;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+.server-tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
 }
 
-.metric-value {
-  font-size: 1.6rem;
+.server-tile-title {
   font-weight: bold;
-  color: #333;
+  font-size: 1.2rem;
 }
 
-/* ==== LOADING / EMPTY ==== */
-.loading-message,
-.no-containers {
-  text-align: center;
-  padding: var(--spacing-lg);
-  background: white;
-  border-radius: var(--tile-radius);
-  border: 1px solid var(--color-border);
-  color: #666;
+.server-status {
+  display: flex;
+  align-items: center;
+  font-weight: bold;
+  gap: 6px;
+}
+
+.server-status.online {
+  color: #28a745;
+}
+
+.server-status.offline {
+  color: #dc3545;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: currentColor;
+}
+
+/* ===== SERVER METRICS ===== */
+.server-metrics {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.server-metric {
+  background-color: #fdfdfd;
+  border-radius: 8px;
+  padding: 12px 15px;
+  flex: 1;
+  min-width: 120px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+}
+
+.server-metric-label {
+  font-size: 0.85rem;
+  color: #777;
+  margin-bottom: 5px;
+}
+
+.server-metric-value {
+  font-weight: bold;
   font-size: 1.1rem;
 }
 
-/* ==== RESPONSIVE ==== */
-@media (max-width: 768px) {
-  .dashboard-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+/* ===== SYSTEM METRICS ===== */
+.system-overview {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.metric-card {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 15px;
+  flex: 1;
+  min-width: 180px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: #555;
+  margin-bottom: 5px;
+}
+
+.metric-value {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin-bottom: 10px;
+}
+
+.metric-subvalue {
+  font-size: 0.8rem;
+  color: #777;
+}
+
+.metric-bar {
+  background-color: #eee;
+  border-radius: 6px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.3s ease;
+}
+
+.metric-bar-fill.level-low {
+  background-color: #4caf50;
+}
+
+.metric-bar-fill.level-medium {
+  background-color: #ffc107;
+}
+
+.metric-bar-fill.level-high {
+  background-color: #dc3545;
+}
+
+/* ===== DOCKER SERVICES ===== */
+.tile-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+
+.service-tile {
+  background-color: #ffffff;
+  border-radius: 12px;
+  padding: 15px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.2s;
+}
+
+.service-tile:hover {
+  transform: translateY(-3px);
+}
+
+.service-tile.status-down {
+  opacity: 0.7;
+}
+
+.service-tile-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.service-tile-title {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.service-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.service-status.running {
+  color: #28a745;
+}
+
+.service-status.stopped {
+  color: #dc3545;
+}
+
+.service-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  margin-top: 5px;
+}
+
+/* ===== LOADING / NO CONTAINERS ===== */
+.loading-message,
+.no-containers {
+  text-align: center;
+  color: #555;
+  padding: 20px;
+  font-size: 1rem;
 }
