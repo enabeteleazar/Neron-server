@@ -80,12 +80,12 @@ function App() {
   };
 
 
-{
+
   /* ===============================
       RENDERING DU DASHBOARD 
     ================================
   */
-}
+
   return (
     <div className="dashboard-container">
       {/* ===== HEADER ===== */}
@@ -106,14 +106,7 @@ function App() {
         <div className="server-tile-container">
           <div className="server-tile-header">
             <h3 className="server-tile-title">Serveur principal</h3>
-            <span
-              className={`server-status ${
-                systemData.status === "online" ? "online" : "offline"
-              }`}
-            >
-              <span className="status-dot" />
-              {systemData.status === "online" ? "En ligne" : "Hors ligne"}
-            </span>
+          
           </div>
           <div className="server-metrics">
             <div className="server-metric">
@@ -145,12 +138,6 @@ function App() {
               <div className="server-metric-value">
                 {(systemData.temp ?? 0).toFixed(1)} °C
               </div>
-              <div className="metric-bar">
-                <div
-                  className={`metric-bar-fill level-${getUsageLevel(systemData.temp)}`}
-                  style={{ width: `${systemData.temp ?? 0}` }}
-                />
-              </div>
             </div>
             <div className="server-metric">
               <div className="server-metric-label">Disque</div>
@@ -179,6 +166,7 @@ function App() {
         ======================== */}
       <section className="dashboard-section">
         <h2>Services Docker ({containers.length})</h2>
+        <div className="server-tile-container">
         {loading ? (
           <div className="loading-message">Chargement des services...</div>
         ) : containers.length === 0 ? (
@@ -188,13 +176,13 @@ function App() {
             {containers.map((container, idx) => (
               <div
                 key={container.id ?? idx}
-                className={`service-tile ${container.state === "running" ? "" : "status-down"}`}
+                className={`service-tile ${container.state === "up" ? "" : "status-down"}`}
               >
                 <div className="service-tile-header">
                   <h3 className="service-tile-title">{container.name ?? container.Names ?? `#${idx}`}</h3>
-                  <span className={`service-status ${container.state === "running" ? "running" : "stopped"}`}>
+                  <span className={`service-status ${container.status === "up" ? "running" : "stopped"}`}>
                     <span className="status-dot" />
-                    {container.state === "running" ? "Actif" : "Arrêté"}
+                    {container.status === "running" ? "Actif" : "Arrêté"}
                   </span>
                 </div>
                 <div className="service-tile-body">
@@ -221,6 +209,7 @@ function App() {
             ))}
           </div>
         )}
+        </div>
       </section>
     </div>
   );
