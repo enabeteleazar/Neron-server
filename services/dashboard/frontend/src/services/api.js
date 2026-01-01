@@ -1,4 +1,4 @@
-const API_URL = "http://192.168.1.56:5000"; // IP du backend
+const API_URL = "http://192.168.1.130:5000"; // IP du backend
 
 export const fetchSystem = async () => {
   try {

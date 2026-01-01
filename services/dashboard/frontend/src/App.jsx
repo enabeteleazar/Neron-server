@@ -2,18 +2,13 @@ import React, { useState, useEffect } from "react";
 import "./App.css";
 
 // API dynamique (localhost ou serveur)
-const API_URL =
-  window.location.hostname === "localhost"
-    ? "http://localhost:5000/api"
-    : `http://${window.location.hostname}:5000/api`;
+const API_URL = "http://192.168.1.130:5000/api"; // IP du backend
 
 // État système par défaut (ANTI-CRASH)
 const DEFAULT_SYSTEM_DATA = {
-  cpu: { percent: 0 },
-  ram: { percent: 0 },
-  load: { load1: 0, load5: 0, load15: 0 },
-  disk: { percent: 0 },
-  network: { rx: "0 MB", tx: "0 MB" },
+  cpu_percent: 0,
+  ram_percent: 0,
+  disk_percent: 0,
   status: "unknown",
 };
 
@@ -26,25 +21,17 @@ function App() {
 
   const fetchSystemData = async () => {
     try {
-      const res = await fetch(`${API_URL}/system`);
-      if (!res.ok) throw new Error("Erreur API système");
+      const ok = await fetch(`${API_URL}/system`);
+      if (!ok) throw new Error("Erreur API système");
 
-      const data = await res.json();
+      const data = await ok.json();
 
       setSystemData({
-        cpu: { percent: Number(data?.cpu?.percent) || 0 },
-        ram: { percent: Number(data?.ram?.percent) || 0 },
-        load: {
-          load1: Number(data?.load?.load1) || 0,
-          load5: Number(data?.load?.load5) || 0,
-          load15: Number(data?.load?.load15) || 0,
-        },
-        disk: { percent: Number(data?.disk?.percent) || 0 },
-        network: {
-          rx: data?.network?.rx ?? "0 MB",
-          tx: data?.network?.tx ?? "0 MB",
-        },
-        status: data?.status ?? "unknown",
+        cpu_percent: data.cpu_percent || 0,
+        ram_percent: data.ram_percent || 0,
+        disk_percent: Number(data.disk_percent) || 0,
+        temp: data.temp ?? 0,
+        status: data.status ?? "unknown",
       });
 
       setError(null);
@@ -80,7 +67,7 @@ function App() {
     const interval = setInterval(() => {
       fetchSystemData();
       fetchContainers();
-    }, 5000);
+    }, 500);
 
     return () => clearInterval(interval);
   }, []);
@@ -92,6 +79,13 @@ function App() {
     return "low";
   };
 
+
+{
+  /* ===============================
+      RENDERING DU DASHBOARD 
+    ================================
+  */
+}
   return (
     <div className="dashboard-container">
       {/* ===== HEADER ===== */}
@@ -103,7 +97,10 @@ function App() {
         </div>
       </header>
 
-      {/* ===== ÉTAT GLOBAL DU SERVEUR ===== */}
+
+      {/* ======================
+          ÉTAT GLOBAL DU SERVEUR 
+        ======================== */}
       <section className="dashboard-section">
         <h2>État global du serveur</h2>
         <div className="server-tile-container">
@@ -122,91 +119,64 @@ function App() {
             <div className="server-metric">
               <div className="server-metric-label">CPU</div>
               <div className="server-metric-value">
-                {(systemData.cpu?.percent ?? 0).toFixed(1)}%
+                {(systemData.cpu_percent ?? 0).toFixed(1)} %
+              </div>
+              <div className="metric-bar">
+                <div
+                  className={`metric-bar-fill level-${getUsageLevel(systemData.cpu_percent)}`}
+                  style={{ width: `${systemData.cpu_percent ?? 0}%` }}
+                />
               </div>
             </div>
             <div className="server-metric">
               <div className="server-metric-label">RAM</div>
               <div className="server-metric-value">
-                {(systemData.ram?.percent ?? 0).toFixed(1)}%
+                {(systemData.ram_percent ?? 0).toFixed(1)} %
+              </div>
+              <div className="metric-bar">
+                <div
+                  className={`metric-bar-fill level-${getUsageLevel(systemData.ram_percent)}`}
+                  style={{ width: `${systemData.ram_percent ?? 0}%` }}
+                />
+              </div>
+            </div>
+              <div className="server-metric">
+              <div className="server-metric-label">Temperature</div>
+              <div className="server-metric-value">
+                {(systemData.temp ?? 0).toFixed(1)} °C
+              </div>
+              <div className="metric-bar">
+                <div
+                  className={`metric-bar-fill level-${getUsageLevel(systemData.temp)}`}
+                  style={{ width: `${systemData.temp ?? 0}` }}
+                />
               </div>
             </div>
             <div className="server-metric">
               <div className="server-metric-label">Disque</div>
               <div className="server-metric-value">
-                {(systemData.disk?.percent ?? 0).toFixed(1)}%
+                {(systemData.disk_percent ?? 0).toFixed(1)} %
+              </div>
+              <div className="metric-bar">
+                <div
+                  className={`metric-bar-fill level-${getUsageLevel(systemData.disk_percent)}`}
+                  style={{ width: `${systemData.disk_percent ?? 0}%` }}
+                />
+              </div>
+            </div>
+            <div className="server-metric">
+              <div className="server-metric-label">Etat</div>
+              <div className="server-metric-value">
+                {(systemData.status ?? "unknown")}
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* ===== MÉTRIQUES SYSTÈME ===== */}
-      <section className="dashboard-section">
-        <h2>Métriques système détaillées</h2>
-        <div className="system-overview">
-          {/* CPU */}
-          <div className="metric-card">
-            <div className="metric-label">Processeur</div>
-            <div className="metric-value">{(systemData.cpu?.percent ?? 0).toFixed(1)}%</div>
-            <div className="metric-bar">
-              <div
-                className={`metric-bar-fill level-${getUsageLevel(systemData.cpu?.percent ?? 0)}`}
-                style={{ width: `${systemData.cpu?.percent ?? 0}%` }}
-              />
-            </div>
-          </div>
-
-          {/* RAM */}
-          <div className="metric-card">
-            <div className="metric-label">Mémoire RAM</div>
-            <div className="metric-value">{(systemData.ram?.percent ?? 0).toFixed(1)}%</div>
-            <div className="metric-bar">
-              <div
-                className={`metric-bar-fill level-${getUsageLevel(systemData.ram?.percent ?? 0)}`}
-                style={{ width: `${systemData.ram?.percent ?? 0}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Disque */}
-          <div className="metric-card">
-            <div className="metric-label">Disque</div>
-            <div className="metric-value">{(systemData.disk?.percent ?? 0).toFixed(1)}%</div>
-            <div className="metric-bar">
-              <div
-                className={`metric-bar-fill level-${getUsageLevel(systemData.disk?.percent ?? 0)}`}
-                style={{ width: `${systemData.disk?.percent ?? 0}%` }}
-              />
-            </div>
-          </div>
-
-          {/* Charge système */}
-          <div className="metric-card">
-            <div className="metric-label">Charge (1m)</div>
-            <div className="metric-value">{(systemData.load?.load1 ?? 0).toFixed(2)}</div>
-            <div className="metric-subvalue">
-              5m: {(systemData.load?.load5 ?? 0).toFixed(2)} | 15m: {(systemData.load?.load15 ?? 0).toFixed(2)}
-            </div>
-          </div>
-
-          {/* Réseau RX */}
-          <div className="metric-card">
-            <div className="metric-label">Réseau ↓</div>
-            <div className="metric-value">{systemData.network?.rx ?? "0 MB"}</div>
-            <div className="metric-subvalue">Réception</div>
-          </div>
-
-          {/* Réseau TX */}
-          <div className="metric-card">
-            <div className="metric-label">Réseau ↑</div>
-            <div className="metric-value">{systemData.network?.tx ?? "0 MB"}</div>
-            <div className="metric-subvalue">Émission</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ===== SERVICES HOMEBOX ===== */}
+      {/* ======================
+          SERVICES DOCKER 
+        ======================== */}
       <section className="dashboard-section">
         <h2>Services Docker ({containers.length})</h2>
         {loading ? (
