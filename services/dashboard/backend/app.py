@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.system import router as system_router
 from api.docker import router as docker_router
-# from api.health import router as health_router
+from api.health import router as health_router
 
 app = FastAPI()
 
@@ -19,4 +19,4 @@ app.add_middleware(
 #Inclure tous les routes avec le préfixe "/api"
 app.include_router(system_router, prefix="/api")
 app.include_router(docker_router, prefix="/api")
-#app.include_router(health_router, prefix="/api")
+app.include_router(health_router, prefix="/api")
