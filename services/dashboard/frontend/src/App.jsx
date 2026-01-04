@@ -198,50 +198,83 @@ function App() {
           SERVICES DOCKER
       ======================== */}
       {activePage === "docker" && (
-        <section className="dashboard-section">
-          <h2>
-            Services Docker ({dockerSummary.total}) — {dockerSummary.running} actifs
-          </h2>
-          {loading ? (
-            <div className="loading-message">Chargement...</div>
-          ) : containers.length === 0 ? (
-            <div className="no-containers">Aucun conteneur</div>
-          ) : (
-            <div className="tile-grid">
-              {containers.map((c, i) => (
-                <div
-                  key={c.id ?? i}
-                  className={`service-tile ${c.status === "running" ? "status-up" : "status-down"}`}
-                >
-                  <div className="service-tile-header">
-                    <h3 className="service-tile-title">{c.name}</h3>
-                    <span
-                      className={`service-status ${c.status === "running" ? "running" : "stopped"}`}
-                    >
-                      <span className="status-dot" />
-                      {c.status === "running" ? "Actif" : "Arrêté"}
-                    </span>
-                  </div>
-                  <div className="service-tile-body">
-                    <div className="service-info">
-                      <span className="service-info-label">Image</span>
-                      <span className="service-info-value">{c.image ?? "-"}</span>
-                    </div>
-                    <div className="service-info">
-                      <span className="service-info-label">Port</span>
-                      <span className="service-info-value">{c.port ?? "-"}</span>
-                    </div>
-                    <div className="service-info">
-                      <span className="service-info-label">Uptime</span>
-                      <span className="service-info-value">{c.uptime ?? "-"}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+<section className="dashboard-section">
+  <h2>
+    Services Docker ({dockerSummary.total}) — {dockerSummary.running} actifs
+  </h2>
+  {loading ? (
+    <div className="loading-message">Chargement...</div>
+  ) : containers.length === 0 ? (
+    <div className="no-containers">Aucun conteneur</div>
+  ) : (
+    <div className="tile-grid">
+      {containers.map((c, i) => (
+        <div
+          key={c.id ?? i}
+          className={`service-tile ${c.status === "running" ? "status-up" : "status-down"}`}
+        >
+          <div className="service-tile-header">
+            <h3 className="service-tile-title">{c.name}</h3>
+            <span
+              className={`service-status ${c.status === "running" ? "running" : "stopped"}`}
+            >
+              <span className="status-dot" />
+              {c.status === "running" ? "Actif" : "Arrêté"}
+            </span>
+          </div>
+
+          <div className="service-tile-body">
+            <div className="service-info">
+              <span className="service-info-label">Image</span>
+              <span className="service-info-value">{c.image ?? "-"}</span>
             </div>
-          )}
-        </section>
-      )}
+            <div className="service-info">
+              <span className="service-info-label">Port</span>
+              <span className="service-info-value">{c.port ?? "-"}</span>
+            </div>
+            <div className="service-info">
+              <span className="service-info-label">Uptime</span>
+              <span className="service-info-value">{c.uptime ?? "-"}</span>
+            </div>
+
+            <div className="service-actions">
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch(`/api/docker/${c.id}/start`, { method: "POST" });
+                    await loadDocker(); // rafraîchit les données après action
+                  } catch (err) {
+                    console.error("Erreur démarrage:", err);
+                  }
+                }}
+                disabled={c.status === "running"}
+              >
+                Start
+              </button>
+
+              <button
+                onClick={async () => {
+                  try {
+                    await fetch(`/api/docker/${c.id}/stop`, { method: "POST" });
+                    await loadDocker(); // rafraîchit les données après action
+                  } catch (err) {
+                    console.error("Erreur arrêt:", err);
+                  }
+                }}
+                disabled={c.status !== "running"}
+              >
+                Stop
+              </button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</section>
+
+)}
+
 
       {/* ======================
           HEALTH DES SERVICES

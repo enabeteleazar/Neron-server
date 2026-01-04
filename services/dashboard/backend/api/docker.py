@@ -1,48 +1,30 @@
 from fastapi import APIRouter
 import docker
-import time
-from datetime import datetime, timezone
+from datetime import datetime
 
 router = APIRouter()
 client = docker.from_env()
 
-def parse_docker_datetime(dt_str: str) -> str:
-    if not dt_str:
+def format_datetime(dt_str):
+    """Convertit une string ISO en datetime UTC"""
+    try:
+        return datetime.fromisoformat(dt_str.replace("Z", ""))
+    except Exception:
         return None
-        dt_str = dt_str.rstrip("Z")
-        try:
-            dt = datetime.fromisoformat(dt_str)
-            return dt.isoformat() + "Z"
-        except ValueError:
-            return dt_str
 
 @router.get("/docker")
-def get_docker_overview():
-    if not client:
-        return {"error": "Docker client non disponible"}
+def get_containers():
+    container_list = []
 
     try:
         containers = client.containers.list(all=True)
-
-        running = 0
-        stopped = 0
-        paused = 0
-        container_list = []
-
         for c in containers:
-            state = c.status
+            created = format_datetime(c.attrs['Created'])
+            started = format_datetime(c.attrs['State']['StartedAt'])
+            finished = format_datetime(c.attrs['State'].get('FinishedAt', None))
 
-            if state == "running":
-                running += 1
-            elif state == "paused":
-                paused += 1
-            else:
-                stopped += 1
-
-            attrs = c.attrs
-            created = parse_docker_datetime(attrs.get("Created"))
-            started = parse_docker_datetime(attrs.get("State", {}).get("startedAt"))
-            finished = parse_docker_datetime(attrs.get("State", {}).get("FinishedAt")) 
+            # Calcul uptime uniquement si le container est running
+            uptime = str(datetime.utcnow() - started).split('.')[0] if c.status == "running" and started else "-"
 
             container_list.append({
                 "id": c.short_id,
@@ -51,23 +33,19 @@ def get_docker_overview():
                 "status": c.status,
                 "created": created,
                 "started": started,
-                "finished": finished
+                "finished": finished,
+                "port": next(iter(c.ports or {}), "-"),
+                "uptime": uptime
             })
 
-        return {
-            "status": "ok",
-            "summary": {
-                "total": len(containers),
-                "running": running,
-                "stopped": stopped,
-                "paused": paused
-            },
-            "containers": container_list,
-            "timestamp": datetime.utcnow().isoformat() + "Z"
+        summary = {
+            "total": len(containers),
+            "running": sum(1 for c in containers if c.status == "running"),
+            "stopped": sum(1 for c in containers if c.status == "exited"),
+            "paused": sum(1 for c in containers if c.status == "paused"),
         }
 
+        return {"containers": container_list, "summary": summary}
+
     except Exception as e:
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        return {"containers": [], "summary": {"total":0, "running":0, "stopped":0, "paused":0}, "error": str(e)}
