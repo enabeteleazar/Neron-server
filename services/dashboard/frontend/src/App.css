@@ -45,6 +45,38 @@ body {
   font-size: 0.85rem;
 }
 
+.dashboard-navbar {
+  margin: 10px 0 20px;
+  border-bottom: 1px solid #2c2c2c;
+}
+
+.navbar-list {
+  display: flex;
+  gap: 20px;
+  list-style: none;
+  padding: 0 10px 10px;
+  margin: 0;
+}
+
+.navbar-list li {
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: #aaa;
+}
+
+.navbar-list li.active {
+  background-color: #1f2933;
+  color: #fff;
+  font-weight: 600;
+}
+
+.navbar-list li:hover {
+  background-color: #2a3642;
+  color: #fff;
+}
+
+
 /* ===== SECTIONS ===== */
 .dashboard-section {
   margin-bottom: 40px;

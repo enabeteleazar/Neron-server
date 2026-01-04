@@ -20,6 +20,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [activePage, setActivePage] = useState("dashboard"); // Gestion des onglets
 
   /* ======================
      FETCH SYSTEM
@@ -134,120 +135,150 @@ function App() {
         </div>
       </header>
 
+      {/* ===== NAVBAR ===== */}
+      <nav className="dashboard-navbar">
+        <ul className="navbar-list">
+          <li
+            className={activePage === "dashboard" ? "active" : ""}
+            onClick={() => setActivePage("dashboard")}
+          >
+            Dashboard
+          </li>
+          <li
+            className={activePage === "docker" ? "active" : ""}
+            onClick={() => setActivePage("docker")}
+          >
+            Docker
+          </li>
+          <li
+            className={activePage === "health" ? "active" : ""}
+            onClick={() => setActivePage("health")}
+          >
+            Health
+          </li>
+        </ul>
+      </nav>
+
       {/* ======================
           ÉTAT GLOBAL DU SERVEUR
       ======================== */}
-      <section className="dashboard-section">
-        <h2>État global du serveur</h2>
-        <div className="server-metrics">
-          {["cpu", "ram", "disk"].map((key) => (
-            <div className="server-metric" key={key}>
-              <div className="server-metric-label">{key.toUpperCase()}</div>
-              <div className="server-metric-value">
-                {(systemData[key]?.percent ?? 0).toFixed(1)} %
+      {activePage === "dashboard" && (
+        <section className="dashboard-section">
+          <h2>État global du serveur</h2>
+          <div className="server-metrics">
+            {["cpu", "ram", "disk"].map((key) => (
+              <div className="server-metric" key={key}>
+                <div className="server-metric-label">{key.toUpperCase()}</div>
+                <div className="server-metric-value">
+                  {(systemData[key]?.percent ?? 0).toFixed(1)} %
+                </div>
+                <div className="metric-bar">
+                  <div
+                    className={`metric-bar-fill level-${getUsageLevel(systemData[key]?.percent ?? 0)}`}
+                    style={{ width: `${systemData[key]?.percent ?? 0}%` }}
+                  />
+                </div>
               </div>
-              <div className="metric-bar">
-                <div
-                  className={`metric-bar-fill level-${getUsageLevel(systemData[key]?.percent ?? 0)}`}
-                  style={{ width: `${systemData[key]?.percent ?? 0}%` }}
-                />
+            ))}
+            <div className="server-metric">
+              <div className="server-metric-label">Température CPU</div>
+              <div className={`server-metric-value ${getTempClass(systemData.cpu?.temperature)}`}>
+                {(systemData.cpu?.temperature ?? 0).toFixed(1)} °C
               </div>
             </div>
-          ))}
-          <div className="server-metric">
-            <div className="server-metric-label">Température CPU</div>
-            <div className={`server-metric-value ${getTempClass(systemData.cpu?.temperature)}`}>
-              {(systemData.cpu?.temperature ?? 0).toFixed(1)} °C
+            <div className="server-metric">
+              <div className="server-metric-label">État Backend</div>
+              <div className="server-metric-value">{systemData.status}</div>
             </div>
           </div>
-          <div className="server-metric">
-            <div className="server-metric-label">État Backend</div>
-            <div className="server-metric-value">{systemData.status}</div>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* ======================
           SERVICES DOCKER
       ======================== */}
-      <section className="dashboard-section">
-        <h2>
-          Services Docker ({dockerSummary.total}) — {dockerSummary.running} actifs
-        </h2>
-        {loading ? (
-          <div className="loading-message">Chargement...</div>
-        ) : containers.length === 0 ? (
-          <div className="no-containers">Aucun conteneur</div>
-        ) : (
-          <div className="tile-grid">
-            {containers.map((c, i) => (
-              <div
-                key={c.id ?? i}
-                className={`service-tile ${c.status === "running" ? "status-up" : "status-down"}`}
-              >
-                <div className="service-tile-header">
-                  <h3 className="service-tile-title">{c.name}</h3>
-                  <span
-                    className={`service-status ${c.status === "running" ? "running" : "stopped"}`}
-                  >
-                    <span className="status-dot" />
-                    {c.status === "running" ? "Actif" : "Arrêté"}
-                  </span>
+      {activePage === "docker" && (
+        <section className="dashboard-section">
+          <h2>
+            Services Docker ({dockerSummary.total}) — {dockerSummary.running} actifs
+          </h2>
+          {loading ? (
+            <div className="loading-message">Chargement...</div>
+          ) : containers.length === 0 ? (
+            <div className="no-containers">Aucun conteneur</div>
+          ) : (
+            <div className="tile-grid">
+              {containers.map((c, i) => (
+                <div
+                  key={c.id ?? i}
+                  className={`service-tile ${c.status === "running" ? "status-up" : "status-down"}`}
+                >
+                  <div className="service-tile-header">
+                    <h3 className="service-tile-title">{c.name}</h3>
+                    <span
+                      className={`service-status ${c.status === "running" ? "running" : "stopped"}`}
+                    >
+                      <span className="status-dot" />
+                      {c.status === "running" ? "Actif" : "Arrêté"}
+                    </span>
+                  </div>
+                  <div className="service-tile-body">
+                    <div className="service-info">
+                      <span className="service-info-label">Image</span>
+                      <span className="service-info-value">{c.image ?? "-"}</span>
+                    </div>
+                    <div className="service-info">
+                      <span className="service-info-label">Port</span>
+                      <span className="service-info-value">{c.port ?? "-"}</span>
+                    </div>
+                    <div className="service-info">
+                      <span className="service-info-label">Uptime</span>
+                      <span className="service-info-value">{c.uptime ?? "-"}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="service-tile-body">
-                  <div className="service-info">
-                    <span className="service-info-label">Image</span>
-                    <span className="service-info-value">{c.image ?? "-"}</span>
-                  </div>
-                  <div className="service-info">
-                    <span className="service-info-label">CPU</span>
-                    <span className="service-info-value">{c.stats?.cpu ?? 0}%</span>
-                  </div>
-                  <div className="service-info">
-                    <span className="service-info-label">RAM</span>
-                    <span className="service-info-value">{c.stats?.memory ?? "0 MB"}</span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* ======================
           HEALTH DES SERVICES
       ======================== */}
-      <section className="dashboard-section">
-        <h2>Health des services</h2>
+      {activePage === "health" && (
+        <section className="dashboard-section">
+          <h2>Health des services</h2>
 
-        {healthData && healthData.services ? (
-          <div className="tile-grid">
-            {Object.entries(healthData.services).map(([service, status]) => {
-              const isUp = status === "ok";
-              console.log(`[HEALTH] ${service} => ${status}`);
+          {healthData && healthData.services ? (
+            <div className="tile-grid">
+              {Object.entries(healthData.services).map(([service, status]) => {
+                const isUp = status === "ok";
+                console.log(`[HEALTH] ${service} => ${status}`);
 
-              return (
-                <div
-                  key={service}
-                  className={`service-tile ${isUp ? "status-up" : "status-down"}`}
-                >
-                  <div className="service-tile-header">
-                    <h3 className="service-tile-title">{service.toUpperCase()}</h3>
-                    <span
-                      className={`service-status ${isUp ? "running" : "stopped"}`}
-                    >
-                      <span className="status-dot" />
-                      {isUp ? "OK" : "KO"}
-                    </span>
+                return (
+                  <div
+                    key={service}
+                    className={`service-tile ${isUp ? "status-up" : "status-down"}`}
+                  >
+                    <div className="service-tile-header">
+                      <h3 className="service-tile-title">{service.toUpperCase()}</h3>
+                      <span
+                        className={`service-status ${isUp ? "running" : "stopped"}`}
+                      >
+                        <span className="status-dot" />
+                        {isUp ? "OK" : "KO"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="loading-message">Chargement Health…</div>
-        )}
-      </section>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="loading-message">Chargement Health…</div>
+          )}
+        </section>
+      )}
     </div>
   );
 }
