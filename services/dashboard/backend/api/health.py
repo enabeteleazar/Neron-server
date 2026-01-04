@@ -73,8 +73,8 @@ def health_check():
             "cups": cups_status,
             "home_assistant": home_assistant_status,
             "neron_llm": neron_llm_status,
-            "codi_tv": codi_tv_status
-        }
+            "codi_tv": codi_tv_status,       
+            }
 
         # État global : "ok" si tous les services sont "ok"
         global_status = "ok" if all(status == "ok" for status in services.values()) else "error"

@@ -7,7 +7,6 @@ router = APIRouter()
 
 BOOT_TIME = psutil.boot_time()
 
-
 def get_temperature():
     try:
         temps = psutil.sensors_temperatures()
@@ -32,7 +31,10 @@ def get_system():
 
     return {
         "status": "ok",
-        "cpu": {"percent": round(cpu, 1)},
+        "cpu": {"percent": round(cpu, 1),
+                "temperature": get_temperature()
+        }
+        ,
         "ram": {
             "percent": round(ram.percent, 1),
             "used_mb": round(ram.used / 1024 / 1024),
@@ -47,10 +49,6 @@ def get_system():
             "percent": round(disk.percent, 1),
             "used_gb": round(disk.used / 1024 / 1024 / 1024, 1),
             "total_gb": round(disk.total / 1024 / 1024 / 1024, 1)
-        },
-        "temperature": {
-            "value": get_temperature(),
-            "unit": "celsius"
         },
         "uptime": {
             "seconds": int(time.time() - BOOT_TIME)

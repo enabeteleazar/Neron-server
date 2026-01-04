@@ -1,37 +1,42 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
+import { fetchSystem, fetchDocker, fetchHealth } from "./services/api";
 
-// API dynamique (localhost ou serveur)
-const API_URL = "http://localhost:5000/api"; // IP du backend
-
-// État système par défaut (ANTI-CRASH)
+/* ======================
+   CONSTANTES
+====================== */
 const DEFAULT_SYSTEM_DATA = {
-  cpu_percent: 0,
-  ram_percent: 0,
-  disk_percent: 0,
+  cpu: { percent: 0, temperature: 0 },
+  ram: { percent: 0 },
+  disk: { percent: 0 },
   status: "unknown",
 };
 
 function App() {
   const [systemData, setSystemData] = useState(DEFAULT_SYSTEM_DATA);
   const [containers, setContainers] = useState([]);
+  const [dockerSummary, setDockerSummary] = useState({ total: 0, running: 0, stopped: 0, paused: 0 });
+  const [healthData, setHealthData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(new Date());
 
-  const fetchSystemData = async () => {
+  /* ======================
+     FETCH SYSTEM
+  ====================== */
+  const loadSystem = async () => {
     try {
-      const ok = await fetch(`${API_URL}/system`);
-      if (!ok) throw new Error("Erreur API système");
-
-      const data = await ok.json();
+      const data = await fetchSystem();
+      console.log("SYSTEM API RAW:", data);
 
       setSystemData({
-        cpu_percent: data.cpu_percent || 0,
-        ram_percent: data.ram_percent || 0,
-        disk_percent: Number(data.disk_percent) || 0,
-        temp: data.temp ?? 0,
-        status: data.status ?? "unknown",
+        cpu: {
+          percent: data?.cpu?.percent ?? 0,
+          temperature: data?.cpu?.temperature ?? 0
+        },
+        ram: data?.ram ?? { percent: 0 },
+        disk: data?.disk ?? { percent: 0 },
+        status: data?.status ?? "unknown",
       });
 
       setError(null);
@@ -42,174 +47,206 @@ function App() {
     }
   };
 
-  const fetchContainers = async () => {
+  /* ======================
+     FETCH DOCKER
+  ====================== */
+  const loadDocker = async () => {
     try {
-      const res = await fetch(`${API_URL}/docker`);
-      if (!res.ok) throw new Error("Erreur API Docker");
+      const data = await fetchDocker();
+      console.log("DOCKER API RAW:", data);
 
-      const data = await res.json();
-      setContainers(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data.containers) ? data.containers : [];
+      setContainers(list);
+
+      if (data?.summary) {
+        setDockerSummary(data.summary);
+      }
+
       setError(null);
     } catch (err) {
       console.error("Docker API error:", err);
-      setError("Services indisponibles");
+      setError("Services Docker indisponibles");
       setContainers([]);
+      setDockerSummary({ total: 0, running: 0, stopped: 0, paused: 0 });
     } finally {
       setLoading(false);
       setLastUpdate(new Date());
     }
   };
 
+  /* ======================
+     FETCH HEALTH
+  ====================== */
+  const loadHealth = async () => {
+    try {
+      const data = await fetchHealth();
+      console.log("HEALTH API RAW:", data);
+      setHealthData(data);
+    } catch (err) {
+      console.error("Health API error:", err);
+      setHealthData({ status: "unavailable" });
+    }
+  };
+
+  /* ======================
+     INIT + INTERVAL
+  ====================== */
   useEffect(() => {
-    fetchSystemData();
-    fetchContainers();
+    loadSystem();
+    loadDocker();
+    loadHealth();
 
     const interval = setInterval(() => {
-      fetchSystemData();
-      fetchContainers();
+      loadSystem();
+      loadDocker();
+      loadHealth();
     }, 500);
 
     return () => clearInterval(interval);
   }, []);
 
-  // Fonction pour déterminer le niveau d’utilisation
+  /* ======================
+     HELPERS UI
+  ====================== */
   const getUsageLevel = (percent) => {
     if (percent >= 80) return "high";
     if (percent >= 60) return "medium";
     return "low";
   };
 
+  const getTempClass = (temp) => {
+    if (temp >= 85) return "temp-critical";
+    if (temp >= 70) return "temp-warning";
+    return "temp-normal";
+  };
 
-
-  /* ===============================
-      RENDERING DU DASHBOARD 
-    ================================
-  */
-
+  /* ======================
+     RENDER
+  ====================== */
   return (
     <div className="dashboard-container">
       {/* ===== HEADER ===== */}
       <header className="dashboard-header">
-        <h1 className="dashboard-title">🏠 HomeBox Dashboard</h1>
+        <h1 className="dashboard-title">HomeBox Dashboard</h1>
         <div className="dashboard-info">
           <span className="last-update">🕐 {lastUpdate.toLocaleTimeString()}</span>
           {error && <span className="error-badge">⚠️ {error}</span>}
         </div>
       </header>
 
-
       {/* ======================
-          ÉTAT GLOBAL DU SERVEUR 
-        ======================== */}
+          ÉTAT GLOBAL DU SERVEUR
+      ======================== */}
       <section className="dashboard-section">
         <h2>État global du serveur</h2>
-        <div className="server-tile-container">
-          <div className="server-tile-header">
-            <h3 className="server-tile-title">Serveur principal</h3>
-          
+        <div className="server-metrics">
+          {["cpu", "ram", "disk"].map((key) => (
+            <div className="server-metric" key={key}>
+              <div className="server-metric-label">{key.toUpperCase()}</div>
+              <div className="server-metric-value">
+                {(systemData[key]?.percent ?? 0).toFixed(1)} %
+              </div>
+              <div className="metric-bar">
+                <div
+                  className={`metric-bar-fill level-${getUsageLevel(systemData[key]?.percent ?? 0)}`}
+                  style={{ width: `${systemData[key]?.percent ?? 0}%` }}
+                />
+              </div>
+            </div>
+          ))}
+          <div className="server-metric">
+            <div className="server-metric-label">Température CPU</div>
+            <div className={`server-metric-value ${getTempClass(systemData.cpu?.temperature)}`}>
+              {(systemData.cpu?.temperature ?? 0).toFixed(1)} °C
+            </div>
           </div>
-          <div className="server-metrics">
-            <div className="server-metric">
-              <div className="server-metric-label">CPU</div>
-              <div className="server-metric-value">
-                {(systemData.cpu_percent ?? 0).toFixed(1)} %
-              </div>
-              <div className="metric-bar">
-                <div
-                  className={`metric-bar-fill level-${getUsageLevel(systemData.cpu_percent)}`}
-                  style={{ width: `${systemData.cpu_percent ?? 0}%` }}
-                />
-              </div>
-            </div>
-            <div className="server-metric">
-              <div className="server-metric-label">RAM</div>
-              <div className="server-metric-value">
-                {(systemData.ram_percent ?? 0).toFixed(1)} %
-              </div>
-              <div className="metric-bar">
-                <div
-                  className={`metric-bar-fill level-${getUsageLevel(systemData.ram_percent)}`}
-                  style={{ width: `${systemData.ram_percent ?? 0}%` }}
-                />
-              </div>
-            </div>
-              <div className="server-metric">
-              <div className="server-metric-label">Temperature</div>
-              <div className="server-metric-value">
-                {(systemData.temp ?? 0).toFixed(1)} °C
-              </div>
-            </div>
-            <div className="server-metric">
-              <div className="server-metric-label">Disque</div>
-              <div className="server-metric-value">
-                {(systemData.disk_percent ?? 0).toFixed(1)} %
-              </div>
-              <div className="metric-bar">
-                <div
-                  className={`metric-bar-fill level-${getUsageLevel(systemData.disk_percent)}`}
-                  style={{ width: `${systemData.disk_percent ?? 0}%` }}
-                />
-              </div>
-            </div>
-            <div className="server-metric">
-              <div className="server-metric-label">Etat</div>
-              <div className="server-metric-value">
-                {(systemData.status ?? "unknown")}
-              </div>
-            </div>
+          <div className="server-metric">
+            <div className="server-metric-label">État Backend</div>
+            <div className="server-metric-value">{systemData.status}</div>
           </div>
         </div>
       </section>
 
       {/* ======================
-          SERVICES DOCKER 
-        ======================== */}
+          SERVICES DOCKER
+      ======================== */}
       <section className="dashboard-section">
-        <h2>Services Docker ({containers.length})</h2>
-        <div className="server-tile-container">
+        <h2>
+          Services Docker ({dockerSummary.total}) — {dockerSummary.running} actifs
+        </h2>
         {loading ? (
-          <div className="loading-message">Chargement des services...</div>
+          <div className="loading-message">Chargement...</div>
         ) : containers.length === 0 ? (
-          <div className="no-containers">Aucun conteneur détecté</div>
+          <div className="no-containers">Aucun conteneur</div>
         ) : (
           <div className="tile-grid">
-            {containers.map((container, idx) => (
+            {containers.map((c, i) => (
               <div
-                key={container.id ?? idx}
-                className={`service-tile ${container.state === "up" ? "" : "status-down"}`}
+                key={c.id ?? i}
+                className={`service-tile ${c.status === "running" ? "status-up" : "status-down"}`}
               >
                 <div className="service-tile-header">
-                  <h3 className="service-tile-title">{container.name ?? container.Names ?? `#${idx}`}</h3>
-                  <span className={`service-status ${container.status === "up" ? "running" : "stopped"}`}>
+                  <h3 className="service-tile-title">{c.name}</h3>
+                  <span
+                    className={`service-status ${c.status === "running" ? "running" : "stopped"}`}
+                  >
                     <span className="status-dot" />
-                    {container.status === "running" ? "Actif" : "Arrêté"}
+                    {c.status === "running" ? "Actif" : "Arrêté"}
                   </span>
                 </div>
                 <div className="service-tile-body">
                   <div className="service-info">
                     <span className="service-info-label">Image</span>
-                    <span className="service-info-value">{container.image ?? "-"}</span>
+                    <span className="service-info-value">{c.image ?? "-"}</span>
                   </div>
-                  {Array.isArray(container.ports) && container.ports.length > 0 && (
-                    <div className="service-info">
-                      <span className="service-info-label">Ports</span>
-                      <span className="service-info-value">{container.ports.join(", ")}</span>
-                    </div>
-                  )}
                   <div className="service-info">
                     <span className="service-info-label">CPU</span>
-                    <span className="service-info-value">{container.stats?.cpu ?? "0"}%</span>
+                    <span className="service-info-value">{c.stats?.cpu ?? 0}%</span>
                   </div>
                   <div className="service-info">
                     <span className="service-info-label">RAM</span>
-                    <span className="service-info-value">{container.stats?.memory ?? "0 MB"}</span>
+                    <span className="service-info-value">{c.stats?.memory ?? "0 MB"}</span>
                   </div>
                 </div>
               </div>
             ))}
           </div>
         )}
-        </div>
+      </section>
+
+      {/* ======================
+          HEALTH DES SERVICES
+      ======================== */}
+      <section className="dashboard-section">
+        <h2>Health des services</h2>
+
+        {healthData && healthData.services ? (
+          <div className="tile-grid">
+            {Object.entries(healthData.services).map(([service, status]) => {
+              const isUp = status === "ok";
+              console.log(`[HEALTH] ${service} => ${status}`);
+
+              return (
+                <div
+                  key={service}
+                  className={`service-tile ${isUp ? "status-up" : "status-down"}`}
+                >
+                  <div className="service-tile-header">
+                    <h3 className="service-tile-title">{service.toUpperCase()}</h3>
+                    <span
+                      className={`service-status ${isUp ? "running" : "stopped"}`}
+                    >
+                      <span className="status-dot" />
+                      {isUp ? "OK" : "KO"}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="loading-message">Chargement Health…</div>
+        )}
       </section>
     </div>
   );
