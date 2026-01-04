@@ -33,7 +33,6 @@ services:
 
     ports:
       - "${DASHBOARD_BACKEND_HTTP}:5000"
-
     networks:
       - Homebox
 
