@@ -4,7 +4,8 @@ from api.system import router as system_router
 from api.docker import router as docker_router
 from api.health import router as health_router
 
-app = FastAPI()
+
+app = FastAPI(title="Homebox v1.4 - Docker Dev")
 
 
 # Configuration CORS pour permettre les requêtes du frontend
