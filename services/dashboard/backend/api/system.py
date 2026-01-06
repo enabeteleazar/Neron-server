@@ -57,6 +57,28 @@ def get_system():
         "uptime_seconds": int(time.time() - BOOT_TIME),
         "process_count": len(psutil.pids()),
         "timestamp": now_iso()
+<<<<<<< HEAD
+    }
+
+
+@router.get("/summary")
+def get_summary():
+    """Résumé simplifié pour Dashboard : CPU %, RAM %, Disk %, Température"""
+    cpu_percent = psutil.cpu_percent(interval=0.5)
+    ram_percent = psutil.virtual_memory().percent
+    disk_percent = psutil.disk_usage("/").percent
+    temp = get_temperature()
+
+    return {
+        "timestamp": now_iso(),
+        "summary": {
+            "cpu_percent": round(cpu_percent, 1),
+            "ram_percent": round(ram_percent, 1),
+            "disk_percent": round(disk_percent, 1),
+            "temperature": temp
+        }
+=======
+>>>>>>> feature/system-endpoints
     }
 
 
