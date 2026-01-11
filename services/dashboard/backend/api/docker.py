@@ -1,3 +1,4 @@
+#api/docker.py
 from fastapi import APIRouter
 from datetime import datetime
 import docker
@@ -6,10 +7,8 @@ from datetime import datetime
 router = APIRouter(prefix="/docker", tags=["docker"])
 client = docker.from_env()
 
-
 def now_iso():
     return datetime.utcnow().isoformat() + "Z"
-
 
 def format_datetime(dt_str):
     """Convertit une string ISO en datetime UTC"""
@@ -17,7 +16,6 @@ def format_datetime(dt_str):
         return datetime.fromisoformat(dt_str.replace("Z", ""))
     except Exception:
         return None
-
 
 def get_containers_list():
     container_list = []
@@ -53,7 +51,6 @@ def get_containers_list():
     except Exception:
         return []
 
-
 def get_docker_summary(containers):
     total = len(containers)
     running = sum(1 for c in containers if c["status"] == "running")
@@ -67,7 +64,6 @@ def get_docker_summary(containers):
         "paused": paused
     }
 
-
 def docker_status_global(summary):
     if summary["total"] == 0:
         return "down"
@@ -75,7 +71,6 @@ def docker_status_global(summary):
         return "degraded"
     else:
         return "ok"
-
 
 @router.get("/list")
 def docker_list():
@@ -92,7 +87,6 @@ def docker_list():
         }
     }
 
-
 @router.get("/summary")
 def docker_summary():
     containers = get_containers_list()
@@ -106,7 +100,6 @@ def docker_summary():
             "summary": summary
         }
     }
-
 
 @router.post("/{container_id}/stop")
 def stop_container(container_id: str):
@@ -130,7 +123,6 @@ def stop_container(container_id: str):
             "timestamp": now_iso(),
             "data": {"error": str(e)}
         }
-
 
 @router.post("/{container_id}/start")
 def start_container(container_id: str):

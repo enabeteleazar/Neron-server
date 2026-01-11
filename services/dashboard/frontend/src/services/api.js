@@ -1,12 +1,12 @@
 // IP du backend
-const API_URL = "http://192.168.1.130:5000"; 
+const API_URL = "http://192.168.1.130:5010"; 
 
 /* =========================
    FETCH SYSTEM
 ========================= */
 export const fetchSystem = async () => {
   try {
-    const res = await fetch(`${API_URL}/api/system`);
+    const res = await fetch(`${API_URL}/api/system/`);
     if (!res.ok) throw new Error(`Erreur System API : ${res.status}`);
     const data = await res.json();
     return data;

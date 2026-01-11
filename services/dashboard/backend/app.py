@@ -6,7 +6,6 @@ from api.health import router as health_router
 
 app = FastAPI()
 
-
 # Configuration CORS pour permettre les requêtes du frontend
 app.add_middleware(
     CORSMiddleware,

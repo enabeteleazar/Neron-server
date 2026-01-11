@@ -1,3 +1,4 @@
+#api/health.py
 from fastapi import APIRouter
 from datetime import datetime
 import docker
@@ -11,10 +12,8 @@ client = docker.from_env()
 
 BOOT_TIME = psutil.boot_time()
 
-
 def now_iso():
     return datetime.utcnow().isoformat() + "Z"
-
 
 # -----------------------------
 # CHECKS BAS NIVEAU
@@ -27,14 +26,12 @@ def check_service_socket(host: str, port: int, timeout: int = 2) -> bool:
     except Exception:
         return False
 
-
 def check_service_http(url: str, timeout: int = 2) -> bool:
     try:
         r = requests.get(url, timeout=timeout)
         return r.status_code < 500
     except Exception:
         return False
-
 
 # -----------------------------
 # SYSTEM HEALTH
@@ -58,7 +55,6 @@ def system_health():
             "cpu_ok": False,
             "memory_ok": False
         }
-
 
 # -----------------------------
 # DOCKER HEALTH
@@ -88,7 +84,6 @@ def docker_health():
             "stopped_list": []
         }
 
-
 # -----------------------------
 # SERVICES HEALTH
 # -----------------------------
@@ -109,7 +104,6 @@ def services_health():
         "ok": [name for name, status in services.items() if status],
         "down": [name for name, status in services.items() if not status]
     }
-
 
 # -----------------------------
 # ENDPOINTS
@@ -138,14 +132,12 @@ def health_global():
         "services": services
     }
 
-
 @router.get("/system")
 def health_system():
     return {
         "timestamp": now_iso(),
         "system": system_health()
     }
-
 
 @router.get("/services")
 def health_services():
