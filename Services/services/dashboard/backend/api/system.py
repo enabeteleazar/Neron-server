@@ -1,3 +1,4 @@
+#api/system.py
 from fastapi import APIRouter
 import psutil
 import time
@@ -7,10 +8,8 @@ router = APIRouter(prefix="/system", tags=["system"])
 
 BOOT_TIME = psutil.boot_time()
 
-
 def now_iso():
     return datetime.utcnow().isoformat() + "Z"
-
 
 def get_temperature():
     try:
@@ -25,7 +24,6 @@ def get_temperature():
         pass
 
     return None
-
 
 @router.get("/")
 def get_system():
