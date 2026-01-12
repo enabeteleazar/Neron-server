@@ -6,7 +6,7 @@ services:
     ports:
       - "${OLLAMA_HTTP}:11434"
     volumes:
-      - ../../../data/ollama:/root/.ollama
+      - ${OLLAMA_DATA}:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
     networks:

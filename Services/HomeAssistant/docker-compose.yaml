@@ -2,7 +2,7 @@ services:
   homeassistant:
     image: ghcr.io/home-assistant/home-assistant:stable
     env_file:
-      - ${NERON_BASE}.env
+      - ${ENV_PATH}/.env
 
 
     container_name: homeassistant
@@ -14,7 +14,7 @@ services:
       TZ: Europe/Paris
 
     volumes:
-      - ../../../data/homeassistant/config:/config
+      - ${HOMEASSISTANT_DATA}/config:/config
       - /run/dbus:/run/dbus:ro
 
     ports:

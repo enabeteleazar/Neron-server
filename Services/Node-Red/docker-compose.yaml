@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "1880:1880"
+      - "${NODE_RED_HTTP}:1880"
 
     environment:
       - TZ=Europe/Paris
@@ -13,11 +13,12 @@ services:
       - NODE_RED_ENABLE_PROJECTS=true
 
     volumes:
-      - ./data:/data
+      - ${NODE_RED_DATA}/data:/data
 
     networks:
       - Homebox
 
 networks:
   Homebox:
+    name: ${HOMEBOX_NETWORK}
     external: true

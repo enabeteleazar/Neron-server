@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "8080:80"
+      - "${DASHBOARD_FRONT_HTTP}:80"
 
     depends_on:
       - dashboard-backend
@@ -29,11 +29,11 @@ services:
       - "104"
 
     ports:
-      - "5000:5000"
+      - "${DASHBOARD_BACK_HTTP}:5000"
     networks:
       - Homebox
 
 networks:
   Homebox:
-    name: Homebox
+    name: ${HOMEBOX_NETWORK}
     external: true

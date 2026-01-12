@@ -1,13 +1,14 @@
 # =========================
 # Données générés par les services
 # =========================
-neron/*/model
-neron/*/data
-services/*/model/
-services/*/data/
-services/*/node-red/data/
-services/*/n8n/.n8n
-services/homeassistant/config/.storage/
+Neron/*/model
+Neron/*/data
+Services/*/model/
+Services/*/data/
+Services/*/node-red/data/
+Services/*/n8n/.n8n
+Services/homeassistant/config/.storage/
+DATA/*
 
 # =========================
 # Modèles et données LLM

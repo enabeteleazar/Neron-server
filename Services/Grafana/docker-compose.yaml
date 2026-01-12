@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
 
     ports:
-      - "3000:3000"
+      - "${GRAFANA_HTTP}:3000"
 
     environment:
       - GF_SECURITY_ADMIN_USER=admin
@@ -15,7 +15,7 @@ services:
       - GF_INSTALL_PLUGINS=grafana-piechart-panel
 
     volumes:
-      - ./data/grafana:/var/lib/grafana
+      - ${GRAFANA_DATA}:/var/lib/grafana
       - ./data/provisioning:/etc/grafana/provisioning
 
     networks:
@@ -23,4 +23,5 @@ services:
 
 networks:
   Homebox:
+    name: ${HOMEBOX_NETWORK}
     external: true

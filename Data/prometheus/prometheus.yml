@@ -1,0 +1,14 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape du serveur Ubuntu via node_exporter
+  - job_name: 'node_exporter'
+    static_configs:
+      - targets: ['localhost:9100']  # À remplacer si node_exporter est sur un autre host/port
+
+  # Scrape Docker via cAdvisor
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['localhost:8080']  # À remplacer si cAdvisor est sur un autre host/port  

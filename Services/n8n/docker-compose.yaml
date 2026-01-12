@@ -3,20 +3,21 @@ services:
   n8n:
     image: n8nio/n8n:latest
     env_file:
-      - ${ENV_DIR}/.env
+      - ${ENV_PATH}/.env
 
     container_name: neron-n8n
     restart: unless-stopped
 
     volumes:
-      - ./data:/home/n8n/.n8n
+      - ${N8N_DATA}:/home/n8n/.n8n
 
     ports:
-      - "${N8N_PORT}:5678"
+      - "${N8N_HTTP}:5678"
 
     networks:
-      - ${HOMEBOX_NETWORK}
+      - Homebox
 
 networks:
   Homebox:
+    name: ${HOMEBOX_NETWORK}
     external: true

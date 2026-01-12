@@ -5,6 +5,14 @@ services:
 
     restart: unless-stopped
     ports:
-      - "8090:8090"
+      - "${BESZEL_HTTP}:8090"
     volumes:
-      - ./beszel_data:/beszel_data
+      - ${BESZEL_DATA}:/beszel_data
+
+    networks:
+      - Homebox
+
+networks:
+  Homebox:
+    name: ${HOMEBOX_NETWORK}
+    external: true
