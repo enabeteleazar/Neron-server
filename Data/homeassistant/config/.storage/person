@@ -1,0 +1,17 @@
+{
+  "version": 2,
+  "minor_version": 1,
+  "key": "person",
+  "data": {
+    "items": [
+      {
+        "id": "eleazar_dan_nabet",
+        "name": "Eleazar Dan NABET",
+        "user_id": "f426db96ea0d4936b4ea329f2360bcc8",
+        "device_trackers": [
+          "device_tracker.iphone_16_black"
+        ]
+      }
+    ]
+  }
+}

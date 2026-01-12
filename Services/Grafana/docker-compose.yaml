@@ -1,0 +1,26 @@
+services:
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: homebox-grafana
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=passover
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://grafana.homebox.lan
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+
+    volumes:
+      - ./data/grafana:/var/lib/grafana
+      - ./data/provisioning:/etc/grafana/provisioning
+
+    networks:
+      - Homebox
+
+networks:
+  Homebox:
+    external: true

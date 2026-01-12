@@ -1,0 +1,26 @@
+services:
+  dashboard-backend:
+    build: ./backend
+    env_file:
+      - ${NERON_BASE}.env
+
+    container_name: dashboard-backend
+    restart: unless-stopped
+
+    privileged: true
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    group_add:
+      - "104"
+
+    ports:
+      - "${DASHBOARD_BACKEND_HTTP}:5000"
+    networks:
+      - Homebox
+
+networks:
+  Homebox:
+    name: ${HOMEBOX_NETWORK}
+    external: true

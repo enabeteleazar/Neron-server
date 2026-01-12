@@ -1,0 +1,23 @@
+services:
+  node-red:
+    image: nodered/node-red:latest
+    container_name: homebox-nodered
+    restart: unless-stopped
+
+    ports:
+      - "1880:1880"
+
+    environment:
+      - TZ=Europe/Paris
+      - NODE_RED_ENABLE_SAFE_MODE=false
+      - NODE_RED_ENABLE_PROJECTS=true
+
+    volumes:
+      - ./data:/data
+
+    networks:
+      - Homebox
+
+networks:
+  Homebox:
+    external: true

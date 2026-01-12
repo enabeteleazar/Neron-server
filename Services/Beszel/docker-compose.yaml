@@ -1,0 +1,10 @@
+services:
+  beszel:
+    image: henrygd/beszel:latest
+    container_name: beszel-devy
+
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./beszel_data:/beszel_data
