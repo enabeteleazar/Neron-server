@@ -8,7 +8,7 @@ Services/*/data/
 Services/*/node-red/data/
 Services/*/n8n/.n8n
 Services/homeassistant/config/.storage/
-DATA/*
+Data/
 
 # =========================
 # Modèles et données LLM
