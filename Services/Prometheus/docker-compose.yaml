@@ -1,5 +1,8 @@
-services:
 
+    volumes:
+      - .${PROMETHEUS_DATA}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    
+services:
   prometheus:
     image: prom/prometheus:latest
     env_file:
@@ -7,11 +10,26 @@ services:
 
     container_name: prometheus
     restart: unless-stopped
-    ports:
-      - "${PROMETHEUS_HTTP}:9090"
+
+    security_opt:
+      - no-new-privileges:true
 
     volumes:
-      - .${PROMETHEUS_DATA}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - ${DOCKER_DATA_PATH}/config:/etc/prometheus # fichiers de configuration
+      - ${DOCKER_DATA_PATH}/data:/prometheus # données Prometheus
+
+    ports:
+      - "${PROMETHEUS_PORT}:9090"
+
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=30d' # rétention des données (ajustable)
+      - '--web.enable-lifecycle' # permet le reload de la config via API
+
     networks:
       - Homebox
 
