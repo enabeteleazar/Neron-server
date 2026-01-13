@@ -1,8 +1,18 @@
 services:
   node-red:
     image: nodered/node-red:latest
-    container_name: homebox-nodered
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: node-red
     restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - ${DOCKER_DATA_PATH}/node-red/data:/data # données Node-RED
 
     ports:
       - "${NODE_RED_HTTP}:1880"
@@ -12,8 +22,7 @@ services:
       - NODE_RED_ENABLE_SAFE_MODE=false
       - NODE_RED_ENABLE_PROJECTS=true
 
-    volumes:
-      - ${NODE_RED_DATA}/data:/data
+    user: "${PUID}:${PGID}" # permissions utilisateur (optionnel)
 
     networks:
       - Homebox
