@@ -4,18 +4,20 @@ services:
     env_file:
       - ${ENV_PATH}/.env
 
-
     container_name: homeassistant
     restart: unless-stopped
 
     privileged: false
+    security_opt:
+      - no-new-privileges:true
 
     environment:
-      TZ: Europe/Paris
+      - TZ=Europe/Paris
 
     volumes:
-      - ${HOMEASSISTANT_DATA}/config:/config
-      - /run/dbus:/run/dbus:ro
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - ${DOCKER_DATA_PATH}/homeassistant/config:/config # configuration Home Assistant
+      - /run/dbus:/run/dbus:ro # communication D-Bus pour Bluetooth/intégrations système
 
     ports:
       - "${HOMEASSISTANT_HTTP}:8123"
