@@ -1,5 +1,4 @@
 services:
-
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:latest
     env_file:
@@ -7,14 +6,26 @@ services:
 
     container_name: cadvisor
     restart: unless-stopped
-    ports:
-      - "${CADVISOR_HTTP}:8080"
+
+    security_opt:
+      - no-new-privileges:true
 
     volumes:
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
       - /:/rootfs:ro
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro # métriques disque (optionnel)
+
+    ports:
+      - "${CADVISOR_HTTP}:8080"
+
+    devices:
+      - /dev/kmsg # pour les logs kernel (optionnel)
+
+    privileged: true # nécessaire pour cAdvisor
+
     networks:
       - Homebox
 
