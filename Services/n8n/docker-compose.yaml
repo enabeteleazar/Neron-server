@@ -1,18 +1,29 @@
-
 services:
   n8n:
     image: n8nio/n8n:latest
     env_file:
       - ${ENV_PATH}/.env
 
-    container_name: neron-n8n
+    container_name: n8n
     restart: unless-stopped
 
+    security_opt:
+      - no-new-privileges:true
+
     volumes:
-      - ${N8N_DATA}:/home/n8n/.n8n
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - ${DOCKER_DATA_PATH}/n8n/data:/home/node/.n8n # données n8n
 
     ports:
       - "${N8N_HTTP}:5678"
+
+    environment:
+      - TZ=Europe/Paris
+      - N8N_HOST=${N8N_HOST:-0.0.0.0}
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - GENERIC_TIMEZONE=Europe/Paris
+
+    user: "${PUID}:${PGID}" # permissions utilisateur (optionnel)
 
     networks:
       - Homebox
