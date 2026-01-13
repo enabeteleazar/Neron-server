@@ -1,17 +1,29 @@
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: llama-ollama_${NERON_ENV}
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: ollama
     restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - ${DOCKER_DATA_PATH}/ollama/data:/root/.ollama # données et modèles Ollama
+
     ports:
       - "${OLLAMA_HTTP}:11434"
-    volumes:
-      - ${OLLAMA_DATA}:/root/.ollama
+
     environment:
       - OLLAMA_HOST=0.0.0.0
+
     networks:
       - Homebox
-    # GPU NVIDIA (optionnel)
+
+    # GPU NVIDIA (optionnel - décommenter si besoin)
     # deploy:
     #   resources:
     #     reservations:
@@ -22,28 +34,36 @@ services:
 
   telegram-bot:
     build: .
-    container_name: llama-telegram-bot_${NERON_ENV}
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: telegram-bot
     restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - OLLAMA_URL=${OLLAMA_URL}
       - OLLAMA_MODEL=${OLLAMA_MODEL}
-    networks:
-      - Homebox
+
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
     depends_on:
       - ollama
 
-volumes:
-  ollama_data:
-    driver: local
+    networks:
+      - Homebox
 
 networks:
   Homebox:
     name: ${HOMEBOX_NETWORK}
     external: true
-
