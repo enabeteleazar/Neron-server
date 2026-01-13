@@ -1,13 +1,21 @@
 services:
   beszel:
     image: henrygd/beszel:latest
-    container_name: beszel-devy
+    env_file:
+      - ${ENV_PATH}/.env
 
+    container_name: beszel
     restart: unless-stopped
+
+    security_opt:
+      - no-new-privileges:true
+
+    volumes:
+      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
+      - ${DOCKER_DATA_PATH}/beszel/data:/beszel_data # données Beszel
+
     ports:
       - "${BESZEL_HTTP}:8090"
-    volumes:
-      - ${BESZEL_DATA}:/beszel_data
 
     networks:
       - Homebox
