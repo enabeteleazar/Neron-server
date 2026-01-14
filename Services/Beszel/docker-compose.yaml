@@ -12,7 +12,7 @@ services:
 
     volumes:
       - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
-      - ${DOCKER_DATA_PATH}/data:/beszel_data # données Beszel
+      - ${DOCKER_DATA_PATH}/Beszel/data:/beszel_data # données Beszel
 
     ports:
       - "${BESZEL_HTTP}:8090"

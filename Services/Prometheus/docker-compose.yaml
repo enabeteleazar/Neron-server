@@ -12,11 +12,11 @@ services:
 
     volumes:
       - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
-      - ${DOCKER_DATA_PATH}/config:/etc/prometheus # fichiers de configuration
-      - ${DOCKER_DATA_PATH}/data:/prometheus # données Prometheus
+      - ${DOCKER_DATA_PATH}/prometheus/config:/etc/prometheus # fichiers de configuration
+      - ${DOCKER_DATA_PATH}/prometheus/data:/prometheus # données Prometheus
 
     ports:
-      - "${PROMETHEUS_PORT}:9090"
+      - "${PROMETHEUS_HTTP}:9090"
 
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
