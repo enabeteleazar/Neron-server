@@ -1,53 +1,38 @@
 services:
   dashboard-frontend:
     build: ./frontend
-    env_file:
-      - ${ENV_PATH}/.env
 
     container_name: dashboard-frontend
     restart: unless-stopped
 
-    security_opt:
-      - no-new-privileges:true
-
-    volumes:
-      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
-
     ports:
-      - "${DASHBOARD_FRONT_HTTP}:80"
+      - "8080:80"
 
     depends_on:
       - dashboard-backend
-
     networks:
       - Homebox
 
   dashboard-backend:
     build: ./backend
-    env_file:
-      - ${ENV_PATH}/.env
 
     container_name: dashboard-backend
     restart: unless-stopped
 
     privileged: true
-    security_opt:
-      - no-new-privileges:true
 
     volumes:
-      - /etc/localtime:/etc/localtime:ro # pour synchroniser l'heure avec l'hôte
-      - /var/run/docker.sock:/var/run/docker.sock:ro # socket associé à Docker
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
     group_add:
-      - "104" # groupe docker
+      - "104"
 
     ports:
-      - "${DASHBOARD_BACK_HTTP}:5000"
-
+      - "5000:5000"
     networks:
       - Homebox
 
 networks:
   Homebox:
-    name: ${HOMEBOX_NETWORK}
+    name: Homebox
     external: true

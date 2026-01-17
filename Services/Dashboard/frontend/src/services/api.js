@@ -1,5 +1,5 @@
 // IP du backend
-const API_URL = "http://192.168.1.130:5000"; 
+const API_URL = "http://localhost:5000"; 
 
 /* =========================
    FETCH SYSTEM
