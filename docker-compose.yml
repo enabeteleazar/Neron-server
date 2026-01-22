@@ -1,0 +1,48 @@
+
+services:
+
+  neron-core:
+    build: ./neron-core
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: neron-core
+    ports:
+      - "${NERON_CORE_HTTP}:8080"
+    depends_on:
+      - neron-llm
+      - neron-stt
+      - neron-memory
+
+  neron-llm:
+    image: ollama/ollama
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: neron-llm
+    volumes:
+      - ${DOCKER_DATA_PATH}/ollama:/root/.ollama
+    ports:
+      - "${NERON_LLM_HTTP}:11434"
+
+  neron-stt:
+    build: ./neron-stt
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: neron-stt
+    ports:
+      - "${NERON_STT_HTTP}:8001"
+
+  neron-memory:
+    build: ./neron-memory
+    env_file:
+      - ${ENV_PATH}/.env
+
+    container_name: neron-memory
+    volumes:
+      - ${DOCKER_DATA_PATH}/memory:/data
+
+volumes:
+  ollama:
+  memory:
