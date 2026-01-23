@@ -7,6 +7,10 @@ app = FastAPI()
 
 whisper_model = whisper.load_model("base")
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.post("/speech")
 async def transcribe(file: UploadFile = File(...)):
     if not file.filename.endswith((".wav", ".mp3", ".m4a", ".ogg")):

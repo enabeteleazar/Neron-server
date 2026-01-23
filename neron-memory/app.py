@@ -17,6 +17,10 @@ class MemoryItem(BaseModel):
     input: str
     response: str
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.post("/store")
 def store(item: MemoryItem):
     conn = sqlite3.connect(db_path)

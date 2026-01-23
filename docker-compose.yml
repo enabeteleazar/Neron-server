@@ -1,47 +1,88 @@
-
 services:
 
   neron-core:
     build: ./neron-core
     env_file:
-      - ${ENV_PATH}/.env
-
+      - ${ENV_PATH:-.}/.env
     container_name: neron-core
     ports:
-      - "${NERON_CORE_HTTP}:8080"
+      - "${NERON_CORE_HTTP:-8000}:8000"
     depends_on:
-      - neron-llm
-      - neron-stt
-      - neron-memory
+      neron-llm:
+        condition: service_healthy
+      neron-stt:
+        condition: service_healthy
+      neron-memory:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - neron-network
 
   neron-llm:
     image: ollama/ollama
     env_file:
-      - ${ENV_PATH}/.env
-
+      - ${ENV_PATH:-.}/.env
     container_name: neron-llm
     volumes:
-      - ${DOCKER_DATA_PATH}/ollama:/root/.ollama
+      - ${DOCKER_DATA_PATH:-./data}/ollama:/root/.ollama
     ports:
-      - "${NERON_LLM_HTTP}:11434"
+      - "${NERON_LLM_HTTP:-11434}:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+#      test: ["CMD-SHELL", "curl -s http://127.0.0.1:11434/api/tags | grep -q 'models'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - neron-network
 
   neron-stt:
     build: ./neron-stt
     env_file:
-      - ${ENV_PATH}/.env
-
+      - ${ENV_PATH:-.}/.env
     container_name: neron-stt
     ports:
-      - "${NERON_STT_HTTP}:8001"
+      - "${NERON_STT_HTTP:-8001}:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - neron-network
 
   neron-memory:
     build: ./neron-memory
     env_file:
-      - ${ENV_PATH}/.env
-
+      - ${ENV_PATH:-.}/.env
     container_name: neron-memory
     volumes:
-      - ${DOCKER_DATA_PATH}/memory:/data
+      - ${DOCKER_DATA_PATH:-./data}/memory:/data
+    ports:
+      - "${NERON_MEMORY_HTTP:-8002}:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - neron-network
+
+networks:
+  neron-network:
+    external: true
 
 volumes:
   ollama:

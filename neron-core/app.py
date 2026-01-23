@@ -7,6 +7,10 @@ app = FastAPI()
 def root():
     return {"message": "Néron v0.1 actif"}
 
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
 @app.post("/input/audio")
 async def audio_input(file: UploadFile = File(...)):
     # Transcription STT
