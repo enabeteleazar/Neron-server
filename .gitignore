@@ -65,3 +65,5 @@ pip-wheel-metadata/
 Thumbs.db
 desktop.ini
 labo/
+*.wav
+test.wav
