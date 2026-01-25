@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+requests
+python-multipart
+sounddevice
+wavio
+numpy
+vosk
+whisper
+openai-whisper

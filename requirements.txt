@@ -1,0 +1,35 @@
+# ------------------------------
+# HTTP / API
+# ------------------------------
+requests          # pour communiquer avec Néron-LLM via HTTP
+
+# ------------------------------
+# Audio capture / traitement
+# ------------------------------
+sounddevice       # capturer l'audio du micro
+wavio             # sauvegarder fichiers WAV
+numpy             # requis par sounddevice
+
+# ------------------------------
+# STT (Speech-to-Text) local
+# ------------------------------
+vosk              # moteur STT offline
+whisper           # OpenAI Whisper pour STT plus précis
+
+# ------------------------------
+# TTS (Text-to-Speech)
+# ------------------------------
+pyttsx3           # TTS offline, compatible Linux et Windows
+gTTS              # TTS via Google (optionnel, en ligne)
+
+# ------------------------------
+# Audio / manipulation
+# ------------------------------
+pydub             # manipulation audio (trimming, conversion, etc.)
+soundfile         # lecture/écriture fichiers audio WAV/FLAC
+
+# ------------------------------
+# JSON / parsing / utilitaires
+# ------------------------------
+python-dotenv     # charger config/env variables depuis .env
+jsonschema        # validation JSON si nécessaire
