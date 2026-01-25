@@ -7,6 +7,10 @@ app = FastAPI()
 
 whisper_model = whisper.load_model("base")
 
+@app.get("/")
+def root():
+    return {"message": "neron-stt"}
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
