@@ -1,7 +1,11 @@
 from fastapi import FastAPI, UploadFile, File
+from pydantic import BaseModel
 import requests
 
 app = FastAPI()
+
+class TextInput(BaseModel):
+    text: str
 
 @app.get("/")
 def root():
@@ -10,6 +14,30 @@ def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.post("/input/text")
+async def input_text(data: TextInput):
+    # 1️⃣ Envoyer le texte au LLM
+    try:
+        llm_resp = requests.post(
+            LLM_URL,
+            json={"prompt": data.text, "model": "llama3.2:1b"}
+        ).json()
+        llm_text = llm_resp.get("text", "LLM n'a pas répondu")
+    except Exception as e:
+        llm_text = f"Erreur LLM : {e}"
+
+    # 2️⃣ Stocker dans Memory
+    try:
+        requests.post(
+            MEMORY_URL,
+            json={"input": data.text, "response": llm_text}
+        )
+    except Exception as e:
+        print(f"Erreur stockage mémoire : {e}")
+
+    # 3️⃣ Retourner la réponse
+    return {"status": "ok", "received": data.text, "llm_response": llm_text}
 
 @app.post("/input/audio")
 async def audio_input(file: UploadFile = File(...)):

@@ -17,6 +17,10 @@ class MemoryItem(BaseModel):
     input: str
     response: str
 
+@app.get("/")
+def root():
+    return {"message": "memoire actif"}
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
