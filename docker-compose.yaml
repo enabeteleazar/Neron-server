@@ -67,7 +67,7 @@ services:
       - /opt/Homebox_AI/Env/.env
     container_name: neron-memory
     volumes:
-      - ${DOCKER_DATA_PATH:-./data}/memory:/data
+      - neron-memory-data:/data
     ports:
       - "${NERON_MEMORY_HTTP:-8002}:8002"
     healthcheck:
@@ -80,6 +80,19 @@ services:
     networks:
       - Neron_Network
 
+  neron-web:
+    build: ./neron-web
+    container_name: neron-web
+    ports:
+      - "7860:7860"
+    depends_on:
+      - neron-core
+      - neron-memory
+    networks:
+      - Neron_Network
+    restart: unless-stopped
+
+
 networks:
   Neron_Network:
     external: true
@@ -87,3 +100,4 @@ networks:
 volumes:
   ollama:
   memory:
+  neron-memory-data:

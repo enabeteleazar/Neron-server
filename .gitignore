@@ -1,0 +1,79 @@
+# =========================
+# Données générés par les services
+# =========================
+Neron/*/model
+Neron/*/data
+Services/*/model/
+Services/*/data/
+Services/*/node-red/data/
+Services/*/n8n/.n8n
+Services/homeassistant/config/.storage/
+Data/
+
+# Ollama / SSH
+data/ollama/id_ed25519
+data/ollama/id_ed25519.pub
+data/ollama/*
+
+# =========================
+# Modèles et données LLM
+# =========================
+localai/models/
+
+# =========================
+# Fichiers temporaires et logs
+# =========================
+*.log
+*.tmp
+*.swp
+*.DS_Store
+*.bak
+*.old
+*.pyc
+__pycache__/
+
+# =========================
+# Environnements et secrets
+# =========================
+.env
+.env.global
+.env.local
+*.secret
+
+# =========================
+# Docker et conteneurs
+# =========================
+docker-compose.override.yml
+*.pid
+*.sock
+
+# =========================
+# Node / Frontend
+# =========================
+node_modules/
+dist/
+build/
+npm-debug.log
+yarn-error.log
+
+# =========================
+# Python
+# =========================
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+*.pytest_cache/
+
+# =========================
+# Autres fichiers système
+# =========================
+Thumbs.db
+desktop.ini
+labo/
+*.wav
+test.wav
+
+# Python virtual environment
+venv/
+.env
+__pycache__/
