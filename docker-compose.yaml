@@ -3,7 +3,7 @@ services:
   neron-core:
     build: ./neron-core
     env_file:
-      - ${ENV_PATH:-.}/.env
+      - /opt/Homebox_AI/Env/.env
     container_name: neron-core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
@@ -27,7 +27,7 @@ services:
   neron-llm:
     image: ollama/ollama
     env_file:
-      - ${ENV_PATH:-.}/.env
+      - /opt/Homebox_AI/Env/.env
     container_name: neron-llm
     volumes:
       - ${DOCKER_DATA_PATH:-./data}/ollama:/root/.ollama
@@ -47,7 +47,7 @@ services:
   neron-stt:
     build: ./neron-stt
     env_file:
-      - ${ENV_PATH:-.}/.env
+      - /opt/Homebox_AI/Env/.env
     container_name: neron-stt
     ports:
       - "${NERON_STT_HTTP:-8001}:8001"
@@ -64,7 +64,7 @@ services:
   neron-memory:
     build: ./neron-memory
     env_file:
-      - ${ENV_PATH:-.}/.env
+      - /opt/Homebox_AI/Env/.env
     container_name: neron-memory
     volumes:
       - ${DOCKER_DATA_PATH:-./data}/memory:/data
