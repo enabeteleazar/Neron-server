@@ -2,6 +2,8 @@ import gradio as gr
 import requests
 
 NERON_CORE_URL = "http://neron-core:8000"
+NERON_MEMORY_URL = "http://neron-memory:8002"
+
 
 def chat(message, history):
     """Envoie le message à Néron"""
