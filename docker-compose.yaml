@@ -22,7 +22,7 @@ services:
       start_period: 40s
     restart: unless-stopped
     networks:
-      - neron-network
+      - Neron_Network
 
   neron-llm:
     image: ollama/ollama
@@ -42,7 +42,7 @@ services:
       start_period: 5s
     restart: unless-stopped
     networks:
-      - neron-network
+      - Neron_Network
 
   neron-stt:
     build: ./neron-stt
@@ -59,7 +59,7 @@ services:
       start_period: 40s
     restart: unless-stopped
     networks:
-      - neron-network
+      - Neron_Network
 
   neron-memory:
     build: ./neron-memory
@@ -78,10 +78,10 @@ services:
       start_period: 20s
     restart: unless-stopped
     networks:
-      - neron-network
+      - Neron_Network
 
 networks:
-  neron-network:
+  Neron_Network:
     external: true
 
 volumes:
