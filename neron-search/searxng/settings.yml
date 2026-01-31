@@ -1,0 +1,41 @@
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "Néron Search"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "fr"
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "changethis"
+  limiter: false
+  image_proxy: true
+
+ui:
+  ttic_use_hash: true
+  default_locale: "fr"
+  theme_args:
+    simple_style: dark
+
+engines:
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+
+  - name: gooogle
+    engine: google
+    shortcut: go
+
+  - name: bing
+    engine: bing
+    shortcut: bi
+
+  - name: wikipedia
+    engine: wikipedia
+    shortcup: wp
