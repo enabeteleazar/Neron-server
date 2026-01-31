@@ -104,6 +104,19 @@ services:
       - Neron_Network
     restart: unless-stopped
 
+  neron-searxng:
+    image: searxng/searxng:latest
+    container_name: neron-searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - ./neron_search/searxng:/etc/searxg:rw
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8888/
+    networks:
+      - Neron_Network
+    restart: unless-stopped
+
 networks:
   Neron_Network:
     external: true

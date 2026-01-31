@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # installer les dépendantes systeme
 RUN apt update && apt install -y ffmpeg git curl && apt clean
@@ -6,12 +6,16 @@ RUN apt update && apt install -y ffmpeg git curl && apt clean
 # Definit le répertoire de travail
 WORKDIR /app
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+
 # Copier les fichers de requirements et installer 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copier le code de l'application
 COPY app.py .
+COPY tools/ ./tools/   
 
 # exposer le port STT
 EXPOSE 8000

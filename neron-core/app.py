@@ -4,6 +4,7 @@ import httpx
 import logging
 import os
 from typing import Optional
+from tools.search import web_search, format_search_results
 
 # Configuration du logging
 logging.basicConfig(
@@ -119,6 +120,98 @@ async def text_input(input_data: TextInput):
     except Exception as e:
         logger.error(f"Unexpected error in text pipeline: {e}")
         raise HTTPException(500, f"Internal server error: {str(e)}")
+
+
+@app.post("/search", response_model=CoreResponse)
+async def search_and_answer(input_data: TextInput):
+    """
+    Pipeline recherche : Query → SearXNG → LLM synthesis → Memory
+    """
+    logger.info(f"Search request: {input_data.text}")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            
+            # === ÉTAPE 1 : Recherche web ===
+            logger.info("Searching web...")
+            search_results = await web_search(input_data.text, num_results=5)
+            
+            if not search_results:
+                return CoreResponse(
+                    response="Je n'ai pas pu trouver de résultats pour ta recherche.",
+                    metadata={
+                        "search_query": input_data.text,
+                        "results_count": 0
+                    }
+                )
+            
+            # === ÉTAPE 2 : Formater pour le LLM ===
+            context = format_search_results(search_results)
+            
+            # === ÉTAPE 3 : Synthèse par le LLM ===
+            prompt = f"""Voici des résultats de recherche web pour la question : "{input_data.text}"
+
+{context}
+
+Synthétise ces informations de manière claire et concise en français. Cite les sources pertinentes."""
+
+            logger.info("Calling LLM for synthesis...")
+            try:
+                llm_response = await client.post(
+                    f"{NERON_LLM_URL}/api/generate",
+                    json={
+                        "model": OLLAMA_MODEL,
+                        "prompt": prompt,
+                        "stream": False
+                    },
+                    timeout=LLM_TIMEOUT
+                )
+                llm_response.raise_for_status()
+                llm_data = llm_response.json()
+                response_text = llm_data.get("response", "").strip()
+                
+                if not response_text:
+                    response_text = context
+                
+                logger.info(f"Synthesis complete: {response_text[:100]}...")
+                
+            except Exception as e:
+                logger.error(f"LLM synthesis failed: {e}")
+                response_text = context
+            
+            # === ÉTAPE 4 : Stockage en mémoire ===
+            logger.info("Storing in memory...")
+            try:
+                await client.post(
+                    f"{NERON_MEMORY_URL}/store",
+                    json={
+                        "input": f"[SEARCH] {input_data.text}",
+                        "response": response_text,
+                        "metadata": {
+                            "source": "web_search",
+                            "results_count": len(search_results)
+                        }
+                    },
+                    timeout=MEMORY_TIMEOUT
+                )
+            except Exception as e:
+                logger.warning(f"Memory storage failed: {e}")
+            
+            return CoreResponse(
+                response=response_text,
+                metadata={
+                    "model": OLLAMA_MODEL,
+                    "search_query": input_data.text,
+                    "results_count": len(search_results),
+                    "sources": [r["url"] for r in search_results[:3]]
+                }
+            )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Search pipeline error: {e}")
+        raise HTTPException(500, f"Internal error: {str(e)}")
 
 
 if __name__ == "__main__":
