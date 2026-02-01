@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(
     title="Néron Core",
     description="Orchestrateur central de l'assistant Néron",
-    version="0.2.0"
+    version="0.2.1"
 )
 
 # Configuration des services
@@ -27,6 +27,9 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 # Timeouts
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "60.0"))
 MEMORY_TIMEOUT = float(os.getenv("MEMORY_TIMEOUT", "5.0"))
+
+# Contexte
+CONTEXT_LIMIT = int(os.getenv("CONTEXT_LIMIT", "5"))
 
 
 class CoreResponse(BaseModel):
@@ -39,11 +42,55 @@ class TextInput(BaseModel):
     text: str
 
 
+async def get_conversation_context(client: httpx.AsyncClient, limit: int = 5) -> str:
+    """
+    Récupère les derniers échanges pour donner du contexte au LLM
+    
+    Args:
+        client: Client HTTP async
+        limit: Nombre d'échanges à récupérer
+        
+    Returns:
+        Contexte formaté pour le LLM
+    """
+    try:
+        response = await client.get(
+            f"{NERON_MEMORY_URL}/retrieve",
+            params={"limit": limit},
+            timeout=MEMORY_TIMEOUT
+        )
+        response.raise_for_status()
+        memories = response.json()
+        
+        if not memories:
+            return ""
+        
+        # Format optimisé pour neron-custom
+        context = "Contexte de notre conversation précédente :\n\n"
+        
+        for mem in reversed(memories):  # Du plus ancien au plus récent
+            # Nettoyer les préfixes [SEARCH]
+            user_input = mem['input'].replace('[SEARCH] ', '').strip()
+            assistant_response = mem['response'][:150].strip()  # Limiter pour éviter overflow
+            
+            context += f"User: {user_input}\n"
+            context += f"Néron: {assistant_response}\n\n"
+        
+        context += "---\nRéponds maintenant à la nouvelle question en tenant compte de ce contexte.\n\n"
+        
+        logger.info(f"Retrieved {len(memories)} messages from memory")
+        return context
+        
+    except Exception as e:
+        logger.warning(f"Failed to retrieve context: {e}")
+        return ""
+
+
 @app.get("/")
 def root():
     return {
         "service": "Néron Core",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "status": "active"
     }
 
@@ -57,21 +104,31 @@ def health():
 @app.post("/input/text", response_model=CoreResponse)
 async def text_input(input_data: TextInput):
     """
-    Pipeline texte : Text → LLM → Memory
+    Pipeline texte : Context + Text → LLM → Memory
     """
     logger.info(f"Receiving text input: {input_data.text[:100]}...")
     
     try:
         async with httpx.AsyncClient() as client:
             
-            # === ÉTAPE 1 : Génération LLM ===
+            # === ÉTAPE 1 : Récupérer le contexte ===
+            logger.info("Retrieving conversation context...")
+            context = await get_conversation_context(client, limit=CONTEXT_LIMIT)
+            
+            # === ÉTAPE 2 : Construire le prompt avec contexte ===
+            if context:
+                full_prompt = f"{context}User: {input_data.text}\nNéron:"
+            else:
+                full_prompt = input_data.text
+            
+            # === ÉTAPE 3 : Génération LLM ===
             logger.info("Calling LLM service...")
             try:
                 llm_response = await client.post(
                     f"{NERON_LLM_URL}/api/generate",
                     json={
                         "model": OLLAMA_MODEL,
-                        "prompt": input_data.text,
+                        "prompt": full_prompt,
                         "stream": False
                     },
                     timeout=LLM_TIMEOUT
@@ -95,7 +152,7 @@ async def text_input(input_data: TextInput):
                 logger.error(f"LLM unexpected error: {e}")
                 raise HTTPException(500, f"Language model processing failed: {str(e)}")
 
-            # === ÉTAPE 2 : Stockage en mémoire ===
+            # === ÉTAPE 4 : Stockage en mémoire ===
             logger.info("Storing in memory...")
             try:
                 await client.post(
@@ -112,7 +169,10 @@ async def text_input(input_data: TextInput):
 
         return CoreResponse(
             response=response_text,
-            metadata={"model": OLLAMA_MODEL}
+            metadata={
+                "model": OLLAMA_MODEL,
+                "context_messages": CONTEXT_LIMIT if context else 0
+            }
         )
 
     except HTTPException:

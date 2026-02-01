@@ -9,7 +9,11 @@ whisper_model = whisper.load_model("base")
 
 @app.get("/")
 def root():
-    return {"message": "neron-stt"}
+    return {
+        "service": "Néron STT",
+        "version": "0.2.0",
+        "status": "active"
+    }
 
 @app.get("/health")
 async def health():
