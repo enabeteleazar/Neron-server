@@ -1,0 +1,48 @@
+use_default_settings: true
+
+general:
+  instance_name: "Néron Search"
+
+search:
+  safe_search: 0
+  default_lang: "fr"
+  formats:
+    - html
+    - json
+
+  # 🔓 Autorise l’API JSON
+  api:
+    enabled: true
+
+# Moteurs principaux activés
+engines:
+  - name: google
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: ahmia
+    disabled: true
+  - name: torch
+    disabled: true
+
+server:
+  bind_address: 0.0.0.0
+  port: 8080
+
+  # 🔐 Clé obligatoire (non vide)
+  secret_key: "changemethissecretkey123456789"
+
+  # 🔒 Instance privée (mais accessible en local)
+  public_instance: false
+
+  # ❌ PAS de reverse proxy
+  proxy:
+    enabled: false
+
+ui:
+  default_locale: "fr"
+
+enabled_plugins:
+  - Basic Calculator
