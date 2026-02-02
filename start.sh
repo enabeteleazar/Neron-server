@@ -46,11 +46,11 @@ check_docker
 slow_echo "${GREEN}Docker OK${NC}"
 
 slow_echo "${BOLD}${BLUE}Construction et lancement des conteneurs Néron...${NC}"
-docker compose --env-file /opt/Homebox_AI/Env/.env up --build -d 
+docker compose up --build -d 
 
 slow_echo "${GREEN}Tous les services Néron v0.1 sont lancés !${NC}"
 
 # --- Affichage du statut ---
-show_status
+./status.sh
 
 slow_echo "${YELLOW}Pour suivre les logs du Core: docker compose logs -f neron-core${NC}"

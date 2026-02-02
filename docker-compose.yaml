@@ -2,13 +2,11 @@ services:
  
   neron-core:
     build: ../backend/core
-    env_file:
-      - /opt/Homebox_AI/.env
     container_name: neron-core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
 #    depends_on:
-#      neron-llm:
+#      neron-ollama:
 #        condition: service_healthy
 #      neron-stt:
 #        condition: service_healthy
@@ -24,31 +22,42 @@ services:
     networks:
       - Neron_Network
 
-  neron-llm:
-    image: ollama/ollama
-    env_file:
-      - /opt/Homebox_AI/.env
-    container_name: neron-llm
+  neron-ollama:
+    image: ollama/ollama:latest
+    container_name: neron-ollama
+    restart: unless-stopped
+    ports:
+      - "${NERON_ollama_HTTP:-11434}:11434"
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/ollama:/root/.ollama
-    ports:
-      - "${NERON_LLM_HTTP:-11434}:11434"
+    environment:
+      - OLLAMA_ORIGINS=*
     healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
-#      test: ["CMD-SHELL", "curl -s http://127.0.0.1:11434/api/tags | grep -q 'models'"]
+#      test: ["CMD-SHELL", "exit 0"]
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:11434/api/tags"]
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 5s
-    restart: unless-stopped
+      start_period: 60s
     networks:
       - Neron_Network
+ #    Décommenter pour GPU (NVIDIA)
+ #    deploy:
+ #      resources:
+ #        reservations:
+ #          devices:
+ #            - driver: nvidi
+ #              count: 1
+ #              capabilities: [gpu]
+
+  # ====================================
+
+
 
   neron-stt:
     build: ./neron-stt
-    env_file:
-      - /opt/Homebox_AI/Env/.env
     container_name: neron-stt
+
     ports:
       - "${NERON_STT_HTTP:-8001}:8001"
     healthcheck:
@@ -63,8 +72,6 @@ services:
 
   neron-memory:
     build: ./neron-memory
-    env_file:
-      - /opt/Homebox_AI/Env/.env
     container_name: neron-memory
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
@@ -95,8 +102,6 @@ services:
   neron-telegram:
     build: ./neron-telegram
     container_name: neron-telegram
-    env_file:
-      - /opt/Homebox_AI/Env/.env
     depends_on:
       - neron-core
       - neron-memory
