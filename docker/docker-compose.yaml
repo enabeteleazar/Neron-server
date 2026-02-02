@@ -1,19 +1,19 @@
 services:
-
+ 
   neron-core:
-    build: ./neron-core
+    build: ../backend/core
     env_file:
-      - /opt/Homebox_AI/Env/.env
+      - /opt/Homebox_AI/.env
     container_name: neron-core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
-    depends_on:
-      neron-llm:
-        condition: service_healthy
-      neron-stt:
-        condition: service_healthy
-      neron-memory:
-        condition: service_healthy
+#    depends_on:
+#      neron-llm:
+#        condition: service_healthy
+#      neron-stt:
+#        condition: service_healthy
+#      neron-memory:
+#        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -27,7 +27,7 @@ services:
   neron-llm:
     image: ollama/ollama
     env_file:
-      - /opt/Homebox_AI/Env/.env
+      - /opt/Homebox_AI/.env
     container_name: neron-llm
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/ollama:/root/.ollama
