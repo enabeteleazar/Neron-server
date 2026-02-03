@@ -7,17 +7,17 @@ services:
   # Néron Core
   # ====================================
   neron-core:
-    build: ../backend/core
+    build: ./neron-core
     container_name: neron-core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
-    depends_on:
-      neron-ollama:
-        condition: service_healthy
-      neron-memory:
-        condition: service_healthy
-      neron-stt:
-        condition: service_healthy
+#    depends_on:
+#      neron-ollama:
+#        condition: service_healthy
+#      neron-memory:
+#        condition: service_healthy
+#      neron-stt:
+#        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
