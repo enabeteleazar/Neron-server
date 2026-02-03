@@ -1,0 +1,56 @@
+name: Test Néron
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      neron-ollama:
+        image: ghcr.io/neron-ai/ollama:latest  # adapte selon ton image
+        ports:
+          - 11434:11434
+        options: >-
+          --health-cmd "curl -f http://localhost:11434/v1/models || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.12
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest requests
+
+      - name: Wait for Ollama
+        run: |
+          echo "Waiting for Ollama to be healthy..."
+          for i in {1..12}; do
+            curl -f http://localhost:11434/v1/models && break
+            sleep 5
+          done
+
+      - name: Run Pytest
+        run: |
+          source venv/bin/activate
+          pytest -v -m ollama

@@ -1,17 +1,23 @@
+# ============================================
+# Néron Assistant - Docker Compose Production
+# ============================================
 services:
- 
+
+  # ====================================
+  # Néron Core
+  # ====================================
   neron-core:
     build: ../backend/core
     container_name: neron-core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
-#    depends_on:
-#      neron-ollama:
-#        condition: service_healthy
-#      neron-stt:
-#        condition: service_healthy
-#      neron-memory:
-#        condition: service_healthy
+    depends_on:
+      neron-ollama:
+        condition: service_healthy
+      neron-memory:
+        condition: service_healthy
+      neron-stt:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -20,44 +26,131 @@ services:
       start_period: 40s
     restart: unless-stopped
     networks:
-      - Neron_Network
+      - Neron-Network
 
+  # ====================================
+  # Ollama - Serveur LLM
+  # ====================================
   neron-ollama:
     image: ollama/ollama:latest
     container_name: neron-ollama
     restart: unless-stopped
     ports:
-      - "${NERON_ollama_HTTP:-11434}:11434"
+      - "${NERON_OLLAMA_HTTP:-11434}:11434"
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/ollama:/root/.ollama
     environment:
       - OLLAMA_ORIGINS=*
     healthcheck:
-#      test: ["CMD-SHELL", "exit 0"]
       test: ["CMD", "curl", "-f", "http://127.0.0.1:11434/api/tags"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
+#    Décommenter pour GPU (NVIDIA)
+#    deploy:
+#      resources:
+#        reservations:
+#          devices:
+#            - driver: nvidia
+#              count: 1
+#              capabilities: [gpu]
     networks:
-      - Neron_Network
- #    Décommenter pour GPU (NVIDIA)
- #    deploy:
- #      resources:
- #        reservations:
- #          devices:
- #            - driver: nvidi
- #              count: 1
- #              capabilities: [gpu]
+      - Neron-Network
 
   # ====================================
+  # Redis - Cache et mémoire
+  # ====================================
+  neron-redis:
+    image: redis:7-alpine
+    container_name: neron-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_HTTP:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    networks:
+      - Neron-Network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ====================================
+  # Néron API - Backend
+  # ====================================
+  neron-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: neron-api
+    restart: unless-stopped
+    ports:
+      - "${NERON_API_HTTP:-5000}:5000"
+      - "${NERON_METRICS_HTTP:-9090}:9090"  # Métriques Prometheus déjà gérées dans Homebox
+    volumes:
+      - neron_data:/data
+      - neron_logs:/logs
+    environment:
+      # Application
+      - ENVIRONMENT=production
+      - APP_VERSION=1.0.0
+      
+      # API
+      - API_HOST=0.0.0.0
+      - API_PORT=5000
+      - API_WORKERS=4
+      
+      # Sécurité (À CHANGER EN PRODUCTION!)
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production-very-long-secret}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-change-me-in-production-jwt-secret}
+      
+      # Ollama
+      - OLLAMA_HOST=http://neron-ollama:11434
+      - OLLAMA_DEFAULT_MODEL=${OLLAMA_DEFAULT_MODEL:-llama2}
+      
+      # Redis
+      - REDIS_HOST=neron-redis
+      - REDIS_PORT=6379
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_FORMAT=json
+      - LOG_FILE=/logs/neron.log
+      
+      # Features
+      - ENABLE_STREAMING=true
+      - ENABLE_METRICS=true
+      - ENABLE_AUTH=${ENABLE_AUTH:-false}
+      - ENABLE_IP_WHITELIST=${ENABLE_IP_WHITELIST:-false}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}
+    depends_on:
+      neron-ollama:
+        condition: service_healthy
+      neron-redis:
+        condition: service_healthy
+    networks:
+      - Neron-Network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
-
+  # ====================================
+  # Néron STT
+  # ====================================
   neron-stt:
     build: ./neron-stt
     container_name: neron-stt
-
     ports:
       - "${NERON_STT_HTTP:-8001}:8001"
     healthcheck:
@@ -68,8 +161,11 @@ services:
       start_period: 40s
     restart: unless-stopped
     networks:
-      - Neron_Network
+      - Neron-Network
 
+  # ====================================
+  # Néron Memory
+  # ====================================
   neron-memory:
     build: ./neron-memory
     container_name: neron-memory
@@ -85,20 +181,26 @@ services:
       start_period: 20s
     restart: unless-stopped
     networks:
-      - Neron_Network
+      - Neron-Network
 
+  # ====================================
+  # Néron Web
+  # ====================================
   neron-web:
     build: ./neron-web
     container_name: neron-web
     ports:
-      - "7860:7860"
+      - "${NERON_WEB_HTTP:-7860}:7860"
     depends_on:
       - neron-core
       - neron-memory
     networks:
-      - Neron_Network
+      - Neron-Network
     restart: unless-stopped
 
+  # ====================================
+  # Néron Telegram
+  # ====================================
   neron-telegram:
     build: ./neron-telegram
     container_name: neron-telegram
@@ -106,27 +208,71 @@ services:
       - neron-core
       - neron-memory
     networks:
-      - Neron_Network
+      - Neron-Network
     restart: unless-stopped
 
+  # ====================================
+  # Néron SearxNG
+  # ====================================
   neron-searxng:
     image: searxng/searxng:latest
     container_name: neron-searxng
     ports:
-      - "8888:8080"
+      - "${NERON_SEARCH_HTTP:-8888}:8080"
     volumes:
       - ./neron_search/searxng:/etc/searxg:rw
     environment:
       - SEARXNG_BASE_URL=http://localhost:8888/
     networks:
-      - Neron_Network
+      - Neron-Network
     restart: unless-stopped
 
-networks:
-  Neron_Network:
-    external: true
+  # ====================================
+  # Nginx - Reverse Proxy & Frontend
+  # ====================================
+  nginx:
+    image: nginx:alpine
+    container_name: neron-nginx
+    restart: unless-stopped
+    ports:
+      - "${NERON_HTTP:-80}:80"
+      - "${NERON_HTTPS:-443}:443"
+    volumes:
+      - ../frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - neron-api
+    networks:
+      - Neron-Network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
+# ====================================
+# Réseaux
+# ====================================
+networks:
+  Neron-Network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ====================================
+# Volumes persistants
+# ====================================
 volumes:
-  ollama:
-  memory:
+  ollama_data:
+    driver: local
+  redis_data:
+    driver: local
+  neron_data:
+    driver: local
+  neron_logs:
+    driver: local
+  nginx_logs:
+    driver: local
   neron-memory-data:
