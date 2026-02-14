@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # installer les dépendantes systeme
 RUN apt update && apt install -y ffmpeg git curl && apt clean

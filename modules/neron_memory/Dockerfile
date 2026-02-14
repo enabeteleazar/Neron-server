@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 # installer les dépendantes systeme
 RUN apt update && apt install -y ffmpeg git curl && apt clean
@@ -14,8 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 
 # exposer le port STT
-EXPOSE 8000
+EXPOSE 8002
 
 # Commande pour lancer l'API
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
-
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8002"]
