@@ -1,18 +1,19 @@
+
 services:
 
-  neron-core:
-    build: ./neron-core
+  neron_core:
+    build: ./modules/neron_core
     env_file:
       - /opt/Homebox_AI/.env
-    container_name: neron-core
+    container_name: neron_core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
     depends_on:
-      neron-llm:
+      neron_llm:
         condition: service_healthy
-      neron-stt:
+      neron_stt:
         condition: service_healthy
-      neron-memory:
+      neron_memory:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -24,31 +25,57 @@ services:
     networks:
       - Neron_Network
 
-  neron-llm:
-    image: ollama/ollama
-    env_file:
-      - /opt/Homebox_AI/.env
-    container_name: neron-llm
-    volumes:
-      - ${DOCKER_DATA_PATH:-./data}/ollama:/root/.ollama
+ #     test: ["CMD-SHELL", "exit 0"]
+#      test: ["CMD-SHELL", "curl -s http://127.0.0.1:11434/api/tags | grep -q 'models'"]
+
+  neron_ollama:
+    image: ollama/ollama:latest
+    container_name: neron_ollama
+    restart: unless-stopped
     ports:
       - "${NERON_LLM_HTTP:-11434}:11434"
-    healthcheck:
-      test: ["CMD-SHELL", "exit 0"]
-#      test: ["CMD-SHELL", "curl -s http://127.0.0.1:11434/api/tags | grep -q 'models'"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 5s
-    restart: unless-stopped
+    volumes:
+      - ${DOCKER_DATA_PATH:-./data}/ollama:/root/.ollama
     networks:
       - Neron_Network
+    healthcheck:
+      test: ["CMD-SHELL", "exit 0"]
+#      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  neron-stt:
-    build: ./neron-stt
+
+  neron_llm:
+    build: ./modules/neron_llm
+    container_name: neron_llm
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - ENV=development
+      - LOG_LEVEL=DEBUG
+      - OLLAMA_HOST=http://neron_ollama:11434
+      - DEFAULT_MODEL=llama3.2:1b
+    depends_on:
+      neron_ollama:
+        condition: service_healthy
+    networks:
+      - Neron_Network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+
+  neron_stt:
+    build: ./modules/neron_stt
     env_file:
       - /opt/Homebox_AI/.env
-    container_name: neron-stt
+    container_name: neron_stt
     ports:
       - "${NERON_STT_HTTP:-8001}:8001"
     healthcheck:
@@ -61,13 +88,13 @@ services:
     networks:
       - Neron_Network
 
-  neron-memory:
-    build: ./neron-memory
+  neron_memory:
+    build: ./modules/neron_memory
     env_file:
       - /opt/Homebox_AI/.env
-    container_name: neron-memory
+    container_name: neron_memory
     volumes:
-      - neron-memory-data:/data
+      - neron_memory-data:/data
     ports:
       - "${NERON_MEMORY_HTTP:-8002}:8002"
     healthcheck:
@@ -80,14 +107,14 @@ services:
     networks:
       - Neron_Network
 
-  neron-web:
-    build: ./neron-web
-    container_name: neron-web
+  neron_web:
+    build: ./modules/neron_web
+    container_name: neron_web
     ports:
       - "7860:7860"
     depends_on:
-      - neron-core
-      - neron-memory
+      - neron_core
+      - neron_memory
     networks:
       - Neron_Network
     restart: unless-stopped
@@ -100,4 +127,4 @@ networks:
 volumes:
   ollama:
   memory:
-  neron-memory-data:
+  neron_memory-data:
