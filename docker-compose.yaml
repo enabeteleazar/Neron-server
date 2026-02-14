@@ -24,10 +24,20 @@ services:
     networks:
       - Neron_Network
 
+<<<<<<< HEAD
+  neron-llm:
+    image: ollama/ollama
+    env_file:
+      - /opt/Homebox_AI/Env/.env
+    container_name: neron-llm
+    volumes:
+      - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/ollama:/root/.ollama
+=======
   neron_ollama:
     image: ollama/ollama:latest
     container_name: neron_ollama
     restart: unless-stopped
+>>>>>>> release/v1.2.0
     ports:
       - "${NERON_LLM_HTTP:-11434}:11434"
     volumes:
@@ -90,7 +100,11 @@ services:
       - /opt/Neron_AI/.env
     container_name: neron_memory
     volumes:
+<<<<<<< HEAD
+      - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
+=======
       - neron_memory-data:/data
+>>>>>>> release/v1.2.0
     ports:
       - "${NERON_MEMORY_HTTP:-8002}:8002"
     healthcheck:
@@ -117,6 +131,17 @@ services:
       - Neron_Network
     restart: unless-stopped
 
+  neron-telegram:
+    build: ./neron-telegram
+    container_name: neron-telegram
+    env_file:
+      - /opt/Homebox_AI/Env/.env
+    depends_on:
+      - neron-core
+      - neron-memory
+    networks:
+      - Neron_Network
+    restart: unless-stopped
 
 networks:
   Neron_Network:
