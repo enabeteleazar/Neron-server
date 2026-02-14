@@ -11,10 +11,10 @@ services:
     depends_on:
       neron_llm:
         condition: service_healthy
-      neron_stt:
-        condition: service_healthy
-      neron_memory:
-        condition: service_healthy
+#      neron_stt:
+#        condition: service_healthy
+#      neron_memory:
+#        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
