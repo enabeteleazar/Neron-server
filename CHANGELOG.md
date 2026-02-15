@@ -2,10 +2,10 @@
 
 Toutes les modifications notables de ce projet seront documentées dans ce fichier.
 
-Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
+Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.2.2/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Non publié](https://github.com/yourusername/neron-ai/compare/v1.0.0...HEAD)
+## [Non publié](https://github.com/yourusername/neron-ai/compare/v1.2.2...HEAD)
 
 ### À venir
 
@@ -18,7 +18,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
-## [1.0.0](https://github.com/yourusername/neron-ai/releases/tag/v1.0.0) - 2025-02-15
+## [1.2.2](https://github.com/yourusername/neron-ai/releases/tag/v1.2.2) - 2025-02-15
 
 ### 🎉 Version Initiale de Production
 
@@ -46,7 +46,7 @@ Première version stable et complète de Néron AI avec architecture microservic
 - Timeouts configurables
 - Support async/await
 
-**neron_llm (v1.0.0)**
+**neron_llm (v1.2.2)**
 
 - Wrapper HTTP autour d’Ollama
 - Client HTTP asynchrone avec httpx
