@@ -23,6 +23,7 @@ services:
     restart: unless-stopped
     networks:
       - Neron_Network
+      - Homebox_Network
 
   neron_ollama:
     image: ollama/ollama:latest
@@ -129,6 +130,8 @@ services:
 
 networks:
   Neron_Network:
+    external: true
+  Homebox_Network:
     external: true
 
 volumes:
