@@ -38,15 +38,6 @@ check_docker() {
     fi
 }
 
-show_status() {
-    echo -e "${BLUE}--- Services Néron v1.2.1 ---${NC}"
-    docker compose ps
-    echo -e "${BLUE}Core:    	http://localhost:8000${NC}"
-    echo -e "${BLUE}OLLAMA: 	http://localhost:11434${NC}"
-    echo -e "${BLUE}LLM:     	http://localhost:5000${NC}"
-    echo -e "${BLUE}MEMORY:   	http://localhost:8002${NC}"
-}
-
 # --- Début du script ---
 slow_echo "${BOLD}${BLUE}Vérification Docker...${NC}"
 check_docker
