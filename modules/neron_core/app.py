@@ -19,8 +19,8 @@ app = FastAPI(
 )
 
 # Configuration des services
-NERON_LLM_URL = os.getenv("NERON_LLM_URL", "http://neron-llm:11434")
-NERON_MEMORY_URL = os.getenv("NERON_MEMORY_URL", "http://neron-memory:8002")
+NERON_LLM_URL = os.getenv("NERON_LLM_URL", "http://neron_llm:11434")
+NERON_MEMORY_URL = os.getenv("NERON_MEMORY_URL", "http://neron_memory:8002")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 # Timeouts

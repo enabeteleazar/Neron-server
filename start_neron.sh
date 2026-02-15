@@ -1,5 +1,12 @@
 #!/bin/bash
-# start_neron.sh - Lance Néron v0.1 sur Homebox (Docker Compose moderne)
+# start_neron.sh - Lance Néron v1.2.0 sur Homebox (Docker Compose moderne)
+
+set -e
+
+echo "╔════════════════════════════════════════╗"
+echo "║  🧪 Lancement de Néron v1.2.1           "
+echo "╔════════════════════════════════════════╗"
+echo ""
 
 set -euo pipefail
 clear
@@ -32,12 +39,12 @@ check_docker() {
 }
 
 show_status() {
-    echo -e "${BLUE}--- Services Néron v0.1 ---${NC}"
+    echo -e "${BLUE}--- Services Néron v1.2.1 ---${NC}"
     docker compose ps
-    echo -e "${BLUE}Core:        http://localhost:8000${NC}"
-    echo -e "${BLUE}STT:         http://localhost:8001${NC}"
-    echo -e "${BLUE}Memory:      http://localhost:8002${NC}"
-    echo -e "${BLUE}LLM:         http://localhost:11434${NC}"
+    echo -e "${BLUE}Core:    	http://localhost:8000${NC}"
+    echo -e "${BLUE}OLLAMA: 	http://localhost:11434${NC}"
+    echo -e "${BLUE}LLM:     	http://localhost:5000${NC}"
+    echo -e "${BLUE}MEMORY:   	http://localhost:8002${NC}"
 }
 
 # --- Début du script ---
@@ -46,9 +53,9 @@ check_docker
 slow_echo "${GREEN}Docker OK${NC}"
 
 slow_echo "${BOLD}${BLUE}Construction et lancement des conteneurs Néron...${NC}"
-docker compose --env-file /opt/Neron_AI/.env up --build -d 
+docker compose --env-file /opt/Neron_AI/.env up -d --build --remove-orphans
 
-slow_echo "${GREEN}Tous les services Néron v0.1 sont lancés !${NC}"
+slow_echo "${GREEN}Tous les services Néron v1.2.1 sont lancés !${NC}"
 
 # --- Affichage du statut ---
 show_status
