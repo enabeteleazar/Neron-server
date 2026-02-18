@@ -3,18 +3,12 @@ services:
   neron_core:
     build: ./modules/neron_core
     env_file:
-      - /opt/Neron_AI/.env
-    environment:
-    - NERON_LLM_URL=http://neron_llm:5000
+      - /opt/Homebox_AI/.env
     container_name: neron_core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
     depends_on:
       neron_llm:
-        condition: service_healthy
-#      neron_stt:
-#        condition: service_healthy
-      neron_memory:
         condition: service_healthy
       neron_searxng:
         condition: service_healthy
@@ -27,7 +21,6 @@ services:
     restart: unless-stopped
     networks:
       - Neron_Network
-      - Homebox_Network
 
   neron_ollama:
     image: ollama/ollama:latest
@@ -69,6 +62,8 @@ services:
       retries: 3
       start_period: 40s
 
+  # Fix #3 : port 8888 supprimé — SearXNG réseau interne uniquement
+  # Fix #4 : healthcheck wget
   neron_searxng:
     image: searxng/searxng:latest
     container_name: neron_searxng
@@ -90,29 +85,10 @@ services:
       retries: 5
       start_period: 20s
 
-  neron_memory:
-    build: ./modules/neron_memory
-    env_file:
-      - /opt/Neron_AI/.env
-    container_name: neron_memory
-    volumes:
-      - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
-    ports:
-      - "${NERON_MEMORY_HTTP:-8002}:8002"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-    restart: unless-stopped
-    networks:
-      - Neron_Network
-
   neron_stt:
     build: ./modules/neron_stt
     env_file:
-      - /opt/Neron_AI/.env
+      - /opt/Homebox_AI/.env
     container_name: neron_stt
     ports:
       - "${NERON_STT_HTTP:-8001}:8001"
@@ -122,6 +98,25 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    restart: unless-stopped
+    networks:
+      - Neron_Network
+
+  neron_memory:
+    build: ./modules/neron_memory
+    env_file:
+      - /opt/Homebox_AI/.env
+    container_name: neron_memory
+    volumes:
+      - neron_memory-data:/data
+    ports:
+      - "${NERON_MEMORY_HTTP:-8002}:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
     networks:
       - Neron_Network
@@ -138,22 +133,9 @@ services:
       - Neron_Network
     restart: unless-stopped
 
-#  neron-telegram:
-#    build: ./neron-telegram
-#    container_name: neron-telegram
-#    env_file:
-#      - /opt/Homebox_AI/Env/.env
-#    depends_on:
-#      - neron-core
-#      - neron-memory
-#    networks:
-#      - Neron_Network
-#    restart: unless-stopped
 
 networks:
   Neron_Network:
-    external: true
-  Homebox_Network:
     external: true
 
 volumes:
