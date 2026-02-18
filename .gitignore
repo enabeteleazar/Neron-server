@@ -29,8 +29,11 @@ localai/models/
 *.DS_Store
 *.bak
 *.old
-*.pyc
 __pycache__/
+*.pyc
+*.pyo
+*.pyd
+
 
 # =========================
 # Environnements et secrets
