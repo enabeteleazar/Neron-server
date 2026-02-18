@@ -77,3 +77,4 @@ test.wav
 venv/
 .env
 __pycache__/
+config/searxng/settings.yml
