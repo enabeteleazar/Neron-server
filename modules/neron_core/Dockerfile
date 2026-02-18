@@ -12,6 +12,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copier le code de l'application
 COPY app.py .
+COPY agents/ ./agents/
+COPY orchestrator/ ./orchestrator/
 
 # exposer le port STT
 EXPOSE 8000

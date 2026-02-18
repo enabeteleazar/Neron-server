@@ -4,6 +4,8 @@ services:
     build: ./modules/neron_core
     env_file:
       - /opt/Neron_AI/.env
+    environment:
+    - NERON_LLM_URL=http://neron_llm:5000
     container_name: neron_core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
@@ -14,7 +16,7 @@ services:
 #        condition: service_healthy
       neron_memory:
         condition: service_healthy
-      neron-searxing:
+      neron_searxng:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
