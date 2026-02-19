@@ -15,6 +15,10 @@ COPY app.py .
 COPY __init__.py .
 COPY agents/ ./agents/
 COPY orchestrator/ ./orchestrator/
+COPY neron_time/ ./neron_time/
+
+RUN useradd -m -u 1000 neron && chown -R neron:neron /app
+USER neron
 
 # exposer le port STT
 EXPOSE 8000

@@ -1,3 +1,2 @@
-from orchestrator.intent_router import IntentRouter, Intent
-
-__all__ = ["IntentRouter", "Intent"]
+# modules/neron_core/orchestrator/__init__.py
+# Volontairement vide
