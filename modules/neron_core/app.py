@@ -117,7 +117,7 @@ def root():
         "version": "1.3.3",
         "status": "active",
         "agents": ["llm_agent", "web_agent", "time_provider"],
-        "next": "ha_agent (v1.4.0)"
+        "next": "ha_agent (v1.3.3)"
     }
 
 
