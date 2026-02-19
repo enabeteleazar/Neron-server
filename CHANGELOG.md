@@ -19,28 +19,68 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
-## [1.3.1] - 2025-02-19
+## [1.3.3] - 2026-02-19
+
+### Branchement TimeProvider dans le pipeline
+
+#### Nouveautes
+
+- Handler `_handle_time_query` dans app.py : repond sans passer par le LLM
+- `TimeProvider` instancie au startup avec les autres agents
+- Reponse en francais : "Il est jeudi 19 fevrier 2026 a 21h36."
+- Jours et mois en francais via dictionnaires integres (sans dependance locale)
+- `neron_time/` copie dans l'image Docker via Dockerfile
+
+#### Corrections
+
+- `llm_agent.py` : lit `OLLAMA_MODEL` depuis `.env` et le transmet a neron_llm
+- Modele effectivement utilise retourne dans `metadata.model`
+- Dockerfile : ajout `COPY neron_time/` manquant
+
+-----
+
+## [1.3.2] - 2026-02-19
+
+### TimeProvider et intent TIME_QUERY
+
+#### Nouveautes
+
+- Ajout `neron_time/time_provider.py` : fournit heure, date, iso, timestamp
+- Fuseau horaire configurable (defaut Europe/Paris) via `zoneinfo` (stdlib Python 3.9+)
+- Methodes : `now()`, `iso()`, `human()`, `date()`, `time()`, `timestamp()`
+- Ajout `Intent.TIME_QUERY` dans `intent_router.py`
+- Patterns detectes : heure, date, quel jour, quel mois
+
+#### Tests
+
+- 15 tests pytest pour TimeProvider (15/15 PASS)
+- 3 nouveaux tests TIME_QUERY dans test_router.py
+- Total : 40 tests passes
+
+-----
+
+## [1.3.1] - 2026-02-19
 
 ### Corrections suite audit DevOps
 
 #### Robustesse reseau
 
-- `web_agent.py` : capture separee de chaque type d’erreur HTTP (TimeoutException, ConnectError, HTTPStatusError, RequestError)
+- `web_agent.py` : capture separee de chaque type d'erreur HTTP (TimeoutException, ConnectError, HTTPStatusError, RequestError)
 - `llm_agent.py` : meme traitement, timeout granulaire via `httpx.Timeout`
 - Fallback propre vers conversation si WebAgent indisponible
 
 #### Architecture
 
-- Router avec registre dynamique d’agents (`build_intent_registry`)
+- Router avec registre dynamique d'agents (`build_intent_registry`)
 - Ajout de `meteo` sans accent dans les patterns du router (robustesse saisie utilisateur)
 - Imports absolus partout, suppression des imports relatifs problematiques
-- `__init__.py` vidés pour eviter les conflits de chargement pytest
+- `__init__.py` vides pour eviter les conflits de chargement pytest
 
 #### Securite
 
 - SearXNG : port 8888 supprime du docker-compose (reseau interne Docker uniquement)
 - Dockerfile neron_core : user non-root `neron`
-- Healthcheck SearXNG corrige avec `wget` (present dans l’image)
+- Healthcheck SearXNG corrige avec `wget`
 
 #### Observabilite
 
@@ -51,30 +91,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 #### Tests
 
 - 22 tests pytest passes : 7 orchestrator, 9 router, 6 web_agent
-- `conftest.py` avec fixtures partagees (mock_llm_success, mock_llm_failure, mock_searxng_response)
+- `conftest.py` avec fixtures partagees
 - `pytest.ini` configure avec asyncio_mode = auto
 
 -----
 
-## [1.3.0] - 2025-02-19
+## [1.3.0] - 2026-02-19
 
 ### Orchestrateur central - Neron Core
 
 #### Nouveautes
 
 - Neron Core devient un orchestrateur multi-agents
-- `IntentRouter` : classification en deux passes (rules-based + LLM fallback)
+- `IntentRouter` : classification rules-based + LLM fallback
 - `BaseAgent` : classe abstraite commune, AgentResult standardise
-- `LLMAgent` : wrapper neron_llm en tant qu’agent
-- `WebAgent` : recherche web via SearXNG self-hosted
-- Pipeline web : WebAgent -> resultats bruts -> LLMAgent synthese -> reponse
+- `LLMAgent` : wrapper neron_llm en tant qu'agent
+- `WebAgent` : recherche web via SearXNG self-hosted (meteo, actualites, recherches)
+- Pipeline web : WebAgent -> SearXNG -> LLMAgent synthese -> reponse
 - Nouveau service `neron_searxng` dans docker-compose
 
 #### Intents supportes
 
 - `CONVERSATION` : reponse LLM directe
-- `WEB_SEARCH` : recherche SearXNG + synthese LLM
-- `HA_ACTION` : reserve v1.4.0, slot deja en place dans le router
+- `WEB_SEARCH` : recherche SearXNG + synthese LLM (inclut meteo)
+- `TIME_QUERY` : TimeProvider, sans LLM (ajoute en 1.3.2)
+- `HA_ACTION` : reserve v1.4.0, slot en place dans le router
 
 #### Structure ajoutee dans neron_core
 
@@ -83,12 +124,15 @@ agents/
   base_agent.py
   llm_agent.py
   web_agent.py
+neron_time/
+  time_provider.py
 orchestrator/
   intent_router.py
 tests/
   conftest.py
   test_orchestrator.py
   test_router.py
+  test_time_provider.py
   test_web_agent.py
 ```
 
@@ -100,6 +144,7 @@ tests/
   "intent": "web_search",
   "confidence": "high",
   "metadata": {
+    "model": "llama3.2:1b",
     "web_sources": ["url1", "url2"],
     "web_results_count": 12
   }
@@ -114,68 +159,19 @@ tests/
 
 Première version stable et complète de Néron AI avec architecture microservices.
 
-#### Architecture
-
-- Architecture microservices avec Docker Compose
-- Réseau Docker dédié `Neron_Network`
-- Health checks pour tous les services
-- Gestion automatique des dépendances entre services
-- Scripts de démarrage automatisés
-
 #### Modules Core
 
-**neron_core (v0.2.0)**
+**neron_core (v0.2.0)** - Orchestrateur central avec FastAPI, pipeline Texte -> LLM -> Mémoire
 
-- Orchestrateur central avec FastAPI
-- Pipeline de traitement : Texte -> LLM -> Mémoire
-- API REST complète avec gestion d’erreurs robuste
-- Logging structuré, timeouts configurables, support async/await
+**neron_llm (v1.2.2)** - Wrapper HTTP autour d'Ollama, 40+ tests unitaires, coverage > 95%
 
-**neron_llm (v1.2.2)**
+**neron_stt (v0.1.0)** - Transcription audio Whisper, formats WAV/MP3/M4A/OGG
 
-- Wrapper HTTP autour d’Ollama
-- Client HTTP asynchrone avec httpx
-- Support de tous les modèles Ollama (Llama, Mistral, etc.)
-- Configuration centralisée avec pydantic-settings
-- 40+ tests unitaires avec 95%+ coverage
+**neron_memory (v0.2.0)** - SQLite persistant, recherche full-text, endpoints store/retrieve/search/stats
 
-**neron_stt (v0.1.0)**
+**neron_web (v0.1.0)** - Interface Gradio 4.16
 
-- Service de transcription audio avec Whisper
-- Support des formats : WAV, MP3, M4A, OGG
-- API REST avec endpoint `/speech`
-
-**neron_memory (v0.2.0)**
-
-- Base de données SQLite persistante
-- Stockage des conversations avec métadonnées
-- API de recherche full-text
-- Endpoints : store, retrieve, search, stats, clear
-
-**neron_web (v0.1.0)**
-
-- Interface utilisateur avec Gradio 4.16
-- Chat interface intuitive connectée au service Core
-
-**neron_ollama**
-
-- Intégration Ollama officielle
-- Support des modèles : Llama 3.2, Mistral, Phi-3, Gemma
-- Persistance des modèles avec volumes Docker
-
-#### Tests
-
-- 40+ tests unitaires pour neron_llm
-- Coverage > 95%
-- CI/CD ready
-
-#### Corrections
-
-- Import `subprocess` manquant dans neron_llm
-- URL Ollama incorrecte
-- Incohérence des ports (5000 vs 11434)
-- Gestion d’erreurs basique
-- Health checks et restart policies
+**neron_ollama** - Ollama officiel, modeles Llama 3.2 / Mistral / Phi-3 / Gemma
 
 -----
 
@@ -183,18 +179,9 @@ Première version stable et complète de Néron AI avec architecture microservic
 
 ### Beta
 
-- Version beta du module neron_core
-- Version beta du module neron_memory
-- Intégration basique avec Ollama
+- Version beta neron_core et neron_memory
+- Integration basique Ollama
 - Interface web Gradio basique
-
-### Problèmes Connus
-
-- Module neron_llm incomplet (placeholder)
-- Pas de tests unitaires
-- Documentation minimale
-- Gestion d’erreurs basique
-- Pas de health checks
 
 -----
 
@@ -204,21 +191,12 @@ Première version stable et complète de Néron AI avec architecture microservic
 
 - Structure de projet initiale
 - Docker Compose basique
-- Modules neron_core et neron_stt en développement
-- Version alpha, non stable
+- Modules neron_core et neron_stt en developpement
 
 -----
 
-## Format des Entrées
-
-- **Ajouts** : Nouvelles fonctionnalités
-- **Améliorations** : Améliorations de fonctionnalités existantes
-- **Corrections** : Corrections de bugs
-- **Securite** : Correctifs de sécurité
-- **Suppressions** : Fonctionnalités supprimées
-
 ## Versioning
 
-- **MAJOR** (X.0.0) : Changements incompatibles avec l’API
-- **MINOR** (0.X.0) : Nouvelles fonctionnalités rétrocompatibles
-- **PATCH** (0.0.X) : Corrections de bugs rétrocompatibles
+- **MAJOR** (X.0.0) : Changements incompatibles avec l'API
+- **MINOR** (0.X.0) : Nouvelles fonctionnalites retrocompatibles
+- **PATCH** (0.0.X) : Corrections de bugs retrocompatibles
