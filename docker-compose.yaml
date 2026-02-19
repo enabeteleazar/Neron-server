@@ -5,15 +5,13 @@ services:
     env_file:
       - /opt/Neron_AI/.env
     environment:
-    - NERON_LLM_URL=http://neron_llm:5000
+      - NERON_LLM_URL=http://neron_llm:5000
     container_name: neron_core
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
     depends_on:
       neron_llm:
         condition: service_healthy
-#      neron_stt:
-#        condition: service_healthy
       neron_memory:
         condition: service_healthy
       neron_searxng:
@@ -28,17 +26,18 @@ services:
     networks:
       - Neron_Network
       - Homebox_Network
+      - neron_internal
 
   neron_ollama:
     image: ollama/ollama:latest
     container_name: neron_ollama
     restart: unless-stopped
-    ports:
-      - "${NERON_LLM_HTTP:-11434}:11434"
     volumes:
       - ${DOCKER_DATA_PATH:-./data}/ollama:/root/.ollama
+    expose:
+      - "11434"
     networks:
-      - Neron_Network
+      - neron_internal
     healthcheck:
       test: ["CMD-SHELL", "exit 0"]
       interval: 30s
@@ -50,18 +49,18 @@ services:
     build: ./modules/neron_llm
     container_name: neron_llm
     restart: unless-stopped
-    ports:
-      - "5000:5000"
+    expose:
+      - "5000"
     environment:
-      - ENV=development
-      - LOG_LEVEL=DEBUG
+      - ENV=production
+      - LOG_LEVEL=INFO
       - OLLAMA_HOST=http://neron_ollama:11434
       - DEFAULT_MODEL=llama3.2:3b
     depends_on:
       neron_ollama:
         condition: service_healthy
     networks:
-      - Neron_Network
+      - neron_internal
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
@@ -77,12 +76,10 @@ services:
       - ./config/searxng:/etc/searxng:rw
     environment:
       - SEARXNG_BASE_URL=http://neron_searxng:8080
-    # Pas de ports en prod — interne Docker uniquement
-    # Pour debug : décommenter ci-dessous
-    # ports:
-    #   - "8888:8080"
+    expose:
+      - "8080"
     networks:
-      - Neron_Network
+      - neron_internal
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/healthz"]
       interval: 10s
@@ -97,8 +94,8 @@ services:
     container_name: neron_memory
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
-    ports:
-      - "${NERON_MEMORY_HTTP:-8002}:8002"
+    expose:
+      - "8002"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
@@ -107,24 +104,7 @@ services:
       start_period: 20s
     restart: unless-stopped
     networks:
-      - Neron_Network
-
-  neron_stt:
-    build: ./modules/neron_stt
-    env_file:
-      - /opt/Neron_AI/.env
-    container_name: neron_stt
-    ports:
-      - "${NERON_STT_HTTP:-8001}:8001"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-    restart: unless-stopped
-    networks:
-      - Neron_Network
+      - neron_internal
 
   neron_web:
     build: ./modules/neron_web
@@ -133,21 +113,20 @@ services:
       - "7860:7860"
     depends_on:
       - neron_core
-      - neron_memory
     networks:
       - Neron_Network
+      - neron_internal
     restart: unless-stopped
 
-#  neron-telegram:
+#  neron_telegram:
 #    build: ./neron-telegram
 #    container_name: neron-telegram
 #    env_file:
 #      - /opt/Homebox_AI/Env/.env
 #    depends_on:
-#      - neron-core
-#      - neron-memory
+#      - neron_core
 #    networks:
-#      - Neron_Network
+#      - neron_internal
 #    restart: unless-stopped
 
 networks:
@@ -155,6 +134,9 @@ networks:
     external: true
   Homebox_Network:
     external: true
+  neron_internal:
+    driver: bridge
+    internal: true
 
 volumes:
   ollama:
