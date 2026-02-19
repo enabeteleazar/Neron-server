@@ -5,11 +5,13 @@ from agents.base_agent import BaseAgent, AgentResult
 
 NERON_LLM_URL = os.getenv("NERON_LLM_URL", "http://neron_llm:5000")
 LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "60.0"))
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 
 class LLMAgent(BaseAgent):
     def __init__(self):
         super().__init__(name="llm_agent")
+        self.logger.info("LLMAgent init avec modele : " + OLLAMA_MODEL)
 
     async def execute(self, query: str, context_data: str = None, **kwargs) -> AgentResult:
         self.logger.info("LLM query : " + repr(query[:80]))
@@ -30,7 +32,7 @@ class LLMAgent(BaseAgent):
             ) as client:
                 response = await client.post(
                     f"{NERON_LLM_URL}/ask",
-                    json={"prompt": prompt}
+                    json={"prompt": prompt, "model": OLLAMA_MODEL}
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -54,6 +56,6 @@ class LLMAgent(BaseAgent):
 
         return self._success(
             content=content,
-            metadata={"model": data.get("model", "unknown")},
+            metadata={"model": data.get("model", OLLAMA_MODEL)},
             latency_ms=latency
         )
