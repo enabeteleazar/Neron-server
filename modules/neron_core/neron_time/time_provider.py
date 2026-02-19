@@ -2,6 +2,12 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+MOIS = [
+    "janvier", "fevrier", "mars", "avril", "mai", "juin",
+    "juillet", "aout", "septembre", "octobre", "novembre", "decembre"
+]
+
 
 class TimeProvider:
     def __init__(self, tz: str = "Europe/Paris"):
@@ -14,7 +20,10 @@ class TimeProvider:
         return self.now().isoformat()
 
     def human(self) -> str:
-        return self.now().strftime("%A %d %B %Y a %Hh%M")
+        n = self.now()
+        jour = JOURS[n.weekday()]
+        mois = MOIS[n.month - 1]
+        return f"{jour} {n.day} {mois} {n.year} a {n.hour:02d}h{n.minute:02d}"
 
     def timestamp(self) -> float:
         return self.now().timestamp()
