@@ -1,3 +1,4 @@
+# orchestrator/intent_router.py
 from enum import Enum
 from dataclasses import dataclass
 from agents.base_agent import get_logger
@@ -9,6 +10,7 @@ class Intent(str, Enum):
     CONVERSATION = "conversation"
     WEB_SEARCH = "web_search"
     HA_ACTION = "ha_action"
+    TIME_QUERY = "time_query"
 
 
 @dataclass
@@ -23,9 +25,22 @@ class IntentRouter:
 
     async def route(self, query: str) -> IntentResult:
         q = query.lower()
-        if any(w in q for w in ["cherche", "recherche", "google", "web", "actualité", "actualite", "news", "météo", "meteo"]):
-            return IntentResult(intent=Intent.WEB_SEARCH, confidence="high")
-        if any(w in q for w in ["allume", "éteins", "thermostat", "lumière", "volet", "home assistant"]):
-            return IntentResult(intent=Intent.HA_ACTION, confidence="high")
-        return IntentResult(intent=Intent.CONVERSATION, confidence="medium")
 
+        if any(w in q for w in [
+            "heure", "quelle heure", "il est quelle heure",
+            "date", "quel jour", "on est le", "quel mois"
+        ]):
+            return IntentResult(intent=Intent.TIME_QUERY, confidence="high")
+
+        if any(w in q for w in [
+            "cherche", "recherche", "google", "web",
+            "actualite", "news", "meteo"
+        ]):
+            return IntentResult(intent=Intent.WEB_SEARCH, confidence="high")
+
+        if any(w in q for w in [
+            "allume", "eteins", "thermostat", "lumiere", "volet", "home assistant"
+        ]):
+            return IntentResult(intent=Intent.HA_ACTION, confidence="high")
+
+        return IntentResult(intent=Intent.CONVERSATION, confidence="medium")
