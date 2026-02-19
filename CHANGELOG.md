@@ -5,12 +5,13 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.2.2/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Non publié](https://github.com/yourusername/neron-ai/compare/v1.2.2...HEAD)
+## [Non publié]
 
-### À venir
+### A venir
 
+- ha_agent.py : controle Home Assistant (v1.4.0)
+- Redis Event Bus (remplacement REST interne)
 - Support du streaming pour les réponses LLM
-- Intégration avec Home Assistant
 - Support multi-utilisateurs
 - Interface mobile native
 - Plugins extensibles
@@ -18,263 +19,184 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
-## [1.2.2](https://github.com/yourusername/neron-ai/releases/tag/v1.2.2) - 2025-02-15
+## [1.3.3] - 2026-02-19
 
-### 🎉 Version Initiale de Production
+### Branchement TimeProvider dans le pipeline
 
-Première version stable et complète de Néron AI avec architecture microservices.
+#### Nouveautes
 
-### ✨ Ajouts
+- Handler `_handle_time_query` dans app.py : repond sans passer par le LLM
+- `TimeProvider` instancie au startup avec les autres agents
+- Reponse en francais : "Il est jeudi 19 fevrier 2026 a 21h36."
+- Jours et mois en francais via dictionnaires integres (sans dependance locale)
+- `neron_time/` copie dans l'image Docker via Dockerfile
 
-#### Architecture
+#### Corrections
 
-- Architecture microservices avec Docker Compose
-- Réseau Docker dédié `Neron_Network`
-- Health checks pour tous les services
-- Gestion automatique des dépendances entre services
-- Scripts de démarrage automatisés
+- `llm_agent.py` : lit `OLLAMA_MODEL` depuis `.env` et le transmet a neron_llm
+- Modele effectivement utilise retourne dans `metadata.model`
+- Dockerfile : ajout `COPY neron_time/` manquant
 
-#### Modules Core
+-----
 
-**neron_core (v0.2.0)**
+## [1.3.2] - 2026-02-19
 
-- Orchestrateur central avec FastAPI
-- Pipeline de traitement : Texte → LLM → Mémoire
-- API REST complète
-- Gestion d’erreurs robuste avec codes HTTP appropriés
-- Logging structuré
-- Timeouts configurables
-- Support async/await
+### TimeProvider et intent TIME_QUERY
 
-**neron_llm (v1.2.2)**
+#### Nouveautes
 
-- Wrapper HTTP autour d’Ollama
-- Client HTTP asynchrone avec httpx
-- Support de tous les modèles Ollama (Llama, Mistral, etc.)
-- Configuration centralisée avec pydantic-settings
-- Gestion de contexte de conversation
-- Métriques de génération (tokens, temps)
-- Validation des paramètres avec Pydantic
-- 40+ tests unitaires avec 95%+ coverage
-- Documentation complète
-
-**neron_stt (v0.1.0)**
-
-- Service de transcription audio avec Whisper
-- Support des formats : WAV, MP3, M4A, OGG
-- API REST avec endpoint `/speech`
-- Gestion de fichiers temporaires sécurisée
-- Modèle configurable (tiny, base, small, medium, large)
-
-**neron_memory (v0.2.0)**
-
-- Base de données SQLite persistante
-- Stockage des conversations avec métadonnées
-- API de recherche full-text
-- Statistiques de l’historique
-- Endpoints : store, retrieve, search, stats, clear
-- Indices de performance
-- Gestion thread-safe des connexions
-
-**neron_web (v0.1.0)**
-
-- Interface utilisateur avec Gradio 4.16
-- Chat interface intuitive
-- Connexion au service Core
-- Gestion d’erreurs utilisateur
-- Thème personnalisé
-
-**neron_ollama**
-
-- Intégration Ollama officielle (image `ollama/ollama:latest`)
-- Support des modèles : Llama 3.2, Mistral, Phi-3, Gemma
-- Persistance des modèles avec volumes Docker
-- API HTTP sur port 11434
-
-#### Configuration
-
-- Fichier `.env.example` avec documentation complète
-- Variables d’environnement pour tous les modules
-- Configuration des timeouts personnalisables
-- Configuration des niveaux de log
-- Configuration des chemins de données
-- Support de différents environnements (dev/prod)
-
-#### Scripts et Outils
-
-- `start_neron.sh` - Script de démarrage avec interface colorée
-- `docker-compose.yaml` - Orchestration complète
-- Health check automatiques
-- Restart policies configurées
-- Scripts d’initialisation des modèles
-
-#### Documentation
-
-- README principal complet
-- Documentation par module
-- Guides d’installation
-- Guide de migration LLM v0.2 → v1.0
-- Documentation API
-- Guide de tests
-- Exemples d’utilisation
-- Troubleshooting
+- Ajout `neron_time/time_provider.py` : fournit heure, date, iso, timestamp
+- Fuseau horaire configurable (defaut Europe/Paris) via `zoneinfo` (stdlib Python 3.9+)
+- Methodes : `now()`, `iso()`, `human()`, `date()`, `time()`, `timestamp()`
+- Ajout `Intent.TIME_QUERY` dans `intent_router.py`
+- Patterns detectes : heure, date, quel jour, quel mois
 
 #### Tests
 
-**Module neron_llm**
-
-- 40+ tests unitaires
-- Fixtures pytest partagées
-- Tests d’API avec TestClient
-- Tests du client Ollama avec mocks
-- Tests de validation Pydantic
-- Coverage > 95%
-- CI/CD ready
-
-#### Fichiers de Projet
-
-- `.gitignore` complet (Python, Docker, Node, secrets)
-- Structure de projet professionnelle
-- Séparation claire des responsabilités
-- Conventions de nommage cohérentes
-
-### 🔧 Améliorations
-
-#### Performance
-
-- Utilisation de l’API HTTP Ollama au lieu de CLI (gain ~40%)
-- Support async/await complet pour tous les services
-- Connexions HTTP persistantes avec httpx
-- Gestion efficace de la mémoire
-
-#### Fiabilité
-
-- Gestion d’erreurs complète avec retry
-- Validation des données avec Pydantic
-- Timeouts configurables
-- Health checks détaillés
-- Logging structuré
-
-#### Maintenabilité
-
-- Code modulaire et testé
-- Documentation inline
-- Type hints Python
-- Configuration centralisée
-- Séparation des concerns
-
-#### Sécurité
-
-- Pas de secrets en dur dans le code
-- Variables d’environnement pour config sensible
-- Utilisateurs non-root dans les conteneurs
-- Isolation réseau avec Docker network
-
-### 📝 Documentation
-
-- README principal avec guide complet
-- Documentation technique détaillée
-- Exemples d’utilisation
-- Guide de contribution
-- Licence MIT
-- Changelog structuré
-
-### 🐛 Corrections
-
-#### Module neron_llm
-
-- Correction import `subprocess` manquant
-- Correction URL Ollama incorrecte
-- Correction incohérence des ports (5000 vs 11434)
-- Correction gestion d’erreurs basique
-- Correction imports relatifs pour tests
-
-#### Module neron_core
-
-- Correction gestion des timeouts
-- Correction validation des réponses LLM
-- Correction logging des erreurs
-
-#### Infrastructure
-
-- Correction dépendances entre services
-- Correction health checks
-- Correction restart policies
-
-### 🔒 Sécurité
-
-- Pas de credentials en clair
-- Utilisation de variables d’environnement
-- Isolation des services
-- Validation des entrées utilisateur
-
-### 📊 Métriques
-
-- **Modules** : 6 services indépendants
-- **Tests** : 40+ tests unitaires
-- **Coverage** : > 95% pour neron_llm
-- **Documentation** : 15+ fichiers de doc
-- **API Endpoints** : 15+ endpoints REST
+- 15 tests pytest pour TimeProvider (15/15 PASS)
+- 3 nouveaux tests TIME_QUERY dans test_router.py
+- Total : 40 tests passes
 
 -----
 
-## [0.2.0](https://github.com/yourusername/neron-ai/releases/tag/v0.2.0) - 2025-02-10
+## [1.3.1] - 2026-02-19
 
-### Ajouts
+### Corrections suite audit DevOps
 
-- Version beta du module neron_core
-- Version beta du module neron_memory
-- Intégration basique avec Ollama
+#### Robustesse reseau
+
+- `web_agent.py` : capture separee de chaque type d'erreur HTTP (TimeoutException, ConnectError, HTTPStatusError, RequestError)
+- `llm_agent.py` : meme traitement, timeout granulaire via `httpx.Timeout`
+- Fallback propre vers conversation si WebAgent indisponible
+
+#### Architecture
+
+- Router avec registre dynamique d'agents (`build_intent_registry`)
+- Ajout de `meteo` sans accent dans les patterns du router (robustesse saisie utilisateur)
+- Imports absolus partout, suppression des imports relatifs problematiques
+- `__init__.py` vides pour eviter les conflits de chargement pytest
+
+#### Securite
+
+- SearXNG : port 8888 supprime du docker-compose (reseau interne Docker uniquement)
+- Dockerfile neron_core : user non-root `neron`
+- Healthcheck SearXNG corrige avec `wget`
+
+#### Observabilite
+
+- JSON logging structure sur tous les composants (agents, router, app)
+- Endpoint `/metrics` Prometheus sur neron_core (compteurs intents, erreurs, latences)
+- Mesure de latence sur chaque AgentResult
+
+#### Tests
+
+- 22 tests pytest passes : 7 orchestrator, 9 router, 6 web_agent
+- `conftest.py` avec fixtures partagees
+- `pytest.ini` configure avec asyncio_mode = auto
+
+-----
+
+## [1.3.0] - 2026-02-19
+
+### Orchestrateur central - Neron Core
+
+#### Nouveautes
+
+- Neron Core devient un orchestrateur multi-agents
+- `IntentRouter` : classification rules-based + LLM fallback
+- `BaseAgent` : classe abstraite commune, AgentResult standardise
+- `LLMAgent` : wrapper neron_llm en tant qu'agent
+- `WebAgent` : recherche web via SearXNG self-hosted (meteo, actualites, recherches)
+- Pipeline web : WebAgent -> SearXNG -> LLMAgent synthese -> reponse
+- Nouveau service `neron_searxng` dans docker-compose
+
+#### Intents supportes
+
+- `CONVERSATION` : reponse LLM directe
+- `WEB_SEARCH` : recherche SearXNG + synthese LLM (inclut meteo)
+- `TIME_QUERY` : TimeProvider, sans LLM (ajoute en 1.3.2)
+- `HA_ACTION` : reserve v1.4.0, slot en place dans le router
+
+#### Structure ajoutee dans neron_core
+
+```
+agents/
+  base_agent.py
+  llm_agent.py
+  web_agent.py
+neron_time/
+  time_provider.py
+orchestrator/
+  intent_router.py
+tests/
+  conftest.py
+  test_orchestrator.py
+  test_router.py
+  test_time_provider.py
+  test_web_agent.py
+```
+
+#### CoreResponse enrichie
+
+```json
+{
+  "response": "...",
+  "intent": "web_search",
+  "confidence": "high",
+  "metadata": {
+    "model": "llama3.2:1b",
+    "web_sources": ["url1", "url2"],
+    "web_results_count": 12
+  }
+}
+```
+
+-----
+
+## [1.2.2] - 2025-02-15
+
+### Version Initiale de Production
+
+Première version stable et complète de Néron AI avec architecture microservices.
+
+#### Modules Core
+
+**neron_core (v0.2.0)** - Orchestrateur central avec FastAPI, pipeline Texte -> LLM -> Mémoire
+
+**neron_llm (v1.2.2)** - Wrapper HTTP autour d'Ollama, 40+ tests unitaires, coverage > 95%
+
+**neron_stt (v0.1.0)** - Transcription audio Whisper, formats WAV/MP3/M4A/OGG
+
+**neron_memory (v0.2.0)** - SQLite persistant, recherche full-text, endpoints store/retrieve/search/stats
+
+**neron_web (v0.1.0)** - Interface Gradio 4.16
+
+**neron_ollama** - Ollama officiel, modeles Llama 3.2 / Mistral / Phi-3 / Gemma
+
+-----
+
+## [0.2.0] - 2025-02-10
+
+### Beta
+
+- Version beta neron_core et neron_memory
+- Integration basique Ollama
 - Interface web Gradio basique
 
-### Problèmes Connus
-
-- Module neron_llm incomplet (placeholder)
-- Pas de tests unitaires
-- Documentation minimale
-- Gestion d’erreurs basique
-- Pas de health checks
-
 -----
 
-## [0.1.0](https://github.com/yourusername/neron-ai/releases/tag/v0.1.0) - 2025-02-01
+## [0.1.0] - 2025-02-01
 
-### Ajouts
+### Alpha
 
 - Structure de projet initiale
 - Docker Compose basique
-- Modules neron_core et neron_stt en développement
-
-### Notes
-
-- Version alpha, non stable
-- Développement actif
+- Modules neron_core et neron_stt en developpement
 
 -----
 
-## Format des Entrées
+## Versioning
 
-### Types de Changements
-
-- **✨ Ajouts** : Nouvelles fonctionnalités
-- **🔧 Améliorations** : Améliorations de fonctionnalités existantes
-- **🐛 Corrections** : Corrections de bugs
-- **🔒 Sécurité** : Correctifs de sécurité
-- **📝 Documentation** : Changements dans la documentation
-- **🗑️ Suppressions** : Fonctionnalités supprimées
-- **⚠️ Déprécié** : Fonctionnalités bientôt supprimées
-
-### Versioning
-
-- **MAJOR** (X.0.0) : Changements incompatibles avec l’API
-- **MINOR** (0.X.0) : Nouvelles fonctionnalités rétrocompatibles
-- **PATCH** (0.0.X) : Corrections de bugs rétrocompatibles
-
------
-
-## Liens
-
-- 
-- 
-- 
-- 
+- **MAJOR** (X.0.0) : Changements incompatibles avec l'API
+- **MINOR** (0.X.0) : Nouvelles fonctionnalites retrocompatibles
+- **PATCH** (0.0.X) : Corrections de bugs retrocompatibles

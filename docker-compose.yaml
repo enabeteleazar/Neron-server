@@ -56,7 +56,7 @@ services:
       - ENV=development
       - LOG_LEVEL=DEBUG
       - OLLAMA_HOST=http://neron_ollama:11434
-      - DEFAULT_MODEL=llama3.2:1b
+      - DEFAULT_MODEL=llama3.2:3b
     depends_on:
       neron_ollama:
         condition: service_healthy
