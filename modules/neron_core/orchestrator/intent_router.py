@@ -23,7 +23,7 @@ class IntentRouter:
 
     async def route(self, query: str) -> IntentResult:
         q = query.lower()
-        if any(w in q for w in ["cherche", "recherche", "google", "web", "actualité", "news", "météo"]):
+        if any(w in q for w in ["cherche", "recherche", "google", "web", "actualité", "actualite", "news", "météo", "meteo"]):
             return IntentResult(intent=Intent.WEB_SEARCH, confidence="high")
         if any(w in q for w in ["allume", "éteins", "thermostat", "lumière", "volet", "home assistant"]):
             return IntentResult(intent=Intent.HA_ACTION, confidence="high")
