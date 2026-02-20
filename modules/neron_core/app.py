@@ -1,11 +1,12 @@
 # modules/neron_core/app.py
-# Neron Core v1.3.3 - Orchestrateur + TimeProvider
+# Neron Core v1.4.0 - Reponses standardisees
 
 import json
 import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from typing import Optional
 import httpx
 from fastapi import FastAPI, HTTPException
@@ -19,6 +20,12 @@ from neron_time.time_provider import TimeProvider
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("neron_core")
+
+VERSION = "1.4.0"
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 class Metrics:
@@ -77,7 +84,7 @@ time_provider: TimeProvider = None
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, router, time_provider
 
-    logger.info(json.dumps({"event": "startup", "version": "1.3.3"}))
+    logger.info(json.dumps({"event": "startup", "version": VERSION}))
     llm_agent = LLMAgent()
     web_agent = WebAgent()
     router = IntentRouter(llm_agent=llm_agent)
@@ -92,8 +99,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Neron Core",
-    description="Orchestrateur central - v1.3.3",
-    version="1.3.3",
+    description="Orchestrateur central - v" + VERSION,
+    version=VERSION,
     lifespan=lifespan
 )
 
@@ -105,7 +112,12 @@ class TextInput(BaseModel):
 class CoreResponse(BaseModel):
     response: str
     intent: str
+    agent: str
     confidence: str
+    timestamp: str
+    execution_time_ms: float
+    model: Optional[str] = None
+    error: Optional[str] = None
     transcription: Optional[str] = None
     metadata: dict = {}
 
@@ -114,16 +126,16 @@ class CoreResponse(BaseModel):
 def root():
     return {
         "service": "Neron Core",
-        "version": "1.3.3",
+        "version": VERSION,
         "status": "active",
         "agents": ["llm_agent", "web_agent", "time_provider"],
-        "next": "ha_agent (v1.3.3)"
+        "next": "ha_agent (v1.4.x)"
     }
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy", "version": "1.3.3"}
+    return {"status": "healthy", "version": VERSION}
 
 
 @app.get("/metrics", response_class=PlainTextResponse)
@@ -153,37 +165,40 @@ async def text_input(input_data: TextInput):
     }
 
     if intent_result.intent == Intent.TIME_QUERY:
-        core_response = _handle_time_query(intent_result, metadata)
+        core_response = _handle_time_query(intent_result, metadata, start)
     elif intent_result.intent == Intent.WEB_SEARCH:
-        core_response = await _handle_web_search(query, intent_result, metadata)
+        core_response = await _handle_web_search(query, intent_result, metadata, start)
     elif intent_result.intent == Intent.HA_ACTION:
         logger.info(json.dumps({"event": "ha_action_fallback"}))
         core_response = await _handle_conversation(
             "Je n'ai pas encore acces a Home Assistant. " + query,
-            metadata
+            intent_result, metadata, start
         )
     else:
-        core_response = await _handle_conversation(query, metadata)
+        core_response = await _handle_conversation(query, intent_result, metadata, start)
 
-    elapsed = round((time.monotonic() - start) * 1000, 2)
     logger.info(json.dumps({
         "event": "request_completed",
         "intent": intent_result.intent.value,
-        "total_latency_ms": elapsed
+        "execution_time_ms": core_response.execution_time_ms
     }))
 
     return core_response
 
 
-def _handle_time_query(intent_result, metadata: dict) -> CoreResponse:
-    response = (
-        "Il est " + time_provider.human() + "."
-    )
-    logger.info(json.dumps({"event": "time_query_handled", "response": response}))
+def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreResponse:
+    response = "Il est " + time_provider.human() + "."
+    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
+
     return CoreResponse(
         response=response,
         intent="time_query",
+        agent="time_provider",
         confidence=intent_result.confidence,
+        timestamp=utc_now_iso(),
+        execution_time_ms=execution_time_ms,
+        model=None,
+        error=None,
         metadata={
             **metadata,
             "iso": time_provider.iso(),
@@ -192,27 +207,38 @@ def _handle_time_query(intent_result, metadata: dict) -> CoreResponse:
     )
 
 
-async def _handle_conversation(query: str, metadata: dict) -> CoreResponse:
+async def _handle_conversation(
+    query: str, intent_result, metadata: dict, start: float
+) -> CoreResponse:
     result = await llm_agent.execute(query)
 
     if not result.success:
         metrics.record_error("llm_agent")
+        execution_time_ms = round((time.monotonic() - start) * 1000, 2)
         raise HTTPException(503, f"LLM indisponible : {result.error}")
 
     if result.latency_ms:
         metrics.record_latency("llm_agent", result.latency_ms)
 
+    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
     await _store_memory(query, result.content, metadata)
 
     return CoreResponse(
         response=result.content,
         intent=metadata.get("intent", "conversation"),
+        agent="llm_agent",
         confidence=metadata.get("confidence", "low"),
+        timestamp=utc_now_iso(),
+        execution_time_ms=execution_time_ms,
+        model=result.metadata.get("model"),
+        error=None,
         metadata={**metadata, **result.metadata}
     )
 
 
-async def _handle_web_search(query: str, intent_result, metadata: dict) -> CoreResponse:
+async def _handle_web_search(
+    query: str, intent_result, metadata: dict, start: float
+) -> CoreResponse:
     web_result = await web_agent.execute(query)
 
     if not web_result.success:
@@ -222,7 +248,7 @@ async def _handle_web_search(query: str, intent_result, metadata: dict) -> CoreR
             "error": web_result.error,
             "fallback": "conversation"
         }))
-        return await _handle_conversation(query, metadata)
+        return await _handle_conversation(query, intent_result, metadata, start)
 
     if web_result.latency_ms:
         metrics.record_latency("web_agent", web_result.latency_ms)
@@ -235,10 +261,14 @@ async def _handle_web_search(query: str, intent_result, metadata: dict) -> CoreR
     if not llm_result.success:
         metrics.record_error("llm_agent")
         response_text = web_result.content
+        model = None
     else:
         response_text = llm_result.content
+        model = llm_result.metadata.get("model")
         if llm_result.latency_ms:
             metrics.record_latency("llm_agent", llm_result.latency_ms)
+
+    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
 
     metadata["web_sources"] = web_result.metadata.get("sources", [])
     metadata["web_results_count"] = web_result.metadata.get("total_results", 0)
@@ -248,7 +278,12 @@ async def _handle_web_search(query: str, intent_result, metadata: dict) -> CoreR
     return CoreResponse(
         response=response_text,
         intent="web_search",
+        agent="web_agent+llm_agent",
         confidence=intent_result.confidence,
+        timestamp=utc_now_iso(),
+        execution_time_ms=execution_time_ms,
+        model=model,
+        error=None,
         metadata={**metadata, **(llm_result.metadata if llm_result.success else {})}
     )
 
