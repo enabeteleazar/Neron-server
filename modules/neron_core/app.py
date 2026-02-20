@@ -1,5 +1,5 @@
 # modules/neron_core/app.py
-# Neron Core v1.4.0 - Reponses standardisees
+# Neron Core v1.4.0 - Observabilite enrichie
 
 import json
 import logging
@@ -22,6 +22,7 @@ logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("neron_core")
 
 VERSION = "1.4.0"
+_startup_time: float = 0.0
 
 
 def utc_now_iso() -> str:
@@ -32,7 +33,20 @@ class Metrics:
     def __init__(self):
         self._intent_counts: dict = {}
         self._agent_errors: dict = {}
-        self._latencies: list = []
+        self._latencies: dict = {}
+        self._requests_total: int = 0
+        self._requests_in_flight: int = 0
+        self._execution_times: list = []
+
+    def record_request_start(self):
+        self._requests_total += 1
+        self._requests_in_flight += 1
+
+    def record_request_end(self, execution_time_ms: float):
+        self._requests_in_flight = max(0, self._requests_in_flight - 1)
+        self._execution_times.append(execution_time_ms)
+        if len(self._execution_times) > 1000:
+            self._execution_times = self._execution_times[-1000:]
 
     def record_intent(self, intent: str):
         self._intent_counts[intent] = self._intent_counts.get(intent, 0) + 1
@@ -41,34 +55,69 @@ class Metrics:
         self._agent_errors[agent] = self._agent_errors.get(agent, 0) + 1
 
     def record_latency(self, agent: str, latency_ms: float):
-        self._latencies.append({"agent": agent, "latency_ms": latency_ms})
-        if len(self._latencies) > 1000:
-            self._latencies = self._latencies[-1000:]
+        self._latencies.setdefault(agent, []).append(latency_ms)
+        if len(self._latencies[agent]) > 1000:
+            self._latencies[agent] = self._latencies[agent][-1000:]
 
     def export(self) -> str:
-        lines = [
+        lines = []
+
+        # Uptime
+        uptime = round(time.monotonic() - _startup_time, 2)
+        lines += [
+            "# HELP neron_uptime_seconds Duree depuis le demarrage du service",
+            "# TYPE neron_uptime_seconds gauge",
+            f"neron_uptime_seconds {uptime}",
+        ]
+
+        # Requetes totales
+        lines += [
+            "# HELP neron_requests_total Nombre total de requetes recues",
+            "# TYPE neron_requests_total counter",
+            f"neron_requests_total {self._requests_total}",
+        ]
+
+        # Requetes en cours
+        lines += [
+            "# HELP neron_requests_in_flight Requetes en cours de traitement",
+            "# TYPE neron_requests_in_flight gauge",
+            f"neron_requests_in_flight {self._requests_in_flight}",
+        ]
+
+        # Temps d execution global moyen
+        if self._execution_times:
+            avg_exec = round(sum(self._execution_times) / len(self._execution_times), 2)
+            lines += [
+                "# HELP neron_execution_time_avg_ms Temps moyen d orchestration global (ms)",
+                "# TYPE neron_execution_time_avg_ms gauge",
+                f"neron_execution_time_avg_ms {avg_exec}",
+            ]
+
+        # Intents
+        lines += [
             "# HELP neron_intent_total Nombre de requetes par intent",
             "# TYPE neron_intent_total counter",
         ]
         for intent, count in self._intent_counts.items():
             lines.append(f'neron_intent_total{{intent="{intent}"}} {count}')
+
+        # Erreurs par agent
         lines += [
             "# HELP neron_agent_errors_total Erreurs par agent",
             "# TYPE neron_agent_errors_total counter",
         ]
         for agent, count in self._agent_errors.items():
             lines.append(f'neron_agent_errors_total{{agent="{agent}"}} {count}')
-        agent_latencies: dict = {}
-        for entry in self._latencies:
-            a = entry["agent"]
-            agent_latencies.setdefault(a, []).append(entry["latency_ms"])
+
+        # Latence moyenne par agent
         lines += [
             "# HELP neron_agent_latency_avg_ms Latence moyenne par agent (ms)",
             "# TYPE neron_agent_latency_avg_ms gauge",
         ]
-        for agent, values in agent_latencies.items():
-            avg = sum(values) / len(values)
-            lines.append(f'neron_agent_latency_avg_ms{{agent="{agent}"}} {avg:.2f}')
+        for agent, values in self._latencies.items():
+            avg = round(sum(values) / len(values), 2)
+            lines.append(f'neron_agent_latency_avg_ms{{agent="{agent}"}} {avg}')
+
         return "\n".join(lines) + "\n"
 
 
@@ -82,8 +131,9 @@ time_provider: TimeProvider = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_agent, web_agent, router, time_provider
+    global llm_agent, web_agent, router, time_provider, _startup_time
 
+    _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
     llm_agent = LLMAgent()
     web_agent = WebAgent()
@@ -147,6 +197,7 @@ def prometheus_metrics():
 async def text_input(input_data: TextInput):
     query = input_data.text.strip()
     start = time.monotonic()
+    metrics.record_request_start()
 
     logger.info(json.dumps({"event": "request_received", "query": query[:80]}))
 
@@ -164,18 +215,22 @@ async def text_input(input_data: TextInput):
         "confidence": intent_result.confidence,
     }
 
-    if intent_result.intent == Intent.TIME_QUERY:
-        core_response = _handle_time_query(intent_result, metadata, start)
-    elif intent_result.intent == Intent.WEB_SEARCH:
-        core_response = await _handle_web_search(query, intent_result, metadata, start)
-    elif intent_result.intent == Intent.HA_ACTION:
-        logger.info(json.dumps({"event": "ha_action_fallback"}))
-        core_response = await _handle_conversation(
-            "Je n'ai pas encore acces a Home Assistant. " + query,
-            intent_result, metadata, start
-        )
-    else:
-        core_response = await _handle_conversation(query, intent_result, metadata, start)
+    try:
+        if intent_result.intent == Intent.TIME_QUERY:
+            core_response = _handle_time_query(intent_result, metadata, start)
+        elif intent_result.intent == Intent.WEB_SEARCH:
+            core_response = await _handle_web_search(query, intent_result, metadata, start)
+        elif intent_result.intent == Intent.HA_ACTION:
+            logger.info(json.dumps({"event": "ha_action_fallback"}))
+            core_response = await _handle_conversation(
+                "Je n'ai pas encore acces a Home Assistant. " + query,
+                intent_result, metadata, start
+            )
+        else:
+            core_response = await _handle_conversation(query, intent_result, metadata, start)
+    finally:
+        elapsed = round((time.monotonic() - start) * 1000, 2)
+        metrics.record_request_end(elapsed)
 
     logger.info(json.dumps({
         "event": "request_completed",
@@ -189,7 +244,6 @@ async def text_input(input_data: TextInput):
 def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreResponse:
     response = "Il est " + time_provider.human() + "."
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
-
     return CoreResponse(
         response=response,
         intent="time_query",
@@ -214,7 +268,6 @@ async def _handle_conversation(
 
     if not result.success:
         metrics.record_error("llm_agent")
-        execution_time_ms = round((time.monotonic() - start) * 1000, 2)
         raise HTTPException(503, f"LLM indisponible : {result.error}")
 
     if result.latency_ms:
@@ -269,10 +322,8 @@ async def _handle_web_search(
             metrics.record_latency("llm_agent", llm_result.latency_ms)
 
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
-
     metadata["web_sources"] = web_result.metadata.get("sources", [])
     metadata["web_results_count"] = web_result.metadata.get("total_results", 0)
-
     await _store_memory(query, response_text, metadata)
 
     return CoreResponse(
