@@ -81,3 +81,4 @@ venv/
 .env
 __pycache__/
 config/searxng/settings.yml
+config_backup_local/

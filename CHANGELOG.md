@@ -9,13 +9,61 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ### A venir
 
-- ha_agent.py : controle Home Assistant (v1.4.0)
-- Redis Event Bus (remplacement REST interne)
-- Support du streaming pour les réponses LLM
-- Support multi-utilisateurs
-- Interface mobile native
-- Plugins extensibles
-- Support TTS (Text-to-Speech)
+	∙	ha_agent.py : controle Home Assistant (v1.4.x)
+	∙	Prometheus agent séparé pour scraping /metrics
+	∙	Grafana dashboards et alerting
+	∙	Redis Event Bus (remplacement REST interne)
+	∙	Support du streaming pour les réponses LLM
+	∙	Support multi-utilisateurs
+	∙	Interface mobile native
+	∙	Plugins extensibles
+	∙	Support TTS (Text-to-Speech)
+
+-----
+
+## [1.4.0] - 2026-02-20
+Phase 1 — Isolation réseau Docker
+Securite
+	∙	Ajout réseau neron_internal (bridge, internal: true)
+	∙	Suppression des ports exposés : neron_llm (5000), neron_ollama (11434), neron_memory (8002), neron_searxng (8080)
+	∙	neron_core seul point d’entrée externe sur 0.0.0.0:8000
+	∙	neron_web maintenu sur 7860 (accès direct navigateur)
+	∙	neron_core et neron_web connectés aux deux réseaux (Neron_Network + neron_internal)
+	∙	neron_stt commenté (non implémenté)
+Phase 2 — Standardisation des réponses API
+CoreResponse enrichie
+	∙	Ajout champ agent : identifie quel agent a traité la requête
+	∙	Ajout champ timestamp : UTC ISO 8601 systématique
+	∙	Ajout champ execution_time_ms : temps total orchestration (distinct de latency_ms agent interne)
+	∙	Ajout champ model : modèle LLM utilisé, null si TimeProvider
+	∙	Ajout champ error : null si succès, message si échec
+	∙	Constante VERSION dans app.py (plus de hardcoding)
+	∙	Helper utc_now_iso() pour timestamp uniforme
+Règle de nommage établie
+	∙	latency_ms → métrique interne agent (AgentResult)
+	∙	execution_time_ms → temps global orchestration (CoreResponse)
+	∙	timestamp → toujours UTC ISO 8601 en exposition API
+Tests
+	∙	8 nouveaux tests test_core_response.py
+	∙	Patch complet LLMAgent/WebAgent/Router/TimeProvider
+	∙	Validation : tous les champs, timestamp UTC, execution_time_ms >= 0, error null
+Phase 3 — Observabilité /metrics enrichie
+Nouvelles métriques
+	∙	neron_uptime_seconds : durée depuis le démarrage du service
+	∙	neron_requests_total : compteur total de requêtes reçues
+	∙	neron_requests_in_flight : requêtes en cours de traitement (gauge)
+	∙	neron_execution_time_avg_ms : temps moyen d’orchestration global
+	∙	neron_llm_calls_by_model : compteur d’appels LLM par modèle
+Architecture métriques
+	∙	record_request_start/end avec bloc finally (fiable même en cas d’erreur)
+	∙	Latences stockées par agent (dict) au lieu de liste plate
+	∙	/metrics passif, découplé — prêt pour scraping Prometheus externe
+	∙	Prometheus sera ajouté comme agent séparé (non inclus dans cette version)
+Validation
+	∙	neron_agent_errors_total vérifié en production (test docker stop neron_llm)
+	∙	p95/p99 reportés à l’intégration Prometheus (calcul natif côté Prometheus)
+Tests
+	∙	48 tests passent (40 existants + 8 nouveaux)
 
 -----
 
