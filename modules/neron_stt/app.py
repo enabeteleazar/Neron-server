@@ -21,6 +21,8 @@ logger = logging.getLogger("neron_stt")
 
 VERSION = "1.0.0"
 WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
+WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", None)  # None = detection auto
+WHISPER_DOWNLOAD_ROOT = os.getenv("WHISPER_DOWNLOAD_ROOT", "/app/models")
 SUPPORTED_FORMATS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm"}
 
 _startup_time: float = 0.0
@@ -82,8 +84,12 @@ async def lifespan(app: FastAPI):
 
     _startup_time = time.monotonic()
     logger.info(f"Chargement du modele Whisper '{WHISPER_MODEL_NAME}'...")
-    _whisper_model = whisper.load_model(WHISPER_MODEL_NAME)
-    logger.info(f"Modele Whisper '{WHISPER_MODEL_NAME}' charge.")
+    _whisper_model = whisper.load_model(
+        WHISPER_MODEL_NAME,
+        download_root=WHISPER_DOWNLOAD_ROOT
+    )
+    lang_info = WHISPER_LANGUAGE if WHISPER_LANGUAGE else "detection auto"
+    logger.info(f"Modele Whisper '{WHISPER_MODEL_NAME}' charge. Langue : {lang_info}")
     yield
     logger.info("Arret neron_stt")
 
@@ -110,6 +116,7 @@ def root():
         "service": "Neron STT",
         "version": VERSION,
         "model": WHISPER_MODEL_NAME,
+        "language": WHISPER_LANGUAGE or "auto",
         "supported_formats": list(SUPPORTED_FORMATS),
         "endpoints": {
             "transcribe": "POST /transcribe",
@@ -124,7 +131,8 @@ def health():
     return {
         "status": "healthy" if _whisper_model is not None else "loading",
         "version": VERSION,
-        "model": WHISPER_MODEL_NAME
+        "model": WHISPER_MODEL_NAME,
+        "language": WHISPER_LANGUAGE or "auto"
     }
 
 
@@ -135,7 +143,6 @@ def prometheus_metrics():
 
 @app.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe(file: UploadFile = File(...)):
-    # Verifier le format
     ext = ""
     if file.filename:
         ext = "." + file.filename.rsplit(".", 1)[-1].lower()
@@ -153,7 +160,6 @@ async def transcribe(file: UploadFile = File(...)):
 
     tmp_path = None
     try:
-        # Sauvegarder le fichier temporairement
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
             content = await file.read()
             tmp.write(content)
@@ -162,14 +168,23 @@ async def transcribe(file: UploadFile = File(...)):
         logger.info(f"Transcription de '{file.filename}' ({len(content)} bytes)")
 
         start = time.monotonic()
-        result = _whisper_model.transcribe(tmp_path)
+
+        # Options de transcription
+        transcribe_options = {}
+        if WHISPER_LANGUAGE:
+            transcribe_options["language"] = WHISPER_LANGUAGE
+
+        result = _whisper_model.transcribe(tmp_path, **transcribe_options)
         latency_ms = round((time.monotonic() - start) * 1000, 2)
 
         text = result.get("text", "").strip()
         language = result.get("language", "unknown")
 
         metrics.record_success(latency_ms)
-        logger.info(f"Transcription OK : {latency_ms}ms | langue: {language} | texte: {text[:80]}")
+        logger.info(
+            f"Transcription OK : {latency_ms}ms | "
+            f"langue: {language} | texte: {text[:80]}"
+        )
 
         return TranscribeResponse(
             text=text,

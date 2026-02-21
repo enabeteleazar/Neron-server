@@ -3,7 +3,7 @@ services:
   neron_core:
     build: ./modules/neron_core
     env_file:
-      - /opt/Neron_AI/.env
+      - .env
     environment:
       - NERON_LLM_URL=http://neron_llm:5000
     container_name: neron_core
@@ -15,6 +15,8 @@ services:
       neron_memory:
         condition: service_healthy
       neron_searxng:
+        condition: service_healthy
+      neron_stt:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -71,7 +73,7 @@ services:
   neron_stt:
     build: ./modules/neron_stt
     env_file:
-      - /opt/Neron_AI/.env
+      - .env
     container_name: neron_stt
     expose:
       - "8001"
@@ -110,7 +112,7 @@ services:
   neron_memory:
     build: ./modules/neron_memory
     env_file:
-      - /opt/Neron_AI/.env
+      - .env
     container_name: neron_memory
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
