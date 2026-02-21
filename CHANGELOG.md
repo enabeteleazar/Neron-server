@@ -21,6 +21,35 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
+## [1.4.1] - 2026-02-21
+
+### Optimisation des containers Docker
+
+- **Néron Core** :
+  ∙ Passage à `python:3.11-slim` + multi-stage build  
+  ∙ Nettoyage des dépendances inutiles dans l’image finale  
+  ∙ Taille passée de ~14,6 GB → ~336 MB (gain énorme de performance et I/O)  
+
+- **Néron LLM** :
+  ∙ Passage à `python:3.11-slim`  
+  ∙ Nettoyage des dépendances et requirements rationalisés  
+  ∙ Taille passée de ~266 MB → ~64 MB  
+
+- **Néron Memory** :
+  ∙ Slim base, pip install sans cache  
+  ∙ Taille réduite significativement  
+
+- **Néron Web** :
+  ∙ Base Python slim + pip no-cache  
+  ∙ Taille réduite au minimum nécessaire  
+
+**Impact attendu** :  
+- Réduction massive du temps de build et du temps de transfert des images  
+- Moins d’espace disque utilisé → meilleure scalabilité pour futurs agents  
+- Amélioration des performances I/O et du démarrage des services
+
+-----
+
 ## [1.4.0] - 2026-02-20
 Phase 1 — Isolation réseau Docker
 Securite
