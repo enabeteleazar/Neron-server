@@ -2,30 +2,35 @@ FROM python:3.11-slim
 
 LABEL maintainer="Neron AI Team"
 LABEL version="1.0.0"
-LABEL description="Service STT Whisper - Neron AI"
 
 WORKDIR /app
 
-# Dependances systeme pour Whisper + ffmpeg
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Dependances Python
+RUN pip install --upgrade pip && \
+    pip install setuptools wheel && \
+    pip install torch --index-url https://download.pytorch.org/whl/cpu
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Code
+# Telecharger le modele Whisper dans /app/models (accessible par user neron)
+ARG WHISPER_MODEL=base
+ENV WHISPER_DOWNLOAD_ROOT=/app/models
+RUN python3 -c "import whisper; whisper.load_model('${WHISPER_MODEL}', download_root='/app/models')"
+
 COPY app.py .
 
-# Variables d environnement par defaut
 ENV PYTHONUNBUFFERED=1 \
     LOG_LEVEL=INFO \
-    WHISPER_MODEL=base
+    WHISPER_MODEL=base \
+    WHISPER_DOWNLOAD_ROOT=/app/models
 
-# Utilisateur non-root
+# Utilisateur non-root avec acces a /app
 RUN useradd -m -u 1000 neron && chown -R neron:neron /app
 USER neron
 

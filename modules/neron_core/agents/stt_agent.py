@@ -17,29 +17,19 @@ SUPPORTED_FORMATS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm"}
 
 
 class STTAgent:
-    """Client HTTP vers le service neron_stt."""
-
     def __init__(self):
         self.url = STT_URL
         self.timeout = STT_TIMEOUT
         logger.info(f"STTAgent init : {self.url}")
 
     async def transcribe(self, audio_bytes: bytes, filename: str) -> AgentResult:
-        """
-        Envoie un fichier audio a neron_stt et retourne la transcription.
-
-        Args:
-            audio_bytes : contenu binaire du fichier audio
-            filename    : nom du fichier (pour determiner le format)
-
-        Returns:
-            AgentResult avec le texte transcrit dans content
-        """
         ext = Path(filename).suffix.lower()
+
         if ext not in SUPPORTED_FORMATS:
             return AgentResult(
                 success=False,
                 content="",
+                source="stt_agent",
                 error=f"Format non supporte : '{ext}'",
                 latency_ms=0.0,
                 metadata={}
@@ -67,6 +57,7 @@ class STTAgent:
             return AgentResult(
                 success=True,
                 content=text,
+                source="stt_agent",
                 error=None,
                 latency_ms=latency_ms,
                 metadata={
@@ -84,6 +75,7 @@ class STTAgent:
             return AgentResult(
                 success=False,
                 content="",
+                source="stt_agent",
                 error=error,
                 latency_ms=latency_ms,
                 metadata={}
@@ -96,6 +88,7 @@ class STTAgent:
             return AgentResult(
                 success=False,
                 content="",
+                source="stt_agent",
                 error=error,
                 latency_ms=latency_ms,
                 metadata={}
@@ -108,13 +101,13 @@ class STTAgent:
             return AgentResult(
                 success=False,
                 content="",
+                source="stt_agent",
                 error=error,
                 latency_ms=latency_ms,
                 metadata={}
             )
 
     async def check_connection(self) -> bool:
-        """Verifie que neron_stt est joignable."""
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 r = await client.get(f"{self.url}/health")
