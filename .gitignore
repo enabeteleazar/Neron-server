@@ -42,6 +42,7 @@ __pycache__/
 .env.global
 .env.local
 *.secret
+modules/neron-*
 
 # =========================
 # Docker et conteneurs
