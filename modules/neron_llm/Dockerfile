@@ -1,4 +1,6 @@
-# ---------- Builder Stage ----------
+# modules/neron_llm/Dockerfile
+
+# Builder stage
 FROM python:3.11-slim AS builder
 
 LABEL maintainer="Néron AI Team"
@@ -7,26 +9,26 @@ LABEL version="1.0.0"
 
 WORKDIR /install
 
-# Installer outils système nécessaires pour pip et compilation
+# Installer pip et dépendances système nécessaires pour builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl \
-        build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier et installer les dépendances Python dans un prefix isolé
+# Copier et installer les dépendances Python dans /install
 COPY requirements.txt .
 RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
 
-# ---------- Runtime Stage ----------
+# Stage final
 FROM python:3.11-slim
 
 WORKDIR /app
 
-# Installer seulement ce qui est nécessaire pour runtime
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# Installer outils système minimum pour runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier les dépendances Python depuis le builder
+# Copier les packages Python installés depuis le builder
 COPY --from=builder /install /usr/local
 
 # Copier le code de l'application
@@ -36,7 +38,7 @@ COPY ollama_client.py .
 COPY app.py .
 COPY __init__.py .
 
-# Variables d'environnement par défaut
+# Variables d'environnement
 ENV PYTHONUNBUFFERED=1 \
     ENV=production \
     LOG_LEVEL=INFO \
