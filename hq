@@ -1,0 +1,2094 @@
+[33mcommit 9dc6c6649e73ad8916bb17db30fa1e6b0d5ca197[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mfeature/neron_core_opt[m[33m)[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 21 15:04:35 2026 +0000
+
+    neron_core: optimisation image Docker (réduction 4.6GB -> 336MB, nettoyage deps et layers)
+
+[33mcommit d413b9328d1cd292fe6c0220ad920842b2578883[m[33m ([m[1;32mdevelop[m[33m)[m
+Merge: c70c859 8a460d1
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:37:28 2026 +0000
+
+    Merge tag 'add_start_script' into develop
+    
+    add script
+
+[33mcommit 8a460d1e966c26f6a3e585887c5140ef8d1c18cd[m[33m ([m[1;33mtag: [m[1;33madd_start_script[m[33m)[m
+Merge: 67cf264 256e24b
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:37:12 2026 +0000
+
+    Merge branch 'hotfix/add_start_script'
+
+[33mcommit 256e24b7f014c90ff55ddeb61ea28f52e1995ba4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:37:12 2026 +0000
+
+    hotfix: ajout nettoyage et rebuild dans start_neron.sh
+
+[33mcommit c70c8599071879ed5aa8cf5bdd387675ab6b0fb0[m[33m ([m[1;31morigin/develop[m[33m)[m
+Merge: 07a90c8 67cf264
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:29:55 2026 +0000
+
+    Merge tag 'v1.4.0' into develop
+    
+    v1.4.0
+
+[33mcommit 67cf26493d3c73fc4452bad63b08263145746ea8[m[33m ([m[1;33mtag: [m[1;33mv1.4.0[m[33m)[m
+Merge: 480175f 672f983
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:29:45 2026 +0000
+
+    Merge branch 'release/v1.4.0'
+
+[33mcommit 672f983bdaad231afe33f4521e919b2e513a331a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:29:32 2026 +0000
+
+    fix(config): NERON_MEMORY_URL corrige en nom Docker (neron_memory:8002)
+    
+    - Remplace http://192.168.1.130:8002 par http://neron_memory:8002
+    - Memory store fonctionne via neron_internal
+    - Plus de memory_store_failed dans les logs
+
+[33mcommit 07a90c8f368ddc8cd8584db2c5ba5a6d6c8c3bb0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 08:08:19 2026 +0000
+
+    feat(metrics): observabilite enrichie v1.4.0
+    
+    - neron_uptime_seconds : duree depuis demarrage
+    - neron_requests_total : compteur total requetes
+    - neron_requests_in_flight : requetes en cours (gauge)
+    - neron_execution_time_avg_ms : temps moyen orchestration global
+    - record_request_start/end avec bloc finally (fiable meme en cas d erreur)
+    - latencies stockees par agent (dict) au lieu de liste plate
+    - 48 tests passes
+
+[33mcommit 600cc7954da1d0d9465f4234a76d0fea07be5b88[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 20 07:21:20 2026 +0000
+
+    feat(core): standardisation des reponses API v1.4.0
+    
+    - CoreResponse enrichie : agent, timestamp UTC, execution_time_ms, model, error
+    - VERSION constante dans app.py (plus de hardcoding)
+    - utc_now_iso() helper pour timestamp uniforme
+    - execution_time_ms : temps total orchestration (vs latency_ms agent interne)
+    - 8 nouveaux tests test_core_response.py (patch LLMAgent/WebAgent/Router)
+    - Total : 48 tests passes.
+
+[33mcommit a161c9f231bc76cddb88a186e6141782b12793bd[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 22:40:53 2026 +0000
+
+    feat(infra): isolation réseau Docker v1.4.0
+    
+    - Ajout réseau neron_internal (bridge internal: true)
+    - Suppression ports exposés : neron_llm, neron_ollama, neron_memory, neron_searxng
+    - neron_core seul point d'entrée sur 0.0.0.0:8000
+    - neron_web maintenu sur 7860 (accès direct navigateur)
+    - neron_stt commenté (non implémenté)
+    - neron_core et neron_web sur deux réseaux (Neron_Network + neron_internal)
+
+[33mcommit b31e6291abda524a64d7abecab1b8f4a97d09e40[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 22:15:04 2026 +0000
+
+    chore: ignore local config backup
+
+[33mcommit efbadeb018ef1c3f242ce325b4b59c69293f7e5f[m
+Merge: 17925fe 480175f
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 22:13:37 2026 +0000
+
+    Merge tag 'v1.3.3' into develop
+    
+    v1.3.3
+
+[33mcommit 480175f113643169c76a10b384c162ba30ec00fa[m[33m ([m[1;33mtag: [m[1;33mv1.3.3[m[33m)[m
+Merge: dec0277 17925fe
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 22:13:24 2026 +0000
+
+    Merge branch 'release/v1.3.3'
+
+[33mcommit 17925fe3d6d3c5b3c4bbf78ca2e0b0df1d5665a9[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 22:00:45 2026 +0000
+
+    fix(time): accents francais dans human() - fevrier -> février, aout -> août
+
+[33mcommit 6f1db0eb8eddb6d25fdf4a97b81a24cf9e6d074d[m
+Merge: a0a5eb7 2a358e1
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 21:37:17 2026 +0000
+
+    Merge branch 'feature/neron_core' into develop
+
+[33mcommit 2a358e15b9058aa79b0ffdb309761f4314f056c0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 21:37:09 2026 +0000
+
+    mise a jour CHANGELOG
+
+[33mcommit 0b965f4948290f481b0904a11b23e666b1eab15a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 21:22:02 2026 +0000
+
+    fix(core): LLMAgent lit OLLAMA_MODEL depuis .env et le transmet a neron_llm
+    
+    - Ajout variable OLLAMA_MODEL dans llm_agent.py
+    - Modele transmis dans chaque requete POST /ask
+    - Metadata retourne le modele effectivement utilise
+    - Changement de modele : modifier OLLAMA_MODEL dans .env uniquement
+
+[33mcommit a0a5eb7d6a35e26847eabd8555aad97add2c221c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 20:48:07 2026 +0000
+
+    modifie numero version
+
+[33mcommit 5c0c387a104d9071b6357c0a19e9fa529464cd2d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 20:37:12 2026 +0000
+
+    feat(core): branchement TimeProvider dans le pipeline v1.3.3
+    
+    - Ajout handler _handle_time_query dans app.py
+    - TimeProvider instancie au startup avec les autres agents
+    - Intent TIME_QUERY repond sans passer par le LLM
+    - Dockerfile : ajout COPY neron_time/ pour inclusion dans l'image
+    - human() en francais sans dependance locale (dictionnaires integres)
+    - Reponse testee : 'Il est jeudi 19 fevrier 2026 a 21h36.'
+    - 40 tests passes, neron_core up
+
+[33mcommit 55bc90d01db2af2cda556828d56249580eddba66[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 19:51:30 2026 +0000
+
+    feat(core): ajout TimeProvider et intent TIME_QUERY v1.3.2
+    
+    - Ajout neron_time/time_provider.py (zoneinfo, sans dependance externe)
+    - Methodes : now(), iso(), human(), date(), time(), timestamp()
+    - Fuseau horaire configurable (defaut Europe/Paris)
+    - Ajout Intent.TIME_QUERY dans intent_router.py
+    - Patterns detectes : heure, date, quel jour, quel mois
+    - 15 tests pytest pour TimeProvider (15/15 PASS)
+    - 3 nouveaux tests TIME_QUERY dans test_router.py
+    - Total : 40 tests passes
+    
+    Note : TIME_QUERY detecte mais pas encore branche dans app.py
+
+[33mcommit 8f80380e51e6c00845fab3c48b45d73e13b0058f[m[33m ([m[1;33mtag: [m[1;33mv1.3.1[m[33m)[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Feb 19 10:08:21 2026 +0000
+
+    feat(core): orchestrateur multi-agents v1.3.0/1.3.1
+    
+    - Ajout IntentRouter rules-based + LLM fallback
+    - Ajout BaseAgent, LLMAgent, WebAgent
+    - Ajout neron_searxng self-hosted
+    - Corrections audit DevOps (securite, robustesse, metrics)
+    - 22 tests pytest passes
+    - CHANGELOG mis a jour
+
+[33mcommit 00d927025ef5b36a2b93a6c4066c832ea2b5bb9c[m
+Merge: f3e86e4 3708073
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 21:45:29 2026 +0000
+
+    Merge branch 'feature/neorn_core-v1.3.0' into develop
+
+[33mcommit f3e86e4b463f5e52f061017dc0d28f9783524691[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 21:36:34 2026 +0000
+
+    Sauvegarde temporaire avant switch branch
+
+[33mcommit dec02775135ceb264d6579f9d84a66b82c44deab[m
+Merge: 507c84f 3708073
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Wed Feb 18 22:31:40 2026 +0100
+
+    Merge pull request #3 from enabeteleazar/feature/neorn_core-v1.3.0
+    
+    Feature/neorn core v1.3.0
+
+[33mcommit 14d1643df1c8baf32b84ce71b4baf07aa62dc42b[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 21:20:49 2026 +0000
+
+    update .gitignore
+
+[33mcommit 370807342b347b5e75554dd6a4c21cf915a9ad2f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 21:16:11 2026 +0000
+
+    chore(neron_core): nettoyage __pycache__, orphelins et artefacts
+    
+    - Suppression de tous les __pycache__/ et .pyc
+    - Suppression de config/settings.bak
+    - Suppression du répertoire neron-core/ (artefact)
+    - Suppression des dossiers sans .py source (core/, llm/, memory/, tools/)
+    - Mise à jour Dockerfile pour copier tous les modules nécessaires
+
+[33mcommit 0704219cb50c1fced11b705cb46310f31de4ca1d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 20:39:01 2026 +0000
+
+    test(orchestrator): ajout suite de tests IntentRouter
+    
+    - 7 tests couvrant CONVERSATION, WEB_SEARCH, HA_ACTION
+    - conftest.py pour résolution du PYTHONPATH
+    - Tous les tests passent en 0.04s
+
+[33mcommit b062458cb78ee766786fe68cec43b12dcf43e347[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 20:28:46 2026 +0000
+
+    fix(neron_core): résolution des imports manquants et pipeline LLM
+    
+    - Ajout du package agents/ (LLMAgent, WebAgent, AgentResult, base_agent)
+    - Ajout du package orchestrator/ (IntentRouter, Intent, IntentResult)
+    - Mise à jour Dockerfile pour copier agents/ et orchestrator/
+    - Correction NERON_LLM_URL dans docker-compose.yaml (neron_llm:5000)
+    - Pipeline complet opérationnel : core→llm→ollama
+    
+    Closes: ModuleNotFoundError agents, orchestrator.intent_router
+    Tested: POST /input/text retourne une réponse valide
+
+[33mcommit e32567f656b602ea59918e759e7548f6f6816bc3[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Feb 18 19:18:35 2026 +0000
+
+    feat(neron_core): initial import v1.3.0 orchestrator
+    
+    - Ajout des nouveaux agents : base_agent, llm_agent, web_agent
+    - Ajout de l'orchestrator : router.py
+    - Réécriture complète de app.py pour orchestrer les intents
+    - Ajout du service neron_searxng (SearXNG self-hosted)
+    - Mise à jour docker-compose et .env.example
+    - Nettoyage du requirements.txt (suppression des dépendances inutiles)
+
+[33mcommit da2c85e74475c5d7df7d99eb977b1d5240800c8c[m
+Merge: 602eb31 507c84f
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 17:22:24 2026 +0000
+
+    Merge tag 'v1.2.2' into develop
+    
+    V1.2.2
+
+[33mcommit 507c84fd6347889a0ed90375170a3ec6a36a0f3e[m[33m ([m[1;33mtag: [m[1;33mv1.2.2[m[33m)[m
+Merge: 68054d6 602eb31
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 17:22:15 2026 +0000
+
+    Merge branch 'release/v1.2.2'
+
+[33mcommit 602eb31120e626bb9b00be7b27bdc9c165098554[m
+Merge: 6d1b5bc 9adb8c6
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 17:21:31 2026 +0000
+
+    Merge branch 'feature/documentation' into develop
+
+[33mcommit 9adb8c6cb0512f26b4a7826a5ce700923c628bea[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 17:21:09 2026 +0000
+
+     ajout version
+
+[33mcommit 5ad4e684375f9d35d11db8f4a3cf875f3f67a0ef[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 17:19:10 2026 +0000
+
+     ajout Documentatipon
+
+[33mcommit 6d1b5bcb19b7125ed6348b0619fc8c019d0c956b[m
+Merge: 2e8834e 68054d6
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 15:01:12 2026 +0000
+
+    Merge tag 'docker-network' into develop
+    
+    v1.2.1
+
+[33mcommit 68054d68eca4c1022abed0bac558605b120ca88e[m[33m ([m[1;33mtag: [m[1;33mdocker-network[m[33m)[m
+Merge: dc82567 84c274a
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 15:01:05 2026 +0000
+
+    Merge branch 'hotfix/docker-network'
+
+[33mcommit 84c274ad8dabe851f9e1e91ebb8906750aad38ba[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 15:00:32 2026 +0000
+
+    Add external networks Neron_Network and Homebox_Network for all Néron modules
+
+[33mcommit 2e8834e021847f99c80d8bec2d8c8ec84d9926b4[m
+Merge: b19bf23 dc82567
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 10:47:49 2026 +0000
+
+    Merge tag 'v1.2.1' into develop
+    
+    v1.2.1
+
+[33mcommit dc825672edfdbf5642be734ccb715285e61ac5fd[m[33m ([m[1;33mtag: [m[1;33mv1.2.1[m[33m)[m
+Merge: 139c079 3de1422
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 10:47:42 2026 +0000
+
+    Merge branch 'release/v1.2.1'
+
+[33mcommit 3de1422021abd0210c2ab9b388919c8d3585d024[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 10:47:19 2026 +0000
+
+    retrait fichier backup
+
+[33mcommit b19bf238f6ab8bcb5baa16051f80dceedb3413b0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Feb 15 10:44:38 2026 +0000
+
+    debug arborescence
+
+[33mcommit 72c4d66ec32b605a66d3a4012889329aaa5018eb[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 23:18:40 2026 +0000
+
+    netoyage code
+
+[33mcommit 139c079c6c24ad374c7b0916601f51936cd101bb[m
+Merge: 20cab7a 6f45b1c
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 23:08:57 2026 +0000
+
+    Merge tag 'v1.2.0' into develop
+    
+    v1.2.0
+
+[33mcommit 6f45b1ca1cdffdb411292a240221ec44692c91e9[m[33m ([m[1;33mtag: [m[1;33mv1.2.0[m[33m)[m
+Merge: 90b0d9a 20cab7a
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 23:06:54 2026 +0000
+
+    debug ...
+
+[33mcommit 20cab7a9db7b76eaab6f5aa6f110c14772ac1c46[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 22:39:23 2026 +0000
+
+    debug neron_web
+
+[33mcommit 0e000947196e506d9547dd7278de4f7217c833d9[m
+Merge: f041aa3 4403226
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 18:47:44 2026 +0000
+
+    Merge branch 'feature/struct-neron' into develop
+
+[33mcommit 440322600b21bdda9628069760773d159d2592af[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 18:47:11 2026 +0000
+
+    Fin de retructuration Neron_AI
+
+[33mcommit bd2a8f48257aec1dc10808ac65af4d8449418a90[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 18:26:09 2026 +0000
+
+    neron_web opérationnel
+
+[33mcommit 0d32a43df4732a367c6a9bf10d39bd7f50f7e56a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Feb 14 17:46:34 2026 +0000
+
+    neron_llm & neron_ollama operationnel
+
+[33mcommit 46b12db38ad6eba28a9c5dca608cc029355c3903[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Feb 13 22:39:08 2026 +0000
+
+    modif du chemin pour .env
+
+[33mcommit 90b0d9adf28e0062cf11fa8fa0874703d240acb1[m[33m ([m[1;33mtag: [m[1;33m0.2.0[m[33m)[m
+Merge: 11c00cf a28c0ac
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 28 07:09:47 2026 +0000
+
+    Merge branch 'release/0.2.0'
+
+[33mcommit a28c0ac102625fb870457f47b3c44dd5fce910fc[m
+Merge: 11c00cf 7cbf906
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 28 07:04:16 2026 +0000
+
+    Merge branch 'feature/neron-core' into develop
+
+[33mcommit 7cbf90664f5add1b5bb98ee0f642d65f87757644[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 28 07:03:47 2026 +0000
+
+    feat: Néron Modelfile - Personnalité JARVIS intégrée
+    
+    ✅ PERSONNALITÉ NÉRON
+    - Modèle custom basé sur qwen2.5:0.5b
+    - System prompt JARVIS-like intégré
+    - Ton décontracté mais respectueux
+    - Style: phrases courtes, tutoiement naturel
+    - Comportement proactif et bienveillant
+    
+    🔧 IMPLÉMENTATION
+    - Modelfile créé dans neron-llm/
+    - Prompt stocké dans system-prompt.txt
+    - Modèle compilé: neron-custom
+    - Parameters: temperature 0.7, top_p 0.9, top_k 40
+    
+    📊 RÉSULTAT
+    - Réponses cohérentes avec la personnalité
+    - Ton distinctif vs modèle générique
+    - Identité claire: 'Je suis Néron, assistant IA...'
+    - Temps de réponse: ~15-20s (qwen2.5:0.5b)
+    
+    🎯 UPGRADE PATH
+    - Modelfile réutilisable pour n'importe quel modèle de base
+    - Bascule simple: FROM llama3.3:70b
+    - Personnalité préservée lors des upgrades
+    
+    🗂️ FICHIERS
+    - neron-llm/Modelfile
+    - neron-llm/system-prompt.txt
+    - OLLAMA_MODEL=neron-custom dans .env
+    
+    ✨ Néron v0.2 a maintenant une vraie personnalité !
+
+[33mcommit f815c81d0003bd2d6173206aa5e4c16ebea13770[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 27 22:53:11 2026 +0000
+
+    feat: Néron v0.2 - Architecture complète Multi-Interface
+    
+    ✅ CORE
+    - Orchestrateur async (FastAPI + httpx)
+    - Pipeline: text → LLM → memory
+    - Gestion erreurs robuste + timeouts configurables
+    - Healthchecks Docker sur tous les services
+    
+    ✅ LLM
+    - Ollama qwen2.5:0.5b (optimisé vitesse/qualité)
+    - Support llama3.2:1b en fallback
+    - Timeout LLM: 120s
+    
+    ✅ MEMORY
+    - SQLite persistant sur /mnt/usb-storage/Docker/volumes/
+    - API complète: /store, /retrieve, /search, /stats
+    - Context manager thread-safe
+    - Survit aux rebuilds (volume nommé)
+    
+    ✅ STT
+    - Whisper base (CPU)
+    - Formats: wav, mp3, m4a, ogg, flac
+    
+    ✅ WEB (Gradio)
+    - Interface chat responsive
+    - Exemples intégrés
+    - Port: 7860
+    
+    ✅ TELEGRAM BOT
+    - Commandes: /start, /stats, /help
+    - Réponses en temps réel
+    - Indicateur 'typing'
+    - Logs structurés
+    
+    🏗️ ARCHITECTURE
+    - Docker Compose multi-services
+    - Réseau: Neron_Network
+    - Variables .env centralisées
+    - Healthchecks automatiques
+    - Restart policies
+    
+    📊 TESTS VALIDÉS
+    - Pipeline complet: OK
+    - Persistance mémoire: OK
+    - Gradio: OK
+    - Telegram: OK
+    - Stats API: OK
+    
+    🔧 CONFIG
+    - Modèle: qwen2.5:0.5b
+    - Timeout LLM: 120s
+    - Données: USB storage
+    - Logs: structurés (INFO level)
+    
+    📦 DEPLOY
+    docker compose up -d --build
+
+[33mcommit f041aa38234b9b0295260cfc6e588bf92a8682a6[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 27 15:58:37 2026 +0000
+
+    feat: Néron v0.2 - Système complet et validé
+    
+    ✅ Architecture modulaire Docker
+    ✅ Core: Orchestrateur async (httpx)
+    ✅ LLM: Ollama qwen2.5:0.5b (optimisé vitesse)
+    ✅ Memory: SQLite persistant + API complète
+    ✅ STT: Whisper base
+    ✅ Web: Interface Gradio fonctionnelle
+    
+    🧪 Tests validés:
+    - Pipeline text → LLM → memory : OK
+    - Persistance après rebuild : OK
+    - API /retrieve, /search, /stats : OK
+    - Interface Gradio responsive : OK
+    
+    📊 Stats:
+    - Temps réponse LLM: ~5-15s
+    - Mémoire stockée sur: /mnt/usb-storage/Docker/volumes/
+    - Port Gradio: 7860
+
+[33mcommit 1c88e37a5bf01a6c48e928d4c459861ecf606a4f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 27 07:12:32 2026 +0000
+
+    feat: Néron Memory - API complète
+    
+    ✅ Endpoints:
+    - GET /retrieve - Récupération historique
+    - GET /search - Recherche par mots-clés
+    - GET /stats - Statistiques
+    - DELETE /clear - Nettoyage
+    
+    ✅ Tests validés:
+    - Stockage OK
+    - Récupération OK
+    - Stats OK
+    
+    🎉 Système complet et fonctionnel
+
+[33mcommit 2ff1da9e22d7a774f525245e25182cec93ee773b[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 27 06:21:19 2026 +0000
+
+    feat: Néron v0.2 - Core fonctionnel avec LLM Ollama
+    
+    ✅ Fonctionnalités:
+    - neron-core: Orchestrateur avec pipeline text → LLM → memory
+    - neron-llm: Intégration Ollama (llama3.2:1b)
+    - neron-stt: Service Whisper pour transcription audio
+    - neron-memory: Stockage SQLite des conversations
+    - Docker Compose: Architecture microservices complète
+    - Healthchecks: Surveillance des services
+    
+    🔧 Corrections:
+    - Fix: Async avec httpx au lieu de requests
+    - Fix: Format API Ollama correct
+    - Fix: Gestion d'erreurs HTTP robuste
+    - Fix: Timeouts configurables
+    - Fix: Logging structuré
+
+[33mcommit 11c00cf892a4d8dc7fcdedbc4258252b2ea1eb25[m
+Merge: 932e40d 03544fb
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 25 21:10:01 2026 +0000
+
+    Merge branch 'feature/Neron-v0.2' into develop
+
+[33mcommit 932e40d5be73c76e93918458941779483a8ce7f9[m
+Merge: c8ac327 db15a9d
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 25 14:11:04 2026 +0000
+
+    chore: resolve .gitignore conflicts and clean runtime exclusions
+
+[33mcommit c8ac327ccf83da14bea90bbf18dff80830c68015[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 24 16:54:25 2026 +0000
+
+    update
+
+[33mcommit 7945bdd9295581e39ad0d233d698ce2b5850822c[m
+Merge: 7800633 653a558
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 24 16:33:15 2026 +0000
+
+    Merge remote-tracking branch 'origin/feature/pythonista' into feature/pythonista
+
+[33mcommit 7800633aa66c8cd109abfa7d0b7e5d6167aa7a23[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 24 12:52:07 2026 +0000
+
+     ajout de pythonista
+
+[33mcommit 03544fb979661bc7c61a1a556f93c9ffc8b74ec3[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 24 12:51:16 2026 +0000
+
+     ajout de pythonista
+
+[33mcommit 96331c6e3e433cebcedf4c15107c70883e45b90d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Jan 23 14:49:26 2026 +0000
+
+    Harmonisation des Dockerfile
+
+[33mcommit db15a9dbc1c9370d7c716e61218991f7f181244b[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Jan 23 11:33:44 2026 +0000
+
+    feat: stabilisation complète de la stack Néron v0.1
+    
+    - Correction des erreurs de démarrage FastAPI (indentation, dépendances)
+    - Mise en place correcte des environnements virtuels Python (venv)
+    - Ajout de curl dans les images Docker pour les healthchecks
+    - Correction des endpoints /health (core, stt, memory)
+    - Désactivation temporaire du healthcheck de neron-llm (Ollama fonctionnel)
+    - Correction des dépendances Docker et du réseau neron-network
+    - Démarrage et fonctionnement validés de tous les services Néron v0.1
+    
+    Statut : tous les services sont opérationnels
+
+[33mcommit 7fa50ae357575f41754872485312bd060a5c83e3[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 22 23:30:43 2026 +0000
+
+     ajout de Neron v0.1
+
+[33mcommit 653a55848a3e311055e04c110da336814f9976b4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 17 23:21:57 2026 +0100
+
+    Ajout Pyhtonista
+
+[33mcommit f49ff0b18237d13ea0b4cce33a9715e3f58c88dd[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 17 23:21:57 2026 +0100
+
+    Ajout Pyhtonista
+
+[33mcommit d3f7d92d0975827283b461458d373e852d543d6f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 17 19:10:28 2026 +0100
+
+    Update Files
+
+[33mcommit 29f8405f036bb03d669f3f508b0eb6d5eb2d0001[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 17 19:10:28 2026 +0100
+
+    Update Files
+
+[33mcommit 34bd172aad48af4d9cbcab40aa7ca332a49e81ce[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 14 21:04:07 2026 +0000
+
+    reparation Dashboard
+
+[33mcommit 0622618c6d52a94ffa5c79b849882fb053ef405e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 14 21:04:07 2026 +0000
+
+    reparation Dashboard
+
+[33mcommit f53218c4108a0a52ce3bbcb28685d849c5d693ac[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 14 00:11:57 2026 +0000
+
+    fix: Correct permissions and ensure all Homebox services start properly
+    
+    - Created and set correct UID/GID and permissions for all service volumes:
+      - Grafana (472:472)
+      - Home Assistant (1000:1000)
+      - Node-RED (1000:1000)
+      - Prometheus (65534:65534)
+      - N8N (1000:1000)
+    - Added minimal Prometheus configuration file (prometheus.yml) to allow proper startup
+    - Updated docker-compose volumes to ensure correct paths and ownership
+    - Verified that all services (Grafana, Home Assistant, Node-RED, Prometheus, N8N) start without reboot loops
+    - Included a bash script (homebox_fix_restart.sh) to automate folder creation, permission fixes, and service relaunch
+
+[33mcommit 70c2ec1d0e51f8bd2f70aca9f07f5abbca809379[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Jan 14 00:11:57 2026 +0000
+
+    fix: Correct permissions and ensure all Homebox services start properly
+    
+    - Created and set correct UID/GID and permissions for all service volumes:
+      - Grafana (472:472)
+      - Home Assistant (1000:1000)
+      - Node-RED (1000:1000)
+      - Prometheus (65534:65534)
+      - N8N (1000:1000)
+    - Added minimal Prometheus configuration file (prometheus.yml) to allow proper startup
+    - Updated docker-compose volumes to ensure correct paths and ownership
+    - Verified that all services (Grafana, Home Assistant, Node-RED, Prometheus, N8N) start without reboot loops
+    - Included a bash script (homebox_fix_restart.sh) to automate folder creation, permission fixes, and service relaunch
+
+[33mcommit 5877c5a7fc8fa3ec7b216e7902c9559aed367095[m
+Merge: 1547557 6d2d3f1
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 13 22:39:37 2026 +0000
+
+    Merge branch 'feature/docker-compose' into develop
+
+[33mcommit e334ec4eedb106bf65dc4969a2a814e313f183df[m
+Merge: 3dd0309 cd5ae19
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 13 22:39:37 2026 +0000
+
+    Merge branch 'feature/docker-compose' into develop
+
+[33mcommit 6d2d3f17b73ff16e7b895f4645a8a020efbf189d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 13 22:22:37 2026 +0000
+
+    feat(Portainer): Update compose.yaml
+
+[33mcommit cd5ae190b69bcf03f029456e86746e592a0df8e7[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 13 22:22:37 2026 +0000
+
+    feat(Portainer): Update compose.yaml
+
+[33mcommit 1547557be0cd87a85f4047f89ddc97cd75b07f6d[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:58:04 2026 +0100
+
+    Update docker-compose.yaml (n8n)
+
+[33mcommit 3dd0309c645c094aed150d1b43301290600be84d[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:58:04 2026 +0100
+
+    Update docker-compose.yaml (n8n)
+
+[33mcommit 1d60d04cd2b83f800de04e209c0a51ba2245007a[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:57:07 2026 +0100
+
+    Update docker-compose.yaml (llama+Telegram)
+
+[33mcommit 4bd243c06ce2c0eca59e1ec2cce9cac3563de915[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:57:07 2026 +0100
+
+    Update docker-compose.yaml (llama+Telegram)
+
+[33mcommit 398fbfca7bd54f7db0ec27bf28c3ad242fde8c7d[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:55:37 2026 +0100
+
+    Update docker-compose.yaml (Node-Red)
+
+[33mcommit deda4727b3183595f1dafd421a3bcd472042b452[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:55:37 2026 +0100
+
+    Update docker-compose.yaml (Node-Red)
+
+[33mcommit 9688fc261072b5cc48a7bd68f9ff7669721143ce[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:54:53 2026 +0100
+
+    Update docker-compose.yaml (HomeAssistant)
+
+[33mcommit 40bcf64bc7232f225a544d7dde5309bf61fd2963[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:54:53 2026 +0100
+
+    Update docker-compose.yaml (HomeAssistant)
+
+[33mcommit 98160d0d8aab9eacecada17b1c8635c4450e61bd[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:53:37 2026 +0100
+
+    Update docker-compose.yaml (Grafana)
+
+[33mcommit 797925801ad8d63c73910f66601a056286b7ecb1[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:53:37 2026 +0100
+
+    Update docker-compose.yaml (Grafana)
+
+[33mcommit 3fcf909886eab5b2128f6668deaeb9478bc2ed64[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:52:41 2026 +0100
+
+    Update docker-compose.yaml (Dashboard)
+
+[33mcommit 7a46811f57d678c7648bcc1bb8c9e3c121d67847[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:52:41 2026 +0100
+
+    Update docker-compose.yaml (Dashboard)
+
+[33mcommit cff236f9c31bd315c8e3343ffc91f72a1b59d627[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:51:47 2026 +0100
+
+    Update docker-compose.yaml (Cadvisor)
+
+[33mcommit 0f82285fff4916a46f4a4fea05ebb94c0e202f4a[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:51:47 2026 +0100
+
+    Update docker-compose.yaml (Cadvisor)
+
+[33mcommit acddd53ea9955cea738fcb98ae042140752c394b[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:50:53 2026 +0100
+
+    Update docker-compose.yaml (Beszel)
+
+[33mcommit 5f43e1ec78e7cd277c039040d21d5d33d6cab5ef[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:50:53 2026 +0100
+
+    Update docker-compose.yaml (Beszel)
+
+[33mcommit 34e92e3883abbc3dc7a69d7315d2cde7c5a4197a[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:50:03 2026 +0100
+
+    Update docker-compose.yaml
+
+[33mcommit dd8ab1bd98ab8f2b88c5a163290056f927abd3ef[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:50:03 2026 +0100
+
+    Update docker-compose.yaml
+
+[33mcommit 73476bd2e49c00a6ad9b855f683d6113448d65f8[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:49:13 2026 +0100
+
+    Update docker-compose.yaml
+
+[33mcommit c540b41487040b8b1212c9411244fdadf7dd2a80[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:49:13 2026 +0100
+
+    Update docker-compose.yaml
+
+[33mcommit d803a2a85323ea64a7560e71b33aba91101fb752[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:48:59 2026 +0100
+
+    Update docker-compose.yaml
+
+[33mcommit 21b8065b081a863cfeab39a0458918586b8b084f[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 13 08:48:59 2026 +0100
+
+    Update docker-compose.yaml
+
+[33mcommit b846dca631ae442724e368bdb2e8a8dabda9fb3a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 22:48:46 2026 +0000
+
+    Suppression Data/ du suivi Git
+
+[33mcommit f54a3b27ca3b072d330682c79834594c5d014d98[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 22:48:46 2026 +0000
+
+    Suppression Data/ du suivi Git
+
+[33mcommit 5b087df015b35f3c4f322ff5ee513c31d157803e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 22:45:17 2026 +0000
+
+    Update Variable .env & Docker-compose
+
+[33mcommit 9e40ea05dfe248a989e0703abad9a5e21f2765ed[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 22:45:17 2026 +0000
+
+    Update Variable .env & Docker-compose
+
+[33mcommit fda84df7531cd1ea9b8815d6036cd0c16a450fde[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 21:36:01 2026 +0000
+
+    creation de la structure complete
+
+[33mcommit c7ee9f864bbd35bffdee5d877f76447dcb4e8d1a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 21:36:01 2026 +0000
+
+    creation de la structure complete
+
+[33mcommit 5ebeb4d1019594e202e7029545457ccca68c2496[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 21:07:04 2026 +0000
+
+    recuperation de Dashboard v1.4
+
+[33mcommit 42dd29b0041c60fb5a5d2b8f154dd3b54b3d34aa[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 21:07:04 2026 +0000
+
+    recuperation de Dashboard v1.4
+
+[33mcommit fe0b871bf13f3e1f970f8ec694a67e04bde3a221[m
+Merge: b3d6c3f 4055db7
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 20:47:57 2026 +0000
+
+    Restructuration du Projet
+
+[33mcommit b2666d7c5cdf9ae5dca873159f1ac49814c4c23a[m
+Merge: e307d52 bb9e2a5
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 20:47:57 2026 +0000
+
+    Restructuration du Projet
+
+[33mcommit 945e52a6ac3d71a9956ca391dc435954da542a0c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 20:36:31 2026 +0000
+
+    Restructuration du Projet
+
+[33mcommit b3d6c3fc99a44f1771bb028b7c58b9bd57fd7552[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 20:36:31 2026 +0000
+
+    Restructuration du Projet
+
+[33mcommit e307d52283b4e711f9e9bbb33e3174ef369fb33b[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 12 20:36:31 2026 +0000
+
+    Restructuration du Projet
+
+[33mcommit 4055db7568c3ccd5df5cb984da4b88ab370c649f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 11 20:28:08 2026 +0000
+
+    feat(dashboard):Refonte complète du Monitoring complet avec backend amélioré
+
+[33mcommit bb9e2a5a7ff504759f781b017a5571fdc1d3ff3c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 11 20:28:08 2026 +0000
+
+    feat(dashboard):Refonte complète du Monitoring complet avec backend amélioré
+
+[33mcommit 6d995641263747827999a164f18a6eb8447dd8f2[m
+Merge: f7dc088 e51c99d
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 10 23:39:47 2026 +0000
+
+    Merge tag '1.4' into develop
+    
+    Normalisation JSON Backend.
+
+[33mcommit e09167114ecd17c6b423873710220ced9d47640a[m
+Merge: bdd5c74 091a7ac
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 10 23:39:47 2026 +0000
+
+    Merge tag '1.4' into develop
+    
+    Normalisation JSON Backend.
+
+[33mcommit e51c99d2ab471b95e17d25b02f1df6ddf654496c[m
+Merge: 4419c09 f7dc088
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 10 23:39:09 2026 +0000
+
+    Merge branch 'release/1.4'
+
+[33mcommit 091a7ac03acffbcbd1053a62b748589cf9a48132[m
+Merge: 7670b4a bdd5c74
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 10 23:39:09 2026 +0000
+
+    Merge branch 'release/1.4'
+
+[33mcommit f7dc088b7a67243031b085c37b39940e78b77706[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 22:40:05 2026 +0000
+
+    feat(api): normalisation JSON Docker v1.4
+
+[33mcommit bdd5c7485cb15a743d8001e86937cf274fdf5328[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 22:40:05 2026 +0000
+
+    feat(api): normalisation JSON Docker v1.4
+
+[33mcommit d745838316377716943254aeb9920b6aa30d45d4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 22:25:53 2026 +0000
+
+    feat(api): endpoint health v1.4 – état global système, docker et services
+
+[33mcommit 12169181d584c655c412820eee8c4661daa997dc[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 22:25:53 2026 +0000
+
+    feat(api): endpoint health v1.4 – état global système, docker et services
+
+[33mcommit 82656d61e11a562d7d78a52e99bf9e3616b6fc9a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:26:36 2026 +0000
+
+    feat(api) endpoint systeme.Update
+
+[33mcommit a0e32d8dc3ed59fcb7cfa51e6a8326b31182437d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:26:36 2026 +0000
+
+    feat(api) endpoint systeme.Update
+
+[33mcommit 992198f1f1bc2635226f624951a98b00a3722438[m
+Merge: 00bd938 ce3384c
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:21:21 2026 +0000
+
+    Merge branch 'feature/system-endpoints' into develop
+
+[33mcommit 8df28f256d788bb535afd7ecd1a6dbb9b9cf21a9[m
+Merge: c61dca7 f02666c
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:21:21 2026 +0000
+
+    Merge branch 'feature/system-endpoints' into develop
+
+[33mcommit ce3384c26af4371e2e87655a245cb28b78590921[m
+Merge: 9cb3e34 0fa4782
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:09:17 2026 +0000
+
+    Merge remote-tracking branch 'refs/remotes/origin/feature/system-endpoints' into feature/system-endpoints
+
+[33mcommit f02666c2badd11e319ac133281b98bc68b5a9928[m
+Merge: 99458ad 5492cab
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:09:17 2026 +0000
+
+    Merge remote-tracking branch 'refs/remotes/origin/feature/system-endpoints' into feature/system-endpoints
+
+[33mcommit 00bd938d9ad31dfd97085089e4b39400615b673e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:06:50 2026 +0000
+
+    feat(api): endpoints système v1.4 – métriques CPU, RAM, Disk, Température, summary pour dashboard
+
+[33mcommit c61dca72e67915beadf022885a49a0f42665ea36[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Jan 6 19:06:50 2026 +0000
+
+    feat(api): endpoints système v1.4 – métriques CPU, RAM, Disk, Température, summary pour dashboard
+
+[33mcommit 0fa47823ef672febe8de64852c4931f3a43cdcb3[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 6 08:16:20 2026 +0100
+
+    feat(api): endpoints système v1.4 – métriques CPU, RAM, Disk, Température, summary pour dashboard
+
+[33mcommit 5492cab5d7beeab75af4656f42e634b8f9aa5961[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Jan 6 08:16:20 2026 +0100
+
+    feat(api): endpoints système v1.4 – métriques CPU, RAM, Disk, Température, summary pour dashboard
+
+[33mcommit 9cb3e344b038eb8d69e97256265e8a361922a0b0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 5 23:35:05 2026 +0000
+
+    feat: ajout complet des endpoints Docker list/summary/start/stop pour v1.4 S1
+
+[33mcommit 99458ad4046b964452ae91d9e22b704b5398e542[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Jan 5 23:35:05 2026 +0000
+
+    feat: ajout complet des endpoints Docker list/summary/start/stop pour v1.4 S1
+
+[33mcommit 4419c09f1c8aed7b668132a8eaa7e4179a1e0858[m
+Merge: 41d4d16 d9cf97b
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:51:30 2026 +0000
+
+    Merge branch 'release/1.3.2'
+
+[33mcommit 7670b4ac4ccd667e383762e893bfe1f471517c8c[m
+Merge: a4a2a66 9ac68e7
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:51:30 2026 +0000
+
+    Merge branch 'release/1.3.2'
+
+[33mcommit d9cf97ba69a99b027ed643f3abd35b23cf654f20[m
+Merge: 3c4e93d 75b1f01
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:37:25 2026 +0000
+
+    Merge branch 'feature/dashboard-ui-docker' into develop
+
+[33mcommit 9ac68e73bb68475cee2ea5cb74985eb25f4ee1db[m
+Merge: 8b2b362 2901a6b
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:37:25 2026 +0000
+
+    Merge branch 'feature/dashboard-ui-docker' into develop
+
+[33mcommit 75b1f01b9026e30c68c8cbf9da33176ec8202dcf[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:36:42 2026 +0000
+
+    docker-compose Port
+
+[33mcommit 2901a6ba6d120dbabca2fe234b486c59ea7a0842[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:36:42 2026 +0000
+
+    docker-compose Port
+
+[33mcommit 0555e3c0d87aecd5d4e37fc72e03dd35f71ed579[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:35:10 2026 +0000
+
+    Activation des boutons Start/Stop Docker dans le dashboard avec méthode POST
+    - Les boutons React utilisent désormais fetch POST vers /api/docker/<id>/start et /stop
+    - Correction du 405 Method Not Allowed lors des actions Docker
+    - Rafraîchissement automatique de la liste des containers après action
+    - Désactivation conditionnelle des boutons selon l’état du container
+
+[33mcommit ca65213b42cc758a43e61bbe00948d99195be4ac[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 21:35:10 2026 +0000
+
+    Activation des boutons Start/Stop Docker dans le dashboard avec méthode POST
+    - Les boutons React utilisent désormais fetch POST vers /api/docker/<id>/start et /stop
+    - Correction du 405 Method Not Allowed lors des actions Docker
+    - Rafraîchissement automatique de la liste des containers après action
+    - Désactivation conditionnelle des boutons selon l’état du container
+
+[33mcommit fe5e02b539d244b39cedcf939de33537608b6d25[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 20:34:09 2026 +0000
+
+    Docker API : correction du calcul d'uptime et ajout d'une valeur vide pour les containers arrêtés
+
+[33mcommit d7da2233abba8126ab6d2dacedf7a477661f4a35[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 20:34:09 2026 +0000
+
+    Docker API : correction du calcul d'uptime et ajout d'une valeur vide pour les containers arrêtés
+
+[33mcommit 50df63f4ac0b2e6bc72d03d05a8d1cb9f92172fe[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 19:51:29 2026 +0000
+
+    feat(ui): ajout d'une navbar pour la navigation du dashboard
+
+[33mcommit b9b8197ba189fa397eee00950d19e43eff78c1d4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 19:51:29 2026 +0000
+
+    feat(ui): ajout d'une navbar pour la navigation du dashboard
+
+[33mcommit 3c4e93da0568793fe0bacaca6853029e51518e61[m
+Merge: 61858f9 41d4d16
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 18:12:59 2026 +0000
+
+    Merge tag '1.3.1' into develop
+    
+    release v 1.3.1
+
+[33mcommit 8b2b3623f5e9a1dcaa599405ca1eb9993404fe5d[m
+Merge: 61b63ba a4a2a66
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 18:12:59 2026 +0000
+
+    Merge tag '1.3.1' into develop
+    
+    release v 1.3.1
+
+[33mcommit 41d4d16b08a4c562c2509b18eb4bc0f4ac750a9e[m
+Merge: e974ecb 5221b7b
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 18:12:29 2026 +0000
+
+    Merge branch 'release/1.3.1'
+
+[33mcommit a4a2a66393ba3c4d3252b0bb540ee5d18a152d50[m
+Merge: 804f690 811ba6b
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 18:12:29 2026 +0000
+
+    Merge branch 'release/1.3.1'
+
+[33mcommit 5221b7b62f3bdc4e8711894006fb2f07d7f6e695[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 18:11:12 2026 +0000
+
+    Correction backend : ajout de PYTHONPATH pour résoudre ModuleNotFoundError sur 'api', ajustement Dockerfile pour uvicorn et dépendances Python. Backend fonctionne maintenant sous docker-compose.
+
+[33mcommit 811ba6b4d65ab4828f2c0cbc85d06a277819b294[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 18:11:12 2026 +0000
+
+    Correction backend : ajout de PYTHONPATH pour résoudre ModuleNotFoundError sur 'api', ajustement Dockerfile pour uvicorn et dépendances Python. Backend fonctionne maintenant sous docker-compose.
+
+[33mcommit 61858f980ebd9b46d0ae778c1353136ff14a3db5[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 16:08:53 2026 +0000
+
+    Correction et refactor du Dashboard
+    
+    - Affichage de la température CPU corrigé (utilisation de systemData.cpu.temperature)
+    - Suppression du champ obsolète `temp` dans App.jsx
+    - Refactor de setSystemData pour éviter l'écrasement de cpu
+    - Nettoyage et sécurisation des valeurs nulles pour CPU, RAM et Disk
+    - Maintien des logs console pour debug des appels API système, Docker et Health
+    - Refresh toutes les 2 secondes conservé
+    - Affichage automatique des nouveaux services Docker et Health
+
+[33mcommit 61b63bacf0947ae004e122f0bc666c59abc11d7c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Jan 4 16:08:53 2026 +0000
+
+    Correction et refactor du Dashboard
+    
+    - Affichage de la température CPU corrigé (utilisation de systemData.cpu.temperature)
+    - Suppression du champ obsolète `temp` dans App.jsx
+    - Refactor de setSystemData pour éviter l'écrasement de cpu
+    - Nettoyage et sécurisation des valeurs nulles pour CPU, RAM et Disk
+    - Maintien des logs console pour debug des appels API système, Docker et Health
+    - Refresh toutes les 2 secondes conservé
+    - Affichage automatique des nouveaux services Docker et Health
+
+[33mcommit 0d44422b295dfd5421a228b0b4a6e2eebf16e17e[m
+Merge: 9250afb d1a53c5
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 20:48:54 2026 +0000
+
+    Merge branch 'feature/api-normalisation' into develop
+
+[33mcommit 8e1a598ab70cec449b5fcd2b7ceb0be09ffc7f6d[m
+Merge: 37dca2f d903167
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 20:48:54 2026 +0000
+
+    Merge branch 'feature/api-normalisation' into develop
+
+[33mcommit d1a53c5a9caf26e8b4f51ecda5def36aefcf2021[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 18:51:35 2026 +0000
+
+    ajout du endpoint /health avec controle complet des services
+    - création de l'endpoint /health por vérifier l'état des services ...
+    - vérification de Docker, CUPS, Home Assistant, Neron LLM et codiTV
+    - Gestion robuste des erreurs et retour uniforme avec timestamp UTC
+
+[33mcommit d9031672690c5e9f956e4cf5e8ea74dfb2d74372[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 18:51:35 2026 +0000
+
+    ajout du endpoint /health avec controle complet des services
+    - création de l'endpoint /health por vérifier l'état des services ...
+    - vérification de Docker, CUPS, Home Assistant, Neron LLM et codiTV
+    - Gestion robuste des erreurs et retour uniforme avec timestamp UTC
+
+[33mcommit 4e4162fd6d7b03e1078fe60da7d72d41150ee116[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 18:28:27 2026 +0000
+
+    Ajout du endpoint Docker avec gestion robuuste des dates
+    - Création de l'endpoint /docker pour lister les containers
+    - Conversion automatiquedes champs datetime Docker -( Created, StartedAt, FinishedAt )
+    - Gestion des valeurs absentes ou mal formatées pour eviter les erreurs
+
+[33mcommit df34fbd2a64b810c6fb0d13f66fab364118aa465[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 18:28:27 2026 +0000
+
+    Ajout du endpoint Docker avec gestion robuuste des dates
+    - Création de l'endpoint /docker pour lister les containers
+    - Conversion automatiquedes champs datetime Docker -( Created, StartedAt, FinishedAt )
+    - Gestion des valeurs absentes ou mal formatées pour eviter les erreurs
+
+[33mcommit 273e826aaf60d0d5edee995600209133fe47305e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 17:19:56 2026 +0000
+
+    feat(api): Ajout du endpoint de metrique systeme normalisées;
+    - Ajout de l'endpoint /api/system avec sortie JSONnormalisée
+    - Exposition des métriques CPU,RAM, swap, disque, temperature et uptime
+    - Garantie que toutes les valeurs sont  sérialisables en jSON
+
+[33mcommit 4d3bb83e3a8b5192906ab4d8f0067f35680d30e4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Jan 3 17:19:56 2026 +0000
+
+    feat(api): Ajout du endpoint de metrique systeme normalisées;
+    - Ajout de l'endpoint /api/system avec sortie JSONnormalisée
+    - Exposition des métriques CPU,RAM, swap, disque, temperature et uptime
+    - Garantie que toutes les valeurs sont  sérialisables en jSON
+
+[33mcommit 44816fc1ed3af67becdbe5fc7ded3563062c4979[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 1 22:13:51 2026 +0000
+
+    backend: état stable avant normalisation API
+
+[33mcommit 64830ccf7a61c356ec91b79d42a3209c2ee2a690[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 1 22:13:51 2026 +0000
+
+    backend: état stable avant normalisation API
+
+[33mcommit c86c3e680691cac5a0e87a76cd461d7c4343f06a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 1 20:25:51 2026 +0000
+
+    chore(dashboard) correction fetch API et état système"
+
+[33mcommit e743ead63de1e395fde3ac6ab443da4d1bea83b7[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 1 20:25:51 2026 +0000
+
+    chore(dashboard) correction fetch API et état système"
+
+[33mcommit cf9945226601567c765c4690a69b6800d90b3533[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 1 18:10:06 2026 +0000
+
+    chore(dashboard)reecriture du return()
+
+[33mcommit d8df716ca5cfca3673f72caee9413712db46bfdd[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Jan 1 18:10:06 2026 +0000
+
+    chore(dashboard)reecriture du return()
+
+[33mcommit 9250afb8e5a6381a268fa1d4237665f3a3394c6f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 21 00:28:55 2025 +0000
+
+    chore(dashboard): Harmonisation du design du dashboard.
+
+[33mcommit 37dca2fbd4cd12bf5ff7c2f2c1111773e5ce9771[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 21 00:28:55 2025 +0000
+
+    chore(dashboard): Harmonisation du design du dashboard.
+
+[33mcommit 27a315bb834295789d4d0eeb19d2e0a55f5a7c01[m
+Merge: 8304269 dba6956
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 22:05:39 2025 +0000
+
+    Merge branch 'feature/dashboard' into develop
+
+[33mcommit 6d473c00230cd2862b9fb8c4a7de94e174837d0b[m
+Merge: ff66bb3 5d0794f
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 22:05:39 2025 +0000
+
+    Merge branch 'feature/dashboard' into develop
+
+[33mcommit dba69565343f270b8b680b51c3919f3e76cf5df6[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 22:05:09 2025 +0000
+
+    fix(dashboard):securisation des composants services du dashboard
+
+[33mcommit 5d0794f3563a6f795499ca3f3c5463166d90f79e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 22:05:09 2025 +0000
+
+    fix(dashboard):securisation des composants services du dashboard
+
+[33mcommit 61669e60d4aebfebbfb8299bbf2d66110da97578[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 21:21:56 2025 +0000
+
+    fix(dashboard): Securisation du rendu React et prevention des ecrans blanc.
+
+[33mcommit 262554a3d19bbf0eeec58db57d712e8265eeb081[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 21:21:56 2025 +0000
+
+    fix(dashboard): Securisation du rendu React et prevention des ecrans blanc.
+
+[33mcommit d4aa1e45706be109c158360e266087ecf9813ed6[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 20:45:49 2025 +0000
+
+    chore(dashboard - front) modif package-lock.json
+
+[33mcommit 690cd513afd394ea0c24143532deb6d4a3e1e5a9[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 20:45:49 2025 +0000
+
+    chore(dashboard - front) modif package-lock.json
+
+[33mcommit debd065e6ec63bb60f799bbc2a3701e926e6fef4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 19:01:40 2025 +0000
+
+    chore(dashboard - Front): modification du code
+
+[33mcommit 69423422d705d24fa7baa85d5308648aa6a2118e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 19:01:40 2025 +0000
+
+    chore(dashboard - Front): modification du code
+
+[33mcommit ee5b5a60a8132948075b4a2a4780f84fef0790d6[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 18:01:35 2025 +0000
+
+    chore(frontend): mise en place de l'arborescence
+
+[33mcommit cc907bb43cbc14589d3003fdf9001aaebcc8297d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 18:01:35 2025 +0000
+
+    chore(frontend): mise en place de l'arborescence
+
+[33mcommit 8304269c0c4ae9d16a277fd051a944d96a0e3920[m
+Merge: ad25123 e974ecb
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:07:31 2025 +0000
+
+    Merge tag '1.3.0' into develop
+    
+    v1.3.0 - add monitoring.
+
+[33mcommit ff66bb312a22d8ea5df877c93ad90405e5dcd5a9[m
+Merge: 011843c 804f690
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:07:31 2025 +0000
+
+    Merge tag '1.3.0' into develop
+    
+    v1.3.0 - add monitoring.
+
+[33mcommit e974ecbf61d73f8aa200216c6d3e4d41c75b9a96[m
+Merge: f2de683 149f827
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:07:10 2025 +0000
+
+    Merge branch 'release/1.3.0'
+
+[33mcommit 804f690901b681e65508c786f0856261efe613ad[m
+Merge: e7b9873 a944ae0
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:07:10 2025 +0000
+
+    Merge branch 'release/1.3.0'
+
+[33mcommit 149f827c35daec3d950df70f6a040f73e00b5e8a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:03:43 2025 +0000
+
+    release finish v1.3.0
+
+[33mcommit a944ae0d0479976664d3c0e5605221a096dc8a4a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:03:43 2025 +0000
+
+    release finish v1.3.0
+
+[33mcommit cd04b2b71efea941fdd53aa6579e8535202c9fc0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:01:20 2025 +0000
+
+    (file): Ajout de README
+
+[33mcommit b31df128c7da1caa678bcd08a8ae57b25803484c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 10:01:20 2025 +0000
+
+    (file): Ajout de README
+
+[33mcommit ad25123b8ab8ac9744f73c11480ad801d3bc77c4[m
+Merge: c74977f fcd8124
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 09:47:59 2025 +0000
+
+    Merge branch 'feature/1.3.0' into develop
+
+[33mcommit 011843c8d0aefc320eb7d24e54c2d7fb418b8362[m
+Merge: 39a90ab 32f63fa
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 09:47:59 2025 +0000
+
+    Merge branch 'feature/1.3.0' into develop
+
+[33mcommit fcd81244dcc86800af6629836130e0ace0fefbb6[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 09:47:30 2025 +0000
+
+    installation de Prometheus & Cadvisor
+
+[33mcommit 32f63fabce63fd733c9d7cc25dbde89bc3d0bcce[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 09:47:30 2025 +0000
+
+    installation de Prometheus & Cadvisor
+
+[33mcommit a57d5618addbdd4e7c46eb441c70532b915c697c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 09:35:37 2025 +0000
+
+    chore(docker compose): modification d'emplacement du volume data
+
+[33mcommit d95948f50f1aabc2056a6f4ed47ff8eb3e59c0a2[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 20 09:35:37 2025 +0000
+
+    chore(docker compose): modification d'emplacement du volume data
+
+[33mcommit fcac14c38f0132a6ba9130ed96551379e733ff21[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 15:53:42 2025 +0000
+
+    chore(monitoring) ajout du systeme de monitoring
+
+[33mcommit abe236d671dde5e1036d22134f927c7b32f228ea[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 15:53:42 2025 +0000
+
+    chore(monitoring) ajout du systeme de monitoring
+
+[33mcommit c74977f9396d380b7eb5893465773eb135ea04d2[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 15:24:37 2025 +0000
+
+    chore(venv) delete folder venv
+
+[33mcommit 39a90abd31cc7766e5d85b40c82e10b2b3eab113[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 15:24:37 2025 +0000
+
+    chore(venv) delete folder venv
+
+[33mcommit f2de683e5298a6a679691a6909100162e4731de0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 15:05:18 2025 +0000
+
+    hotfix
+
+[33mcommit e7b987304f287bf3d35a4375d87dac4765e5b853[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 15:05:18 2025 +0000
+
+    hotfix
+
+[33mcommit c1008deb74fd715d68d7a8efee5c5c750336ecba[m
+Merge: e85b279 0152fc1
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:32:31 2025 +0000
+
+    Merge tag '1.2.2' into develop
+    
+    Fix.env variable et emplacement.
+
+[33mcommit e1e4589c9c159547b8d1563261ce87d69328f476[m
+Merge: eb9b965 9544099
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:32:31 2025 +0000
+
+    Merge tag '1.2.2' into develop
+    
+    Fix.env variable et emplacement.
+
+[33mcommit 0152fc1b92f12cf0fe5a1a8b071dd0982d091b8f[m
+Merge: 193782f d6bf5ce
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:32:01 2025 +0000
+
+    Merge branch 'hotfix/1.2.2'
+
+[33mcommit 9544099e46542b137f06e7027e64f01a13586ba8[m
+Merge: 5a5dd0b 2d5bb64
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:32:01 2025 +0000
+
+    Merge branch 'hotfix/1.2.2'
+
+[33mcommit d6bf5ce5e6a1a5269dca2a3132a602adde60b785[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:31:50 2025 +0000
+
+    hotfix(1.2.1): Fix .env variable error
+
+[33mcommit 2d5bb64b78f379b60f09f1ef83d06dc1ce9b4be9[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:31:50 2025 +0000
+
+    hotfix(1.2.1): Fix .env variable error
+
+[33mcommit e85b279f35ed39fe5bb7fc7d7e39e047eb74f32a[m
+Merge: e59d1ae 193782f
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:12:23 2025 +0000
+
+    Merge tag '1.2.1' into develop
+    
+    v1.2.1
+
+[33mcommit eb9b965f78e16c559a5d80dbb7d32b3bec48e09e[m
+Merge: 3dda9eb 5a5dd0b
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:12:23 2025 +0000
+
+    Merge tag '1.2.1' into develop
+    
+    v1.2.1
+
+[33mcommit 193782f517d99c77f11ab084762b60880baf3216[m
+Merge: 9fa3e92 8d354f9
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:12:07 2025 +0000
+
+    Merge branch 'hotfix/1.2.1'
+
+[33mcommit 5a5dd0bb1e95d36c4f5cab7258a4bd76228cdf49[m
+Merge: 033db30 6045ee9
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:12:07 2025 +0000
+
+    Merge branch 'hotfix/1.2.1'
+
+[33mcommit 8d354f9dc858ebcb727158863040413dc42712df[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:11:42 2025 +0000
+
+    hotfix(1.2.1): Fix HomeAssistant Configuration
+
+[33mcommit 6045ee9a9a387132d69be277937d0b69bf22c858[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:11:42 2025 +0000
+
+    hotfix(1.2.1): Fix HomeAssistant Configuration
+
+[33mcommit 9fa3e92b582c8b0c72d7d9779fc94055fac83b01[m
+Merge: 6f09af3 c9081c3
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:04:03 2025 +0000
+
+    Remove .env fron tracking
+
+[33mcommit 033db301910e35e1923d4ff8e41ef21d6e471761[m
+Merge: fcb0a75 efc4e54
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 19 14:04:03 2025 +0000
+
+    Remove .env fron tracking
+
+[33mcommit e59d1ae3dfdc59b083d29b6c3a1205c66be4f850[m
+Merge: 7b73c9c 6f09af3
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:48:20 2025 +0000
+
+    Merge tag '1.2.0' into develop
+    
+    Deploiement de 1.2.0
+
+[33mcommit 3dda9ebcdc01c352731ea8cd4c994fa4358127dd[m
+Merge: abf36a0 fcb0a75
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:48:20 2025 +0000
+
+    Merge tag '1.2.0' into develop
+    
+    Deploiement de 1.2.0
+
+[33mcommit 6f09af3fa3b0ca1e319c1a8399047eb5a94314e5[m
+Merge: 04f2138 a726700
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:47:27 2025 +0000
+
+    clear
+
+[33mcommit fcb0a75e4c84ffdca122ea34c86398c75070fcbb[m
+Merge: 932d8cd 1b55848
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:47:27 2025 +0000
+
+    clear
+
+[33mcommit a726700146b911af9d7ebd9a085ca386fad08bc4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:45:04 2025 +0000
+
+    chore(Release) Fin de preparation au deploiement
+
+[33mcommit 1b5584871ee1e5bf6e86b0c9e69b28dd563d82b1[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:45:04 2025 +0000
+
+    chore(Release) Fin de preparation au deploiement
+
+[33mcommit bf14c2fe0eb1602b5d22e0701cb76b4ee4506744[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:31:09 2025 +0000
+
+    chore(.env): update variable
+
+[33mcommit c7ae669a29d5bb721d12cc413abc439a4ff74030[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:31:09 2025 +0000
+
+    chore(.env): update variable
+
+[33mcommit 40789d8ddd31819d1ce1362b304cafe6600cc6ff[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:08:57 2025 +0000
+
+    chore(release): préparation v1.2.0 pour Prod
+
+[33mcommit 89e391848c4481b29547a09862b1f98c946914c4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:08:57 2025 +0000
+
+    chore(release): préparation v1.2.0 pour Prod
+
+[33mcommit 7b73c9c2c0bb73888e83d4f96feb17571eebf7cc[m
+Merge: c7fcec9 ca21497
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:06:22 2025 +0000
+
+    Merge branch 'feature/update-docker-env' into develop
+
+[33mcommit abf36a024e8ede87e36bfcc3e0136ac79a9dbb3f[m
+Merge: 7d68ab3 fb62b38
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:06:22 2025 +0000
+
+    Merge branch 'feature/update-docker-env' into develop
+
+[33mcommit ca21497b6ee239494ca1c189401648beacf0305f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:06:01 2025 +0000
+
+    deplacement des service en cours de dev
+
+[33mcommit fb62b38b1d68842b4ffff547236b5ee0ed3e602b[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:06:01 2025 +0000
+
+    deplacement des service en cours de dev
+
+[33mcommit c7c854e6e927647fce83d9a36b32c4d6cfe6b174[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:04:48 2025 +0000
+
+    chore(llama.docker-compose): update
+
+[33mcommit 545d2f3db301ebbc525f2079e501f9fc79520b62[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:04:48 2025 +0000
+
+    chore(llama.docker-compose): update
+
+[33mcommit f6f9712c8216da3e67638cca04343a25a9ea551b[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:03:54 2025 +0000
+
+    chore(llama.docker-compose): update
+
+[33mcommit 7281aed87f8f23bfe1bfd1327bd1f65696735059[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:03:54 2025 +0000
+
+    chore(llama.docker-compose): update
+
+[33mcommit db6b190fe69d40a2d6fcab2b02baab4e94b4a72e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:01:33 2025 +0000
+
+    chore(dashboard.docker-compose): update
+
+[33mcommit 90b2702d8155aea7bc89904a42d79e4e5ee03462[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 23:01:33 2025 +0000
+
+    chore(dashboard.docker-compose): update
+
+[33mcommit 9964ce078c55cc1804e9427c32cca1c0a6e6cfb2[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:55:00 2025 +0000
+
+    chore(homeassistant.docker-compose): update
+
+[33mcommit d1c187f2276d07f884b37a6bd5232e9805d5cc3c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:55:00 2025 +0000
+
+    chore(homeassistant.docker-compose): update
+
+[33mcommit bc86491ce4f4c4351fa2530aa5622051fd57186c[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:48:36 2025 +0000
+
+    chore(portainer.docker-compose): update
+
+[33mcommit 3909e40423f2ac83934cfccd1917bb9d05ab3a9e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:48:36 2025 +0000
+
+    chore(portainer.docker-compose): update
+
+[33mcommit 305cd40e2a2d368cc27345bc412902bfc031efe7[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:33:47 2025 +0000
+
+    chore(.gitignore): mise a jour.
+
+[33mcommit c5c4d26d522f163fa782bcf46c547bd0478116db[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:33:47 2025 +0000
+
+    chore(.gitignore): mise a jour.
+
+[33mcommit 2ac82d2973415658d08559b60a59d7465004efc0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:33:00 2025 +0000
+
+    chore(env): mise a jour des variable
+
+[33mcommit cc524ff12dc9d262f21baa3cb546fdb63031bfaa[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 22:33:00 2025 +0000
+
+    chore(env): mise a jour des variable
+
+[33mcommit c9081c33e5b713e02011be44322c20e7a3a72ae3[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 19:11:59 2025 +0000
+
+    create Environnement Prod
+
+[33mcommit efc4e544863c8209cd5b5fcff22bee509f4a3f71[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Thu Dec 18 19:11:59 2025 +0000
+
+    create Environnement Prod
+
+[33mcommit c7fcec92414a335681fcedb45be6b37c1a163f2e[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Dec 17 23:02:55 2025 +0000
+
+    ajout de variable #GENERAL dans .env
+
+[33mcommit 7d68ab30bb1dceefd32ca71bf5c175a55b6dc9ec[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Dec 17 23:02:55 2025 +0000
+
+    ajout de variable #GENERAL dans .env
+
+[33mcommit 5e08a52981e1d7535f45f21e5ee5614e49650a4d[m
+Merge: 1fd07f8 c350db1
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Dec 17 22:56:21 2025 +0000
+
+    feat: fin de Neron-init
+
+[33mcommit 41d511ae618a44feae917368288d468f6e12713c[m
+Merge: a8f96cb 74de30c
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Dec 17 22:56:21 2025 +0000
+
+    feat: fin de Neron-init
+
+[33mcommit 04f2138aaad26f3f19ded32786ef3170a6f13d27[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Dec 17 21:51:49 2025 +0000
+
+    Remise en fonctionnement de plusieurs serices. (Portainer, HA, Dashboard, Monitoring, llama)
+
+[33mcommit 932d8cda12ad481a944c926acc27ef3fe2e779b2[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Wed Dec 17 21:51:49 2025 +0000
+
+    Remise en fonctionnement de plusieurs serices. (Portainer, HA, Dashboard, Monitoring, llama)
+
+[33mcommit c350db1794e811a007aa1ebe19289e7d4bdc8837[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Dec 16 20:57:42 2025 +0100
+
+    git: reset
+
+[33mcommit 74de30c599a1a2f1e9b31ad123368b659a03fd9f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Tue Dec 16 20:57:42 2025 +0100
+
+    git: reset
+
+[33mcommit 1fd07f85878ef798f3346268fefd00593d06dc30[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Dec 16 14:32:55 2025 +0100
+
+    Create tests
+
+[33mcommit a8f96cbdc1c9bec684adec0d556c7daf25a2b450[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Tue Dec 16 14:32:55 2025 +0100
+
+    Create tests
+
+[33mcommit 87b5b5a31c761847f61c6b6e77b50b8aeea106f4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 22:13:48 2025 +0100
+
+    debug by Copilot Github
+
+[33mcommit e948988b2c490106d70871dddc6934fd67fe2a56[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 22:13:48 2025 +0100
+
+    debug by Copilot Github
+
+[33mcommit 97127dc302fed4551ae649e2b48c2ea61a027a84[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 21:37:14 2025 +0100
+
+    Update llm_core.py
+
+[33mcommit af222bf198997931ae2a4c4fdad62eb8306ac259[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 21:37:14 2025 +0100
+
+    Update llm_core.py
+
+[33mcommit af4e25cc9a2aa1f4f336cee72008378e609eecf0[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 21:36:14 2025 +0100
+
+    feat(neron_llm):Initial local LLM avec Ollama
+
+[33mcommit bbe85ce2e1ad5171bc13f10de49459d56cacc8a1[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 21:36:14 2025 +0100
+
+    feat(neron_llm):Initial local LLM avec Ollama
+
+[33mcommit 3ebc95a0d61d461b43f635b8620fedb56467eca5[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 19:06:51 2025 +0100
+
+    chore(neron_core): add state.py avec Constante.
+
+[33mcommit d2f311482f9a43124caeb376ea59e3e0b32f0b5d[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 19:06:51 2025 +0100
+
+    chore(neron_core): add state.py avec Constante.
+
+[33mcommit 83a8b4fc2712c178f8b9686fc623b00b611ad7ca[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 18:59:03 2025 +0100
+
+    Update state.py
+
+[33mcommit 18728ea9232ed309fbcac7cb4cdb5b7a2b349784[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 18:59:03 2025 +0100
+
+    Update state.py
+
+[33mcommit f2c6947a50141ef7b5f2a4dfc3a995e8d71f93a4[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 16:59:07 2025 +0100
+
+    feat(neron_core): final version stable, test fonctionnel.
+
+[33mcommit 215344353fa618719faa1d7d03c1e298e42749d2[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Mon Dec 15 16:59:07 2025 +0100
+
+    feat(neron_core): final version stable, test fonctionnel.
+
+[33mcommit 251db45771981225647c554cce8b6bea628ddd2c[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 10:46:23 2025 +0100
+
+    suppresion de neron-core & neron-llm
+
+[33mcommit 5f6fa29a07e22c5734b60060087a7fd6688bb760[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 10:46:23 2025 +0100
+
+    suppresion de neron-core & neron-llm
+
+[33mcommit 1b52c87c84c78634465b75a9e77c2d9bf156cd74[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 10:42:35 2025 +0100
+
+    Delete test.sh
+
+[33mcommit 96ebb18118c1cce72cb2767fe8a679a3f9058fdd[m
+Author: enabeteleazar <161418955+enabeteleazar@users.noreply.github.com>
+Date:   Mon Dec 15 10:42:35 2025 +0100
+
+    Delete test.sh
+
+[33mcommit ca3d51cd42c967b3919311d73a239ae886f3144a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 14 17:49:19 2025 +0100
+
+    chore: Finalisation de Néron Core pour la phase actuelle.
+    - main;py fonctionnel avec endpoints /, /health, /status, /chat.
+    - Integration complete de NeronMessage & Orchestrator
+    - Class MesssageRequest utilisée pour l reception de message JSON
+    - Scripts test.sh ajouter pour tester facilement Néron Core
+    - Module Stable, pret pour la prochaine etape (neron-llm & neron-io)
+
+[33mcommit cde22fd8100f1e764e1c705ddd49f5dfd8a7ff6f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 14 17:24:13 2025 +0100
+
+    test: Ajout du script test.sh pour tester neron Core.
+
+[33mcommit 0c5c1f81c6a87291c2a9e0045ffbded8dfc1f90f[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 14 17:12:29 2025 +0100
+
+    fix:Correction de la route /chat et du MessageRequest
+
+[33mcommit c3293eabdf4b37ad2d3574fd08613a8b79fb9cc3[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 14 16:50:01 2025 +0100
+
+    feat: Ajout du module neron_core
+    - creation de main.py - API fastAPI
+    - Orchestrator.py -gestion des NeronMessage
+    - Endpoint /chat: pret a recevoir des messages JSON
+
+[33mcommit 3bfa7dc2d359637fb9d316ff57a82fb3927c73fd[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 14 16:45:37 2025 +0100
+
+    feat: ajout du modèe NeronMessage pour la communication interne.
+
+[33mcommit 0ad379e035da68b94a10b04f3e21f8f9b8814056[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sun Dec 14 14:55:13 2025 +0100
+
+    refactor: Reorganisation des dossiers
+
+[33mcommit cc52549fe340cbc5690aa7e9330890db9d5dd941[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Sat Dec 13 20:27:54 2025 +0100
+
+    Rearangement Arborescence
+
+[33mcommit 71c569bd93396e19cd4f32fd502c42ebc8c59d1a[m
+Author: enabeteleazar <nabet.eleazar@gmail.com>
+Date:   Fri Dec 12 16:15:54 2025 +0100
+
+    Initial commit

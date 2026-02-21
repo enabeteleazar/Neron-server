@@ -1,21 +1,35 @@
 # modules/neron_llm/Dockerfile
 
-FROM python:3.11-slim
+# Builder stage
+FROM python:3.11-slim AS builder
 
 LABEL maintainer="Néron AI Team"
 LABEL description="Service wrapper HTTP pour Ollama - Néron AI Assistant"
 LABEL version="1.0.0"
 
-WORKDIR /app
+WORKDIR /install
 
-# Installation des outils système nécessaires
-RUN apt-get update && apt-get install -y \
+# Installer pip et dépendances système nécessaires pour builder
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copier et installer les dépendances Python
+# Copier et installer les dépendances Python dans /install
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
+
+# Stage final
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Installer outils système minimum pour runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copier les packages Python installés depuis le builder
+COPY --from=builder /install /usr/local
 
 # Copier le code de l'application
 COPY config.py .
@@ -24,7 +38,7 @@ COPY ollama_client.py .
 COPY app.py .
 COPY __init__.py .
 
-# Variables d'environnement par défaut
+# Variables d'environnement
 ENV PYTHONUNBUFFERED=1 \
     ENV=production \
     LOG_LEVEL=INFO \
