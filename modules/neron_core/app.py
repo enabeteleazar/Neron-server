@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
 from agents.stt_agent import STTAgent
+from agents.tts_agent import TTSAgent
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
@@ -132,24 +133,26 @@ metrics = Metrics()
 llm_agent: LLMAgent = None
 web_agent: WebAgent = None
 stt_agent: STTAgent = None
+tts_agent: TTSAgent = None
 router: IntentRouter = None
 time_provider: TimeProvider = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_agent, web_agent, stt_agent, router, time_provider, _startup_time
+    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
     llm_agent = LLMAgent()
     web_agent = WebAgent()
     stt_agent = STTAgent()
+    tts_agent = TTSAgent()
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
     logger.info(json.dumps({
         "event": "agents_ready",
-        "agents": ["llm_agent", "web_agent", "stt_agent", "time_provider"]
+        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider"]
     }))
     yield
     logger.info(json.dumps({"event": "shutdown"}))
@@ -186,7 +189,7 @@ def root():
         "service": "Neron Core",
         "version": VERSION,
         "status": "active",
-        "agents": ["llm_agent", "web_agent", "stt_agent", "time_provider"],
+        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider"],
         "next": "ha_agent (v1.4.x)"
     }
 
@@ -419,3 +422,90 @@ async def _store_memory(query: str, response: str, metadata: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+@app.post("/input/voice")
+async def voice_input(file: UploadFile = File(...)):
+    """
+    Pipeline vocal complet : audio -> STT -> LLM -> TTS -> audio
+    """
+    from fastapi.responses import Response as FastAPIResponse
+
+    start = time.monotonic()
+    metrics.record_request_start()
+
+    logger.info(json.dumps({
+        "event": "voice_request_received",
+        "filename": file.filename
+    }))
+
+    try:
+        # STT
+        audio_bytes = await file.read()
+        stt_result = await stt_agent.transcribe(audio_bytes, file.filename)
+
+        if not stt_result.success:
+            metrics.record_error("stt_agent")
+            raise HTTPException(503, f"STT indisponible : {stt_result.error}")
+
+        if stt_result.latency_ms:
+            metrics.record_latency("stt_agent", stt_result.latency_ms)
+
+        transcription = stt_result.content
+        if not transcription:
+            raise HTTPException(400, "Transcription vide")
+
+        logger.info(json.dumps({
+            "event": "voice_transcribed",
+            "text": transcription[:80]
+        }))
+
+        # Pipeline texte
+        input_data = TextInput(text=transcription)
+        core_response = await text_input(input_data)
+
+        # TTS
+        tts_result = await tts_agent.synthesize(core_response.response)
+
+        if not tts_result.success:
+            metrics.record_error("tts_agent")
+            logger.warning(json.dumps({
+                "event": "tts_failed",
+                "error": tts_result.error,
+                "fallback": "json"
+            }))
+            # Fallback JSON si TTS echoue
+            return core_response
+
+        if tts_result.latency_ms:
+            metrics.record_latency("tts_agent", tts_result.latency_ms)
+
+        execution_time_ms = round((time.monotonic() - start) * 1000, 2)
+        logger.info(json.dumps({
+            "event": "voice_pipeline_complete",
+            "execution_time_ms": execution_time_ms,
+            "stt_ms": stt_result.latency_ms,
+            "tts_ms": tts_result.latency_ms
+        }))
+
+        return FastAPIResponse(
+            content=tts_result.metadata["audio_bytes"],
+            media_type="audio/wav",
+            headers={
+                "X-Transcription": transcription[:200],
+                "X-Response-Text": core_response.response[:200],
+                "X-Intent": core_response.intent,
+                "X-Execution-Time-Ms": str(execution_time_ms),
+                "X-STT-Latency-Ms": str(stt_result.latency_ms),
+                "X-TTS-Latency-Ms": str(tts_result.latency_ms)
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(json.dumps({"event": "voice_error", "error": str(e)}))
+        raise HTTPException(500, f"Erreur pipeline vocal : {str(e)}")
+    finally:
+        elapsed = round((time.monotonic() - start) * 1000, 2)
+        metrics.record_request_end(elapsed)
