@@ -68,6 +68,26 @@ services:
       retries: 3
       start_period: 40s
 
+  neron_stt:
+    build: ./modules/neron_stt
+    env_file:
+      - /opt/Neron_AI/.env
+    container_name: neron_stt
+    expose:
+      - "8001"
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - neron_internal
+
   neron_searxng:
     image: searxng/searxng:latest
     container_name: neron_searxng
