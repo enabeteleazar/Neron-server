@@ -1,5 +1,5 @@
 # modules/neron_stt/app.py
-# Neron STT v1.0.0 - Service de transcription audio via Whisper
+# Neron STT v1.1.0 - faster-whisper (int8, CPU-optimise)
 
 import logging
 import os
@@ -8,7 +8,7 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-import whisper
+from faster_whisper import WhisperModel
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
@@ -19,14 +19,16 @@ logging.basicConfig(
 )
 logger = logging.getLogger("neron_stt")
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
-WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", None)  # None = detection auto
+WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", None)
 WHISPER_DOWNLOAD_ROOT = os.getenv("WHISPER_DOWNLOAD_ROOT", "/app/models")
+AUDIO_MAX_SIZE_MB = float(os.getenv("AUDIO_MAX_SIZE_MB", "10"))
+AUDIO_MAX_SIZE_BYTES = int(AUDIO_MAX_SIZE_MB * 1024 * 1024)
 SUPPORTED_FORMATS = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm"}
 
 _startup_time: float = 0.0
-_whisper_model = None
+_whisper_model: WhisperModel = None
 
 
 class Metrics:
@@ -48,30 +50,24 @@ class Metrics:
     def export(self) -> str:
         lines = []
         uptime = round(time.monotonic() - _startup_time, 2)
-
         lines += [
             "# HELP neron_stt_uptime_seconds Duree depuis le demarrage",
             "# TYPE neron_stt_uptime_seconds gauge",
             f"neron_stt_uptime_seconds {uptime}",
-        ]
-        lines += [
             "# HELP neron_stt_transcriptions_total Nombre total de transcriptions",
             "# TYPE neron_stt_transcriptions_total counter",
             f"neron_stt_transcriptions_total {self._transcriptions_total}",
-        ]
-        lines += [
-            "# HELP neron_stt_errors_total Nombre d erreurs de transcription",
+            "# HELP neron_stt_errors_total Erreurs de transcription",
             "# TYPE neron_stt_errors_total counter",
             f"neron_stt_errors_total {self._transcriptions_errors}",
         ]
         if self._latencies:
             avg = round(sum(self._latencies) / len(self._latencies), 2)
             lines += [
-                "# HELP neron_stt_latency_avg_ms Latence moyenne de transcription (ms)",
+                "# HELP neron_stt_latency_avg_ms Latence moyenne (ms)",
                 "# TYPE neron_stt_latency_avg_ms gauge",
                 f"neron_stt_latency_avg_ms {avg}",
             ]
-
         return "\n".join(lines) + "\n"
 
 
@@ -81,22 +77,43 @@ metrics = Metrics()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _whisper_model, _startup_time
-
     _startup_time = time.monotonic()
-    logger.info(f"Chargement du modele Whisper '{WHISPER_MODEL_NAME}'...")
-    _whisper_model = whisper.load_model(
+
+    logger.info(f"Chargement faster-whisper '{WHISPER_MODEL_NAME}' (int8, cpu)...")
+    _whisper_model = WhisperModel(
         WHISPER_MODEL_NAME,
+        device="cpu",
+        compute_type="int8",
         download_root=WHISPER_DOWNLOAD_ROOT
     )
-    lang_info = WHISPER_LANGUAGE if WHISPER_LANGUAGE else "detection auto"
-    logger.info(f"Modele Whisper '{WHISPER_MODEL_NAME}' charge. Langue : {lang_info}")
+
+    # Warmup : transcription courte pour precharger en memoire
+    logger.info("Warmup faster-whisper...")
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        import wave, struct
+        tmp_path = tmp.name
+        with wave.open(tmp_path, 'w') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(16000)
+            wf.writeframes(struct.pack('<' + 'h' * 1600, *([0] * 1600)))
+    try:
+        list(_whisper_model.transcribe(tmp_path, language="fr"))
+    except Exception:
+        pass
+    finally:
+        os.remove(tmp_path)
+
+    lang_info = WHISPER_LANGUAGE if WHISPER_LANGUAGE else "auto"
+    startup_ms = round((time.monotonic() - _startup_time) * 1000, 0)
+    logger.info(f"faster-whisper pret en {startup_ms}ms | langue: {lang_info}")
     yield
     logger.info("Arret neron_stt")
 
 
 app = FastAPI(
     title="Neron STT",
-    description="Service de transcription audio - Whisper",
+    description="Service transcription audio - faster-whisper int8",
     version=VERSION,
     lifespan=lifespan
 )
@@ -115,14 +132,12 @@ def root():
     return {
         "service": "Neron STT",
         "version": VERSION,
+        "backend": "faster-whisper",
+        "compute_type": "int8",
         "model": WHISPER_MODEL_NAME,
         "language": WHISPER_LANGUAGE or "auto",
+        "max_size_mb": AUDIO_MAX_SIZE_MB,
         "supported_formats": list(SUPPORTED_FORMATS),
-        "endpoints": {
-            "transcribe": "POST /transcribe",
-            "health": "GET /health",
-            "metrics": "GET /metrics"
-        }
     }
 
 
@@ -132,6 +147,7 @@ def health():
         "status": "healthy" if _whisper_model is not None else "loading",
         "version": VERSION,
         "model": WHISPER_MODEL_NAME,
+        "backend": "faster-whisper",
         "language": WHISPER_LANGUAGE or "auto"
     }
 
@@ -143,25 +159,30 @@ def prometheus_metrics():
 
 @app.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe(file: UploadFile = File(...)):
+    # Validation format
     ext = ""
     if file.filename:
         ext = "." + file.filename.rsplit(".", 1)[-1].lower()
-
     if ext not in SUPPORTED_FORMATS:
         metrics.record_error()
-        raise HTTPException(
-            status_code=400,
-            detail=f"Format non supporte : '{ext}'. Formats acceptes : {SUPPORTED_FORMATS}"
-        )
+        raise HTTPException(400, f"Format non supporte : '{ext}'")
 
     if _whisper_model is None:
         metrics.record_error()
-        raise HTTPException(503, "Modele Whisper non charge")
+        raise HTTPException(503, "Modele non charge")
+
+    # Lecture et validation taille
+    content = await file.read()
+    if len(content) > AUDIO_MAX_SIZE_BYTES:
+        metrics.record_error()
+        raise HTTPException(
+            413,
+            f"Fichier trop volumineux : {len(content)//1024//1024}MB > {AUDIO_MAX_SIZE_MB}MB max"
+        )
 
     tmp_path = None
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-            content = await file.read()
             tmp.write(content)
             tmp_path = tmp.name
 
@@ -169,18 +190,18 @@ async def transcribe(file: UploadFile = File(...)):
 
         start = time.monotonic()
 
-        # Options de transcription
-        transcribe_options = {}
+        # Options faster-whisper
+        transcribe_kwargs = {"beam_size": 5}
         if WHISPER_LANGUAGE:
-            transcribe_options["language"] = WHISPER_LANGUAGE
+            transcribe_kwargs["language"] = WHISPER_LANGUAGE
 
-        result = _whisper_model.transcribe(tmp_path, **transcribe_options)
+        segments, info = _whisper_model.transcribe(tmp_path, **transcribe_kwargs)
+        text = " ".join(seg.text.strip() for seg in segments).strip()
+        language = info.language
+
         latency_ms = round((time.monotonic() - start) * 1000, 2)
-
-        text = result.get("text", "").strip()
-        language = result.get("language", "unknown")
-
         metrics.record_success(latency_ms)
+
         logger.info(
             f"Transcription OK : {latency_ms}ms | "
             f"langue: {language} | texte: {text[:80]}"
