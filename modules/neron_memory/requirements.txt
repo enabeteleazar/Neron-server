@@ -1,4 +1,11 @@
-fastapi
-uvicorn[standard]
-sqlite-utils
-pydantic
+# modules/neron_memory/requirements.txt
+
+# Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+
+# Base de données
+sqlite-utils==3.40.0
+
+# Validation
+pydantic==2.5.3
