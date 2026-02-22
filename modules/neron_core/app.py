@@ -1,5 +1,5 @@
 # modules/neron_core/app.py
-# Neron Core v1.4.0 - Observabilite enrichie
+# Neron Core v1.4.0 - Observabilite enrichie + STT
 
 import json
 import logging
@@ -9,11 +9,13 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
+from agents.stt_agent import STTAgent
+from agents.tts_agent import TTSAgent
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
@@ -37,6 +39,7 @@ class Metrics:
         self._requests_total: int = 0
         self._requests_in_flight: int = 0
         self._execution_times: list = []
+        self._model_calls: dict = {}
 
     def record_request_start(self):
         self._requests_total += 1
@@ -59,10 +62,13 @@ class Metrics:
         if len(self._latencies[agent]) > 1000:
             self._latencies[agent] = self._latencies[agent][-1000:]
 
+    def record_model_call(self, model: str):
+        if model:
+            self._model_calls[model] = self._model_calls.get(model, 0) + 1
+
     def export(self) -> str:
         lines = []
 
-        # Uptime
         uptime = round(time.monotonic() - _startup_time, 2)
         lines += [
             "# HELP neron_uptime_seconds Duree depuis le demarrage du service",
@@ -70,21 +76,18 @@ class Metrics:
             f"neron_uptime_seconds {uptime}",
         ]
 
-        # Requetes totales
         lines += [
             "# HELP neron_requests_total Nombre total de requetes recues",
             "# TYPE neron_requests_total counter",
             f"neron_requests_total {self._requests_total}",
         ]
 
-        # Requetes en cours
         lines += [
             "# HELP neron_requests_in_flight Requetes en cours de traitement",
             "# TYPE neron_requests_in_flight gauge",
             f"neron_requests_in_flight {self._requests_in_flight}",
         ]
 
-        # Temps d execution global moyen
         if self._execution_times:
             avg_exec = round(sum(self._execution_times) / len(self._execution_times), 2)
             lines += [
@@ -93,7 +96,6 @@ class Metrics:
                 f"neron_execution_time_avg_ms {avg_exec}",
             ]
 
-        # Intents
         lines += [
             "# HELP neron_intent_total Nombre de requetes par intent",
             "# TYPE neron_intent_total counter",
@@ -101,7 +103,6 @@ class Metrics:
         for intent, count in self._intent_counts.items():
             lines.append(f'neron_intent_total{{intent="{intent}"}} {count}')
 
-        # Erreurs par agent
         lines += [
             "# HELP neron_agent_errors_total Erreurs par agent",
             "# TYPE neron_agent_errors_total counter",
@@ -109,7 +110,6 @@ class Metrics:
         for agent, count in self._agent_errors.items():
             lines.append(f'neron_agent_errors_total{{agent="{agent}"}} {count}')
 
-        # Latence moyenne par agent
         lines += [
             "# HELP neron_agent_latency_avg_ms Latence moyenne par agent (ms)",
             "# TYPE neron_agent_latency_avg_ms gauge",
@@ -118,6 +118,13 @@ class Metrics:
             avg = round(sum(values) / len(values), 2)
             lines.append(f'neron_agent_latency_avg_ms{{agent="{agent}"}} {avg}')
 
+        lines += [
+            "# HELP neron_llm_calls_by_model Nombre d appels LLM par modele",
+            "# TYPE neron_llm_calls_by_model counter",
+        ]
+        for model, count in self._model_calls.items():
+            lines.append(f'neron_llm_calls_by_model{{model="{model}"}} {count}')
+
         return "\n".join(lines) + "\n"
 
 
@@ -125,23 +132,27 @@ metrics = Metrics()
 
 llm_agent: LLMAgent = None
 web_agent: WebAgent = None
+stt_agent: STTAgent = None
+tts_agent: TTSAgent = None
 router: IntentRouter = None
 time_provider: TimeProvider = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_agent, web_agent, router, time_provider, _startup_time
+    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
     llm_agent = LLMAgent()
     web_agent = WebAgent()
+    stt_agent = STTAgent()
+    tts_agent = TTSAgent()
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
     logger.info(json.dumps({
         "event": "agents_ready",
-        "agents": ["llm_agent", "web_agent", "time_provider"]
+        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider"]
     }))
     yield
     logger.info(json.dumps({"event": "shutdown"}))
@@ -178,7 +189,7 @@ def root():
         "service": "Neron Core",
         "version": VERSION,
         "status": "active",
-        "agents": ["llm_agent", "web_agent", "time_provider"],
+        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider"],
         "next": "ha_agent (v1.4.x)"
     }
 
@@ -241,6 +252,59 @@ async def text_input(input_data: TextInput):
     return core_response
 
 
+@app.post("/input/audio", response_model=CoreResponse)
+async def audio_input(file: UploadFile = File(...)):
+    start = time.monotonic()
+    metrics.record_request_start()
+
+    logger.info(json.dumps({
+        "event": "audio_request_received",
+        "filename": file.filename
+    }))
+
+    try:
+        audio_bytes = await file.read()
+        result = await stt_agent.transcribe(audio_bytes, file.filename)
+
+        if not result.success:
+            metrics.record_error("stt_agent")
+            raise HTTPException(503, f"STT indisponible : {result.error}")
+
+        if result.latency_ms:
+            metrics.record_latency("stt_agent", result.latency_ms)
+
+        transcription = result.content
+        logger.info(json.dumps({
+            "event": "audio_transcribed",
+            "text": transcription[:80],
+            "language": result.metadata.get("language"),
+            "latency_ms": result.latency_ms
+        }))
+
+        # Pipeline texte normal avec la transcription
+        input_data = TextInput(text=transcription)
+        core_response = await text_input(input_data)
+
+        # Enrichir avec les infos STT
+        core_response.transcription = transcription
+        core_response.metadata["stt"] = {
+            "language": result.metadata.get("language"),
+            "stt_model": result.metadata.get("stt_model"),
+            "stt_latency_ms": result.latency_ms
+        }
+
+        return core_response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(json.dumps({"event": "audio_error", "error": str(e)}))
+        raise HTTPException(500, f"Erreur pipeline audio : {str(e)}")
+    finally:
+        elapsed = round((time.monotonic() - start) * 1000, 2)
+        metrics.record_request_end(elapsed)
+
+
 def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreResponse:
     response = "Il est " + time_provider.human() + "."
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
@@ -273,6 +337,9 @@ async def _handle_conversation(
     if result.latency_ms:
         metrics.record_latency("llm_agent", result.latency_ms)
 
+    model = result.metadata.get("model")
+    metrics.record_model_call(model)
+
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
     await _store_memory(query, result.content, metadata)
 
@@ -283,7 +350,7 @@ async def _handle_conversation(
         confidence=metadata.get("confidence", "low"),
         timestamp=utc_now_iso(),
         execution_time_ms=execution_time_ms,
-        model=result.metadata.get("model"),
+        model=model,
         error=None,
         metadata={**metadata, **result.metadata}
     )
@@ -318,6 +385,7 @@ async def _handle_web_search(
     else:
         response_text = llm_result.content
         model = llm_result.metadata.get("model")
+        metrics.record_model_call(model)
         if llm_result.latency_ms:
             metrics.record_latency("llm_agent", llm_result.latency_ms)
 
@@ -354,3 +422,90 @@ async def _store_memory(query: str, response: str, metadata: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+@app.post("/input/voice")
+async def voice_input(file: UploadFile = File(...)):
+    """
+    Pipeline vocal complet : audio -> STT -> LLM -> TTS -> audio
+    """
+    from fastapi.responses import Response as FastAPIResponse
+
+    start = time.monotonic()
+    metrics.record_request_start()
+
+    logger.info(json.dumps({
+        "event": "voice_request_received",
+        "filename": file.filename
+    }))
+
+    try:
+        # STT
+        audio_bytes = await file.read()
+        stt_result = await stt_agent.transcribe(audio_bytes, file.filename)
+
+        if not stt_result.success:
+            metrics.record_error("stt_agent")
+            raise HTTPException(503, f"STT indisponible : {stt_result.error}")
+
+        if stt_result.latency_ms:
+            metrics.record_latency("stt_agent", stt_result.latency_ms)
+
+        transcription = stt_result.content
+        if not transcription:
+            raise HTTPException(400, "Transcription vide")
+
+        logger.info(json.dumps({
+            "event": "voice_transcribed",
+            "text": transcription[:80]
+        }))
+
+        # Pipeline texte
+        input_data = TextInput(text=transcription)
+        core_response = await text_input(input_data)
+
+        # TTS
+        tts_result = await tts_agent.synthesize(core_response.response)
+
+        if not tts_result.success:
+            metrics.record_error("tts_agent")
+            logger.warning(json.dumps({
+                "event": "tts_failed",
+                "error": tts_result.error,
+                "fallback": "json"
+            }))
+            # Fallback JSON si TTS echoue
+            return core_response
+
+        if tts_result.latency_ms:
+            metrics.record_latency("tts_agent", tts_result.latency_ms)
+
+        execution_time_ms = round((time.monotonic() - start) * 1000, 2)
+        logger.info(json.dumps({
+            "event": "voice_pipeline_complete",
+            "execution_time_ms": execution_time_ms,
+            "stt_ms": stt_result.latency_ms,
+            "tts_ms": tts_result.latency_ms
+        }))
+
+        return FastAPIResponse(
+            content=tts_result.metadata["audio_bytes"],
+            media_type="audio/wav",
+            headers={
+                "X-Transcription": transcription[:200],
+                "X-Response-Text": core_response.response[:200],
+                "X-Intent": core_response.intent,
+                "X-Execution-Time-Ms": str(execution_time_ms),
+                "X-STT-Latency-Ms": str(stt_result.latency_ms),
+                "X-TTS-Latency-Ms": str(tts_result.latency_ms)
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(json.dumps({"event": "voice_error", "error": str(e)}))
+        raise HTTPException(500, f"Erreur pipeline vocal : {str(e)}")
+    finally:
+        elapsed = round((time.monotonic() - start) * 1000, 2)
+        metrics.record_request_end(elapsed)

@@ -35,6 +35,30 @@ POST /input/voice
 → neron_stt (faster-whisper) → transcription
 → intent router → LLM / time / web
 → neron_tts (pyttsx3) → audio WAV
+=======
+- `engine.py` : adapter pattern TTSEngine / Pyttsx3Engine (extensible vers Coqui, edge-tts)
+- `tts_agent.py` : client HTTP vers neron_tts:8003
+- Endpoint `POST /input/voice` : pipeline vocal complet audio → STT → LLM → TTS → audio WAV
+- Headers de réponse : `X-Transcription`, `X-Response-Text`, `X-Intent`, `X-STT-Latency-Ms`, `X-TTS-Latency-Ms`
+- 9 tests tts_agent
+
+### Architecture pipeline vocal
+```
+POST /input/voice
+  → neron_stt (faster-whisper int8) → transcription
+  → intent router → LLM / time_provider / web
+  → neron_tts (pyttsx3) → audio WAV
+```
+
+### Corrections
+- `global tts_agent` manquant dans lifespan neron_core
+- Guillemets typographiques → droits dans start_neron.sh
+
+### Documentation
+- README.md mis à jour : architecture complète, services, API, performances
+- QUICKSTART.md mis à jour : exemples /input/audio et /input/voice
+- CHANGELOG.md complet v1.0.0 → v1.6.0
+- start_neron.sh v1.6.0 : show_endpoints, git main
 
 ### Tests
 - 68 tests passent (59 → 68)
@@ -51,13 +75,22 @@ POST /input/voice
 - Métadonnées STT dans `metadata.stt` (language, stt_model, stt_latency_ms)
 - 11 tests stt_agent
 
+<<<<<<< HEAD
 ### Optimisations
+=======
+### Optimisations STT
+>>>>>>> release/v1.6.0
 - openai-whisper → faster-whisper 1.0.3 (int8, CPU)
 - STT latence : 24s → 7.8s (-68%)
 - `WHISPER_LANGUAGE=fr` forcé
 - Limite audio `AUDIO_MAX_SIZE_MB=10`
+<<<<<<< HEAD
 - Warmup au startup
 - Modèle Whisper embarqué dans l'image Docker (pas besoin internet au runtime)
+=======
+- Warmup au startup (transcription silence)
+- Modèle Whisper embarqué dans l'image Docker (pas d'internet au runtime)
+>>>>>>> release/v1.6.0
 
 ### Modèles LLM testés
 - `llama3.2:1b` : 38s, qualité insuffisante
