@@ -21,6 +21,54 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
+## [1.6.0] - 2026-02-22
+
+### Ajouts
+- Service `neron_tts` v1.0.0 : synthèse vocale via pyttsx3
+- `engine.py` : adapter pattern TTSEngine / Pyttsx3Engine (extensible)
+- `tts_agent.py` : client HTTP vers neron_tts:8003
+- Endpoint `POST /input/voice` : pipeline vocal complet audio → STT → LLM → TTS → audio WAV
+- 9 tests tts_agent
+
+### Architecture
+POST /input/voice
+→ neron_stt (faster-whisper) → transcription
+→ intent router → LLM / time / web
+→ neron_tts (pyttsx3) → audio WAV
+
+### Tests
+- 68 tests passent (59 → 68)
+
+---
+
+## [1.5.0] - 2026-02-21
+
+### Ajouts
+- Service `neron_stt` v1.1.0 : transcription audio via faster-whisper int8
+- `stt_agent.py` : client HTTP vers neron_stt:8001
+- Endpoint `POST /input/audio` : audio → STT → pipeline texte → CoreResponse
+- Champ `transcription` dans CoreResponse
+- Métadonnées STT dans `metadata.stt` (language, stt_model, stt_latency_ms)
+- 11 tests stt_agent
+
+### Optimisations
+- openai-whisper → faster-whisper 1.0.3 (int8, CPU)
+- STT latence : 24s → 7.8s (-68%)
+- `WHISPER_LANGUAGE=fr` forcé
+- Limite audio `AUDIO_MAX_SIZE_MB=10`
+- Warmup au startup
+- Modèle Whisper embarqué dans l'image Docker (pas besoin internet au runtime)
+
+### Modèles LLM testés
+- `llama3.2:1b` : 38s, qualité insuffisante
+- `orca-mini` : 62s, mélange fr/en
+- `llama3.2:3b` retenu : meilleure qualité français sur CPU-only
+
+### Tests
+- 59 tests passent (48 → 59)
+
+-----
+
 ## [1.4.1] - 2026-02-21
 
 ### Optimisation des containers Docker
