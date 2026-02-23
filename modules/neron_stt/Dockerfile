@@ -1,4 +1,4 @@
-modules/neron_stt/Dockerfile
+# modules/neron_stt/Dockerfile
 
 # Builder stage
 FROM python:3.11-slim AS builder
