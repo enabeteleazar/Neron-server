@@ -89,6 +89,7 @@ services:
     restart: unless-stopped
     networks:
       - neron_internal
+      - Neron_Network
 
   neron_searxng:
     image: searxng/searxng:latest
