@@ -76,7 +76,7 @@ services:
       - .env
     container_name: neron_stt
     expose:
-      - "8001"
+      - "${NERON_STT_HTTP:-8001}:8001"
     environment:
       - WHISPER_MODEL=${WHISPER_MODEL:-base}
       - LOG_LEVEL=INFO
