@@ -156,9 +156,30 @@ services:
     build: ./modules/neron_web
     container_name: neron_web
     ports:
-      - "7860:7860"
+      - "${NERON_WEB_HTTP:-7860}:7860"
     depends_on:
       - neron_core
+    networks:
+      - Neron_Network
+      - neron_internal
+    restart: unless-stopped
+
+  neron_web_voice:
+    build: ./modules/neron_web_voice
+    container_name: neron_web_voice
+    volumes:
+      - /mnt/usb-storage/Neron_AI/modules/neron_web_voice/cert.pem:/app/cert.pem:ro
+      - /mnt/usb-storage/Neron_AI/modules/neron_web_voice/key.pem:/app/key.pem:ro
+    ports:
+      - "${NERON_WEB_VOICE:-8080}:8080"
+    environment:
+      - NERON_CORE_URL=http://neron_core:8000
+      - NERON_STT_URL=http://neron_stt:8001
+    depends_on:
+      neron_core:
+        condition: service_healthy
+      neron_stt:
+        condition: service_healthy
     networks:
       - Neron_Network
       - neron_internal
