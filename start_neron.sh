@@ -105,3 +105,5 @@ slow_echo "${GREEN}✔ Nettoyage terminé${NC}"
 
 show_status
 show_endpoints
+y
+
