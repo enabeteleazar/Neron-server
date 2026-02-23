@@ -19,6 +19,56 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 	∙	Plugins extensibles
 	∙	Support TTS (Text-to-Speech)
 
+
+-----
+
+---
+
+## [1.7.0] - 2026-02-23
+
+### Ajouts
+- Service `neron_web_voice` v1.0.0 : interface vocale web (HTML/CSS/JS + Express)
+- Pipeline vocal complet cote client : microphone -> STT -> LLM -> TTS navigateur
+- Serveur Express avec support HTTPS via certificats montes en volume Docker
+- Proxy `/api/stt` : relay multipart -> `neron_stt:8001/transcribe`
+- Proxy `/api/core` : relay JSON -> `neron_core:8000/input/text`
+- Route `/api/config` : lecture et mise a jour des URLs des services
+- Route `/api/health` : statut du serveur
+- Interface dark violet animee : orbe, waveform 15 barres, 4 etats (idle / listening / processing / speaking)
+- TTS via Web Speech Synthesis API (voix fr-FR, deverrouillage contexte audio Safari iOS)
+- Compatible Safari iOS : ES5, format audio mp4, installation certificat profil
+- Configuration via `.env` : PORT, NERON_CORE_URL, NERON_STT_URL
+
+### Architecture
+
+Safari iOS / Navigateur
+| HTTPS :8080
+v
+neron_web_voice (Express)
+|               |
+| HTTP :8001    | HTTP :8000
+v               v
+neron_stt        neron_core
+(Whisper)        (LLM Ollama)
+
+
+### Docker
+- Dockerfile optimise : node:20-slim, npm ci --omit=dev, NODE_ENV=production
+- Reseaux : Neron_Network + neron_internal
+- Certificats HTTPS montes en volume (:ro)
+- Port expose : 8080
+
+### Corrections
+- Route STT corrigee : /speech -> /transcribe
+- Mixed content HTTPS->HTTP resolu via proxy Express
+- Probleme multipart resolu : express.json() retire de /api/stt
+- Exposition Docker neron_stt sur Neron_Network
+- Deverrouillage TTS Safari iOS au moment du tap utilisateur
+
+### Documentation
+- README.md neron_web_voice : architecture, installation, endpoints, HTTPS iOS
+- CHANGELOG.md neron_web_voice v1.0.0
+
 -----
 
 ## [1.6.0] - 2026-02-22
