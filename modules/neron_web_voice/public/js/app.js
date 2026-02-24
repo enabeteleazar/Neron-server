@@ -207,7 +207,10 @@
     }
     if (voiceState === 'processing') return;
 
-    if (voiceState === 'idle') {
+    if (voiceState === "idle") {
+      var unlock = new SpeechSynthesisUtterance("");
+      speechSynthesis.speak(unlock);
+      speechSynthesis.cancel();
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         addMessage('error', 'Systeme', 'Microphone non supporte par ce navigateur.');
         return;

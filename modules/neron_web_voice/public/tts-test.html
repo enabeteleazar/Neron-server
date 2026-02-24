@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <button onclick="test()">Tester la voix</button>
+  <p id="info"></p>
+  <script>
+    function test() {
+      var voices = speechSynthesis.getVoices();
+      document.getElementById('info').textContent = 'Voix disponibles: ' + voices.length;
+      var u = new SpeechSynthesisUtterance('Bonjour je suis Neron');
+      u.lang = 'fr-FR';
+      speechSynthesis.speak(u);
+    }
+    speechSynthesis.onvoiceschanged = function() {
+      document.getElementById('info').textContent = 'Voix chargees: ' + speechSynthesis.getVoices().length;
+    };
+  </script>
+</body>
+</html>
