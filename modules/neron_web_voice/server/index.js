@@ -82,6 +82,12 @@ app.post('/api/core', express.json(), async (req, res) => {
 });
 
 const publicDir = path.resolve(__dirname, '../public');
+app.get("/cert.pem", (_req, res) => {
+  res.setHeader("Content-Type", "application/x-x509-ca-cert");
+  res.setHeader("Content-Disposition", "attachment; filename=neron-local.pem");
+  res.sendFile(path.join(publicDir, "cert.pem"));
+});
+
 app.use(express.static(publicDir));
 
 app.get('/{*path}', (_req, res) => {
