@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Homebox Control Plane - Monitoring System
-Surveille l'état de Homebox et Neron avec notifications Telegram
+Neron Control Plane - Monitoring System
+Surveille l'état de Neron et Neron avec notifications Telegram
 """
 
 import asyncio
@@ -16,7 +16,6 @@ import signal
 # S'assurer que le module src est dans le path
 sys.path.insert(0, str(Path(__file__).parent.absolute()))
 
-from src.checkers.homebox import HomeboxChecker
 from src.checkers.neron import NeronChecker
 from src.notifiers.telegram import TelegramNotifier
 from src.database.history import HistoryManager
@@ -64,15 +63,6 @@ class ControlPlane:
         
         # Initialiser les checkers
         self.checkers = []
-        
-        # Homebox checker (depuis JSON)
-        self.checkers.append(
-            HomeboxChecker(
-                config_file="config/homebox.json",
-                fallback_url=self.config.homebox_url,
-                fallback_timeout=self.config.check_timeout
-            )
-        )
         
         # Neron checker (depuis JSON)
         self.checkers.append(
