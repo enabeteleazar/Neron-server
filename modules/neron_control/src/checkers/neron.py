@@ -35,8 +35,7 @@ logger = logging.getLogger(__name__)
 class NeronServiceChecker:
     """Vérificateur pour un service Neron individuel"""
     
-    def __init__(self, name: str, url: str, timeout: int = 10, 
-                 critical: bool = True, description: str = None):
+    def __init__(self, name: str, url: str, health_path: str = "/health", timeout: int = 10, critical: bool = True, description: str = None, ssl_verify: bool = True):
         """
         Args:
             name: Nom du service
@@ -47,9 +46,12 @@ class NeronServiceChecker:
         """
         self.name = name
         self.url = url.rstrip('/')
+        self.health_path = health_path
+        self.full_url = f"{self.url}{health_path}"
         self.timeout = timeout
         self.critical = critical
         self.description = description
+        self.ssl_verify = ssl_verify
         logger.info(f"✓ {name} checker initialisé: {url}" + 
                    (f" ({description})" if description else ""))
     
@@ -62,8 +64,9 @@ class NeronServiceChecker:
         try:
             timeout = aiohttp.ClientTimeout(total=self.timeout)
             
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(self.url) as response:
+            connector = aiohttp.TCPConnector(ssl=self.ssl_verify)
+            async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+                async with session.get(self.full_url) as response:
                     response_time = time.time() - start_time
                     
                     # 200 = OK, 401 = Auth required mais service UP
@@ -175,16 +178,22 @@ class NeronChecker:
                 
                 name = service['name']
                 port = service['port']
-                url = f"{base_url.rstrip('/')}:{port}"
+                host = service.get('host', base_url.replace('http://', '').replace('https://', ''))
+                ssl_verify = service.get('ssl_verify', True)
+                scheme = "https" if not ssl_verify else "http"
+                url = f"{scheme}://{host}:{port}"
+                health_path = service.get('health_path', '/health')
                 critical = service.get('critical', True)
                 description = service.get('description')
                 
                 checker = NeronServiceChecker(
                     name=name,
                     url=url,
+                    health_path=health_path,
                     timeout=timeout,
                     critical=critical,
-                    description=description
+                    description=description,
+                    ssl_verify=ssl_verify
                 )
                 self.service_checkers.append(checker)
                 
@@ -329,6 +338,7 @@ class NeronChecker:
             error=error_msg
         )
         result.details = details
+        result.individual_results = valid_results
         
         logger.info(f"📊 Résumé:\n   {details}")
         
