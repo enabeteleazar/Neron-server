@@ -1,0 +1,38 @@
+{
+  "base_url": "http://192.168.1.130",
+  "services": [
+    {
+      "name": "Homebox Main",
+      "port": 7745,
+      "enabled": true,
+      "description": "Frontend web principal",
+      "critical": true
+    },
+    {
+      "name": "Homebox API",
+      "port": 8080,
+      "enabled": true,
+      "description": "API REST",
+      "critical": true
+    },
+    {
+      "name": "Homebox DB",
+      "port": 5432,
+      "enabled": true,
+      "description": "Base de données PostgreSQL",
+      "critical": true
+    },
+    {
+      "name": "Homebox Cache",
+      "port": 6379,
+      "enabled": true,
+      "description": "Cache Redis",
+      "critical": false
+    }
+  ],
+  "settings": {
+    "timeout": 10,
+    "max_response_time": 5.0,
+    "check_parallel": true
+  }
+}

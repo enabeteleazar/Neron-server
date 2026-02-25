@@ -1,0 +1,20 @@
+# Configuration YAML du Control Plane
+# Les variables d'environnement ont la priorité sur ces valeurs
+
+# URLs des services (peuvent être overridées par les variables d'environnement)
+homebox_url: "http://localhost:7745"
+neron_url: "http://localhost:3000"
+
+# Paramètres de monitoring
+check_interval: 300        # Intervalle entre les checks (secondes)
+check_timeout: 10          # Timeout HTTP (secondes)
+max_response_time: 5.0     # Seuil d'alerte temps de réponse (secondes)
+retry_attempts: 3          # Nombre de retry
+retry_delay: 30            # Délai entre retry (secondes)
+
+# Base de données
+database_path: "data/history.db"
+
+# Logging
+log_level: "INFO"          # DEBUG, INFO, WARNING, ERROR, CRITICAL
+log_file: "logs/control-plane.log"
