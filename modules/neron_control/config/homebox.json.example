@@ -1,0 +1,60 @@
+{
+  "_comment_base_url": "URL de base (sans le port) où vos services Homebox tournent",
+  "base_url": "http://192.168.1.130",
+  
+  "_comment_services": "Liste de tous les services Homebox à monitorer",
+  "services": [
+    {
+      "_comment": "Service principal - Frontend web",
+      "name": "Homebox Main",
+      "port": 7745,
+      "enabled": true,
+      "description": "Frontend web principal de Homebox",
+      "critical": true
+    },
+    {
+      "_comment": "API REST",
+      "name": "Homebox API",
+      "port": 8080,
+      "enabled": true,
+      "description": "API REST pour les opérations backend",
+      "critical": true
+    },
+    {
+      "_comment": "Base de données PostgreSQL",
+      "name": "Homebox DB",
+      "port": 5432,
+      "enabled": true,
+      "description": "Base de données PostgreSQL",
+      "critical": true
+    },
+    {
+      "_comment": "Cache Redis (non-critique, peut être en panne temporairement)",
+      "name": "Homebox Cache",
+      "port": 6379,
+      "enabled": true,
+      "description": "Cache Redis pour améliorer les performances",
+      "critical": false
+    },
+    {
+      "_comment": "Service worker pour tâches en arrière-plan (désactivé par défaut)",
+      "name": "Homebox Worker",
+      "port": 9000,
+      "enabled": false,
+      "description": "Worker pour tâches asynchrones",
+      "critical": false
+    }
+  ],
+  
+  "_comment_settings": "Paramètres globaux de monitoring",
+  "settings": {
+    "_comment_timeout": "Délai maximum d'attente pour une réponse (en secondes)",
+    "timeout": 10,
+    
+    "_comment_max_response_time": "Seuil pour déclencher une alerte de performance dégradée",
+    "max_response_time": 5.0,
+    
+    "_comment_check_parallel": "Vérifier tous les services en parallèle (plus rapide) ou séquentiellement",
+    "check_parallel": true
+  }
+}

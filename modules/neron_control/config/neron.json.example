@@ -1,0 +1,44 @@
+{
+  "_comment_base_url": "URL de base (sans le port) où vos services Neron tournent",
+  "base_url": "http://192.168.1.130",
+  
+  "_comment_services": "Liste de tous les services Neron à monitorer",
+  "services": [
+    {
+      "_comment": "Service principal Neron",
+      "name": "Neron Main",
+      "port": 3000,
+      "enabled": true,
+      "description": "Service principal Neron",
+      "critical": true
+    },
+    {
+      "_comment": "API Neron (désactivé par défaut - exemple)",
+      "name": "Neron API",
+      "port": 3001,
+      "enabled": false,
+      "description": "API REST Neron",
+      "critical": true
+    },
+    {
+      "_comment": "Worker Neron (désactivé par défaut - exemple)",
+      "name": "Neron Worker",
+      "port": 3002,
+      "enabled": false,
+      "description": "Worker background pour tâches asynchrones",
+      "critical": false
+    }
+  ],
+  
+  "_comment_settings": "Paramètres globaux de monitoring",
+  "settings": {
+    "_comment_timeout": "Délai maximum d'attente pour une réponse (en secondes)",
+    "timeout": 10,
+    
+    "_comment_max_response_time": "Seuil pour déclencher une alerte de performance dégradée",
+    "max_response_time": 5.0,
+    
+    "_comment_check_parallel": "Vérifier tous les services en parallèle (plus rapide) ou séquentiellement",
+    "check_parallel": true
+  }
+}
