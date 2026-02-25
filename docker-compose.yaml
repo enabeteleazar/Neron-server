@@ -156,7 +156,7 @@ services:
     build: ./modules/neron_web
     container_name: neron_web
     ports:
-      - "${NERON_WEB_HTTP:-7860}:7860"
+      - "${NERON_WEB_HTTP:-8082}:7860"
     depends_on:
       - neron_core
     networks:
