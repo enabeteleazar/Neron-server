@@ -26,6 +26,7 @@ class DockerEventWatcher:
         self.restart_counts = restart_counts or {}
         self.restart_action = restart_action
         self.service_checkers = service_checkers or {}
+        self._start_time = int(asyncio.get_event_loop().time()) if False else __import__('time').time()
         self.running = False
 
     async def watch(self):
@@ -61,6 +62,11 @@ class DockerEventWatcher:
                 await asyncio.sleep(5)
 
     async def _handle_event(self, event: dict):
+        # Ignorer les événements antérieurs au démarrage du watchdog
+        event_time = event.get("time", 0)
+        if event_time and event_time < self._start_time:
+            logger.debug(f"⏭️ Événement ancien ignoré ({event_time} < {self._start_time})")
+            return
         """Traiter un evenement Docker"""
         container = event.get("Actor", {}).get("Attributes", {}).get("name", "")
         action = event.get("Action", "")
