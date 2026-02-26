@@ -4,7 +4,7 @@ services:
     build: ./modules/neron_watchdog
     container_name: neron_watchdog
     env_file:
-      - .env
+      - /opt/Neron_AI/.env
     environment:
       - CHECK_INTERVAL=60
       - CHECK_TIMEOUT=10
@@ -26,7 +26,7 @@ services:
   neron_core:
     build: ./modules/neron_core
     env_file:
-      - .env
+      - /opt/Neron_AI/.env
     environment:
       - NERON_LLM_URL=http://neron_llm:5000
     container_name: neron_core
@@ -96,7 +96,7 @@ services:
   neron_stt:
     build: ./modules/neron_stt
     env_file:
-      - .env
+      - /opt/Neron_AI/.env
     container_name: neron_stt
     ports:
       - "${NERON_STT_HTTP:-8001}:8001"
@@ -136,7 +136,7 @@ services:
   neron_memory:
     build: ./modules/neron_memory
     env_file:
-      - .env
+      - /opt/Neron_AI/.env
     container_name: neron_memory
     volumes:
       - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data

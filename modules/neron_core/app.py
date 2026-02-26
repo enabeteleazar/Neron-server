@@ -9,7 +9,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 import httpx
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile, Security, Depends
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
@@ -204,8 +205,22 @@ def prometheus_metrics():
     return PlainTextResponse(metrics.export(), media_type="text/plain")
 
 
+# API Key
+API_KEY = os.getenv("NERON_API_KEY", "")
+API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
+    if not API_KEY:
+        return  # Pas de clé configurée = accès libre
+    if api_key is None:
+        raise HTTPException(status_code=401, detail="API Key manquante")
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="API Key invalide")
+
+
 @app.post("/input/text", response_model=CoreResponse)
-async def text_input(input_data: TextInput):
+async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     query = input_data.text.strip()
     start = time.monotonic()
     metrics.record_request_start()
