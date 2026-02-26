@@ -17,9 +17,10 @@ SERVICES = [
 
 class DailyReport:
 
-    def __init__(self, notifier, memory, check_interval: int = 60):
+    def __init__(self, notifier, memory, docker_stats=None, check_interval: int = 60):
         self.notifier = notifier
         self.memory = memory
+        self.docker_stats = docker_stats
         self.check_interval = check_interval
         self._last_report_date = None
 
@@ -54,7 +55,7 @@ class DailyReport:
         uptime = max(0.0, (total_seconds - downtime_seconds) / total_seconds * 100)
         return round(min(uptime, 100.0), 2)
 
-    def generate(self) -> str:
+    def generate(self, docker_stats_snapshot=None) -> str:
         now = datetime.now()
         entries = self.memory.read_all(days=1)
 
@@ -81,6 +82,14 @@ class DailyReport:
         instable_text = ", ".join(instable_services) if instable_services else "Aucun"
         manual_text = str(len(manual)) if manual else "Aucune"
 
+        # Stats Docker
+        docker_section = ""
+        if docker_stats_snapshot:
+            docker_section = "\n<b>Stats conteneurs</b>\n"
+            for name, s in docker_stats_snapshot.items():
+                if s.status == "running":
+                    docker_section += f"  {name}: CPU {s.cpu_percent}% | RAM {s.ram_mb}MB\n" 
+
         return (
             f"📊 <b>Rapport Quotidien WatchDog</b>\n"
             f"<b>Date:</b> {now.strftime('%d/%m/%Y')} a 19h00\n"
@@ -94,13 +103,17 @@ class DailyReport:
             f"{uptime_lines}\n"
             f"<b>Services instables</b>\n"
             f"  {instable_text}\n"
+            f"{docker_section}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"<i>Prochain rapport demain a 19h</i>"
         )
 
     async def send(self):
         try:
-            report = self.generate()
+            snapshot = None
+            if self.docker_stats:
+                snapshot = await self.docker_stats.collect_all()
+            report = self.generate(docker_stats_snapshot=snapshot)
             await self.notifier.send_info(report)
             self._last_report_date = datetime.now().date()
             logger.info("📊 Rapport quotidien envoye")
