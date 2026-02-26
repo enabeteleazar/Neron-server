@@ -5,6 +5,7 @@ Surveille l'état de Neron et Neron avec notifications Telegram
 """
 
 import asyncio
+from src.watchers.docker_events import DockerEventWatcher
 import logging
 import sys
 import os
@@ -122,27 +123,67 @@ class ControlPlane:
         
         return [r for r in results if not isinstance(r, Exception)]
     
+    async def retry_check(self, checker, delay: int = 10) -> ServiceStatus:
+        """Re-vérifier un service après un délai"""
+        logger.info(f"🔄 Retry dans {delay}s pour {checker.name}...")
+        await asyncio.sleep(delay)
+        return await self.check_service(checker)
+
     async def handle_result(self, result: ServiceStatus):
-        """Gérer le résultat d'une vérification et envoyer les notifications appropriées"""
+        """Gérer le résultat avec retry intelligent (Option 3)"""
         service_name = result.service_name
         was_healthy = self.previous_states.get(service_name, True)
-        
+
         # Service est passé de UP à DOWN
         if was_healthy and not result.is_healthy:
-            logger.warning(f"🔴 {service_name} est maintenant DOWN")
-            message = (
-                f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
-                f"<b>Service:</b> {service_name}\n"
-                f"<b>Status:</b> Indisponible\n"
-                f"<b>Code HTTP:</b> {result.status_code or 'N/A'}\n"
-                f"<b>Erreur:</b> {result.error or 'Timeout/Connexion impossible'}\n"
-                f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            # Ajouter les détails si disponibles
-            if hasattr(result, 'details') and result.details:
-                message += f"\n\n<b>Détails:</b>\n{result.details}"
-            
-            await self.notifier.send_alert(message)
+            # Trouver le checker correspondant
+            checker = next((c for c in self.checkers if c.name == service_name), None)
+
+            if checker:
+                # Retry après 10s avant d'alerter
+                retry_result = await self.retry_check(checker, delay=10)
+
+                if not retry_result.is_healthy:
+                    # Toujours DOWN après retry -> alerte Telegram
+                    logger.warning(f"🔴 {service_name} confirmé DOWN après retry")
+                    message = (
+                        f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
+                        f"<b>Service:</b> {service_name}\n"
+                        f"<b>Status:</b> Indisponible\n"
+                        f"<b>Code HTTP:</b> {result.status_code or 'N/A'}\n"
+                        f"<b>Erreur:</b> {result.error or 'Timeout/Connexion impossible'}\n"
+                        f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                    if hasattr(result, 'details') and result.details:
+                        message += f"\n\n<b>Détails:</b>\n{result.details}"
+                    await self.notifier.send_alert(message)
+                    self.previous_states[service_name] = False
+                else:
+                    # Revenu UP entre les deux checks -> micro-coupure
+                    logger.warning(f"⚡ Micro-coupure détectée sur {service_name} (revenu UP après retry)")
+                    message = (
+                        f"⚡ <b>Micro-coupure détectée</b>\n\n"
+                        f"<b>Service:</b> {service_name}\n"
+                        f"<b>Durée:</b> < 10s\n"
+                        f"<b>Status:</b> Revenu UP automatiquement\n"
+                        f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                    )
+                    await self.notifier.send_info(message)
+                    return
+            else:
+                # Pas de checker trouvé -> alerte directe
+                logger.warning(f"🔴 {service_name} est maintenant DOWN")
+                message = (
+                    f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
+                    f"<b>Service:</b> {service_name}\n"
+                    f"<b>Status:</b> Indisponible\n"
+                    f"<b>Code HTTP:</b> {result.status_code or 'N/A'}\n"
+                    f"<b>Erreur:</b> {result.error or 'Timeout/Connexion impossible'}\n"
+                    f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                if hasattr(result, 'details') and result.details:
+                    message += f"\n\n<b>Détails:</b>\n{result.details}"
+                await self.notifier.send_alert(message)
         
         # Service est revenu UP
         elif not was_healthy and result.is_healthy:
@@ -219,6 +260,11 @@ class ControlPlane:
         interval = self.config.check_interval
         
         logger.info(f"🚀 Démarrage du monitoring continu (intervalle: {interval}s)")
+        
+        # Démarrer le watchdog Docker Events en parallèle
+        watcher = DockerEventWatcher(self.notifier, self.previous_states)
+        asyncio.create_task(watcher.watch())
+        logger.info("👁️ Docker Event Watcher lancé en parallèle")
         
         # Envoyer une notification de démarrage
         await self.notifier.send_info(
