@@ -15,6 +15,9 @@ services:
       - neron_control-data:/app/data
       - neron_control-logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/Data:/mnt/Data:ro
+      - /mnt/usb-storage:/mnt/usb-storage:ro
+      - /mnt/Backup:/mnt/Backup:ro
     depends_on:
       neron_core:
         condition: service_healthy
