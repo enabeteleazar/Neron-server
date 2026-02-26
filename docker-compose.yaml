@@ -1,3 +1,4 @@
+
 services:
 
   neron_watchdog:
@@ -178,6 +179,8 @@ services:
   neron_web_voice:
     build: ./modules/neron_web_voice
     container_name: neron_web_voice
+    env_file:
+      - /opt/Neron_AI/.env
     volumes:
       - /mnt/usb-storage/Neron_AI/modules/neron_web_voice/cert.pem:/app/cert.pem:ro
       - /mnt/usb-storage/Neron_AI/modules/neron_web_voice/key.pem:/app/key.pem:ro
