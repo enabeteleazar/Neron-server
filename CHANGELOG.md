@@ -9,20 +9,77 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ### A venir
 
-	∙	ha_agent.py : controle Home Assistant (v1.4.x)
-	∙	Prometheus agent séparé pour scraping /metrics
-	∙	Grafana dashboards et alerting
-	∙	Redis Event Bus (remplacement REST interne)
-	∙	Support du streaming pour les réponses LLM
-	∙	Support multi-utilisateurs
-	∙	Interface mobile native
-	∙	Plugins extensibles
-	∙	Support TTS (Text-to-Speech)
+        ∙       neron_telegram : module Telegram dédié (API + lib) port 8010
+        ∙       Mémoire stratégique JSONL (/mnt/Data/memory/)
+        ∙       Bot Telegram bidirectionnel (/status, /metrics, /restart)
+        ∙       Détection de patterns et seuils dynamiques
+        ∙       Actions correctives automatiques (restart Docker)
+        ∙       ha_agent.py : controle Home Assistant (v1.4.x)
+        ∙       Prometheus agent séparé pour scraping /metrics
+        ∙       Grafana dashboards et alerting
+        ∙       Redis Event Bus (remplacement REST interne)
+        ∙       Support du streaming pour les réponses LLM
+        ∙       Support multi-utilisateurs
+        ∙       Interface mobile native
+        ∙       Plugins extensibles
 
 
 -----
 
----
+## [1.7.4] - 2026-02-26
+
+### Ajouts
+- Module `neron_control` : agent de gardiennage autonome
+  - Health checks de 8 services en parallèle (Core, STT, Memory, TTS, LLM, Ollama, SearXNG, Web Voice)
+  - Notifications Telegram enrichies (DOWN / UP / Performance dégradée / Micro-coupure)
+  - Watchdog Docker Events : détection instantanée des crashes via socket Unix
+  - Retry intelligent Option 3 : retry 10s avant alerte, micro-coupure loggée et notifiée
+  - Collecteur métriques système via `psutil` : CPU, RAM, disques avec seuils configurables
+  - Historique SQLite : uptime, incidents, temps de réponse
+  - Configuration JSON par service (`neron.json`) — ajout d'un service sans rebuild
+  - Support `ssl_verify`, `health_path`, `host` par service
+  - Montage socket Docker `/var/run/docker.sock` pour events temps réel
+  - Montage des points de montage `/mnt/Data`, `/mnt/usb-storage`, `/mnt/Backup`
+
+### Corrections
+- Fix encodage caractères typographiques (guillemets UTF-8) dans tous les fichiers Python
+- Fix signature `NeronServiceChecker.__init__()` — ajout `health_path`, `ssl_verify`
+- Fix URLs services : chaque service utilise son propre `host` Docker
+- Fix réseau `neron_internal` manquant pour `neron_control`
+- Fix certificats SSL `neron_web_voice` — dossiers vides remplacés par vrais certificats
+- Fix JSON parsing `neron.json` — caractères typographiques supprimés
+- Fix `neron_web_voice` HTTPS — `ssl_verify: false` + scheme `https://`
+- Fix permissions socket Docker — `group_add` avec GID du groupe docker
+
+### Suppressions
+- Service `neron_web` (Gradio) retiré — `neron_web_voice` est la seule interface
+
+### Architecture
+
+```
+neron_control/
+├── app.py                    # Orchestrateur principal
+├── src/
+│   ├── checkers/neron.py     # Health checks services
+│   ├── collectors/system.py  # Métriques CPU/RAM/disques
+│   ├── watchers/docker_events.py  # Events Docker temps réel
+│   ├── notifiers/telegram.py # Notifications Telegram
+│   └── database/history.py  # Historique SQLite
+└── config/neron.json         # Configuration services
+```
+
+### Seuils métriques par défaut
+- CPU warn: 75% / critical: 90%
+- RAM warn: 80% / critical: 95%
+- Disque warn: 75% / critical: 90%
+
+### Docker
+- Volume `/var/run/docker.sock` monté en lecture seule
+- Volumes `/mnt/Data`, `/mnt/usb-storage`, `/mnt/Backup` montés en lecture seule
+- Réseaux : `Neron_Network` + `neron_internal`
+- `group_add` avec GID docker pour accès socket
+
+-----
 
 ## [1.7.0] - 2026-02-23
 
