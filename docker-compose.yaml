@@ -1,8 +1,8 @@
 services:
 
-  neron_control:
-    build: ./modules/neron_control
-    container_name: neron_control
+  neron_watchdog:
+    build: ./modules/neron_watchdog
+    container_name: neron_watchdog
     env_file:
       - .env
     environment:
@@ -12,8 +12,8 @@ services:
     group_add:
       - "988"
     volumes:
-      - neron_control-data:/app/data
-      - neron_control-logs:/app/logs
+      - neron_watchdog-data:/app/data
+      - neron_watchdog-logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /mnt/Data:/mnt/Data:ro
       - /mnt/usb-storage:/mnt/usb-storage:ro
@@ -220,5 +220,5 @@ volumes:
   ollama:
   memory:
   neron_memory-data:
-  neron_control-data:
-  neron_control-logs:
+  neron_watchdog-data:
+  neron_watchdog-logs:

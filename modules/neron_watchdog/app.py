@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Neron Control Plane - Monitoring System
+Neron WatchDog - Monitoring System
 Surveille l'état de Neron et Neron avec notifications Telegram
 """
 
@@ -83,7 +83,7 @@ class ControlPlane:
         self.restart_action = RestartAction(self.notifier)
         self.running = False
         
-        logger.info("Control Plane initialisé")
+        logger.info("WatchDog initialisé")
     
     async def check_service(self, checker) -> ServiceStatus:
         """Vérifier un service individuel"""
@@ -299,7 +299,7 @@ class ControlPlane:
         
         # Envoyer une notification de démarrage
         await self.notifier.send_info(
-            "🚀 <b>Control Plane démarré</b>\n\n"
+            "🚀 <b>WatchDog démarré</b>\n\n"
             f"Monitoring de {len(self.checkers)} services:\n"
             + "\n".join(f"  • {c.name}" for c in self.checkers) +
             f"\n\nIntervalle: {interval}s"
@@ -355,18 +355,18 @@ class ControlPlane:
     
     async def shutdown(self):
         """Arrêt propre du système"""
-        logger.info("Arrêt du Control Plane...")
+        logger.info("Arrêt du WatchDog...")
         self.running = False
         
         # Envoyer une notification d'arrêt
         await self.notifier.send_info(
-            "🛑 <b>Control Plane arrêté</b>\n\n"
+            "🛑 <b>WatchDog arrêté</b>\n\n"
             f"Arrêt à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
         
         # Fermer les connexions
         self.history.close()
-        logger.info("Control Plane arrêté proprement")
+        logger.info("WatchDog arrêté proprement")
 
 
 async def main():
