@@ -32,6 +32,7 @@ class RestartAction:
         self.socket_path = socket_path
         self.restart_counts = {}   # service -> tentatives restart en cours
         self.crash_history = {}    # service -> liste de timestamps des crashs
+        self._locks = {}           # service -> asyncio.Lock (anti doublon)
 
     def _record_crash(self, service_name: str) -> int:
         """Enregistrer un crash et retourner le nombre de crashs recents"""
@@ -84,6 +85,21 @@ class RestartAction:
         Alerte uniquement si service instable (3 crashs en 10min)
         ou intervention manuelle requise (3 restarts échoués).
         """
+        # Verrou anti-doublon par service
+        if service_name not in self._locks:
+            self._locks[service_name] = asyncio.Lock()
+        
+        if self._locks[service_name].locked():
+            logger.debug(f"⏭️ Restart déjà en cours pour {service_name}, ignoré")
+            # Enregistrer quand même le crash pour comptage instabilité
+            self._record_crash(service_name)
+            return
+        
+        async with self._locks[service_name]:
+            await self._do_restart(service_name, checker)
+
+    async def _do_restart(self, service_name: str, checker=None):
+        """Pipeline restart protégé par verrou"""
         # Enregistrer le crash
         crash_count = self._record_crash(service_name)
 
