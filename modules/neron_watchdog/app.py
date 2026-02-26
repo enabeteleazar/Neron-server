@@ -11,6 +11,7 @@ from src.actions.restart import RestartAction
 from src.memory.strategic import StrategicMemory
 from src.reports.daily import DailyReport
 from src.detectors.anomaly import AnomalyDetector
+from src.collectors.docker_stats import DockerStatsCollector
 import logging
 import sys
 import os
@@ -87,6 +88,7 @@ class ControlPlane:
         self.restart_action = RestartAction(self.notifier, memory=self.memory)
         self.daily_report = DailyReport(self.notifier, self.memory)
         self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
+        self.docker_stats = DockerStatsCollector()
         self.running = False
         
         logger.info("WatchDog initialisé")
@@ -350,6 +352,25 @@ class ControlPlane:
                 # Rapport quotidien à 19h
                 if self.daily_report.should_send():
                     await self.daily_report.send()
+
+                # Stats Docker toutes les 5 minutes
+                if check_count % 5 == 0:
+                    docker_stats = await self.docker_stats.collect_all()
+                    alerts = self.docker_stats.check_thresholds(docker_stats)
+                    for level, msg in alerts:
+                        logger.warning(msg)
+                        if level == 'critical':
+                            await self.notifier.send_alert(
+                                f"🔴 <b>ALERTE CONTENEUR</b>\n\n{msg}\n"
+                                f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
+                        else:
+                            await self.notifier.send_warning(
+                                f"⚠️ <b>AVERTISSEMENT CONTENEUR</b>\n\n{msg}\n"
+                                f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
+                    if check_count % 60 == 0:
+                        logger.info(self.docker_stats.format_summary(docker_stats))
 
                 # Analyse anomalies toutes les heures
                 if check_count % 60 == 0:
