@@ -18,9 +18,6 @@ services:
       - /mnt/Data:/mnt/Data:ro
       - /mnt/usb-storage:/mnt/usb-storage:ro
       - /mnt/Backup:/mnt/Backup:ro
-    depends_on:
-      neron_core:
-        condition: service_healthy
     restart: unless-stopped
     networks:
       - Neron_Network
