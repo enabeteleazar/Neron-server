@@ -122,3 +122,15 @@ class StrategicMemory:
             "manual_interventions": len(manual),
             "most_problematic": crash_by_service.most_common(3)
         }
+
+    def record_container_stats(self, stats: dict):
+        """Enregistrer les stats CPU/RAM de chaque conteneur"""
+        entry = {"type": "container_stats"}
+        for name, s in stats.items():
+            if s.status == "running":
+                entry[name] = {
+                    "cpu": s.cpu_percent,
+                    "ram_mb": s.ram_mb,
+                    "ram_percent": s.ram_percent
+                }
+        self._write(entry)
