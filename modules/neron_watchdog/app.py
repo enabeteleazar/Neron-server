@@ -9,6 +9,7 @@ from src.watchers.docker_events import DockerEventWatcher
 from src.collectors.system import SystemCollector
 from src.actions.restart import RestartAction
 from src.memory.strategic import StrategicMemory
+from src.reports.daily import DailyReport
 import logging
 import sys
 import os
@@ -83,6 +84,7 @@ class ControlPlane:
         # Action de restart automatique
         self.memory = StrategicMemory()
         self.restart_action = RestartAction(self.notifier, memory=self.memory)
+        self.daily_report = DailyReport(self.notifier, self.memory)
         self.running = False
         
         logger.info("WatchDog initialisé")
@@ -343,6 +345,10 @@ class ControlPlane:
                 if check_count * interval % 86400 == 0:
                     await self.send_status_report()
                 
+                # Rapport quotidien à 19h
+                if self.daily_report.should_send():
+                    await self.daily_report.send()
+
                 # Attendre avant le prochain check
                 await asyncio.sleep(interval)
                 
