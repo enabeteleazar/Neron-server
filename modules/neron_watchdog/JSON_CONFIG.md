@@ -2,7 +2,7 @@
 
 ## Vue d'ensemble
 
-Le Control Plane utilise maintenant un fichier JSON pour configurer les services Homebox à monitorer. C'est **plus simple**, **plus lisible** et **plus flexible** que les variables d'environnement.
+Le WatchDog utilise maintenant un fichier JSON pour configurer les services Homebox à monitorer. C'est **plus simple**, **plus lisible** et **plus flexible** que les variables d'environnement.
 
 ## Fichier de configuration
 

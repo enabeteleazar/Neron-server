@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 # Métadonnées
 LABEL maintainer="enabeteleazar"
-LABEL description="Homebox Control Plane - Service Monitoring"
+LABEL description="Neron WatchDog - Service Monitoring"
 
 # Variables d'environnement
 ENV PYTHONUNBUFFERED=1 \
