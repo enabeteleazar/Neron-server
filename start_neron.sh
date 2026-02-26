@@ -1,6 +1,6 @@
 /#!/bin/bash
 
-# start_neron.sh - Lance Néron v1.7.4 sur Homebox (Docker Compose moderne)
+# start_neron.sh - Lance Néron v1.13.2 sur Homebox (Docker Compose moderne)
 # Inclut rebuild, relance et nettoyage Docker
 
 set -euo pipefail
@@ -45,7 +45,7 @@ show_status() {
 show_endpoints() {
     echo
     slow_echo "${BOLD}${BLUE}═══════════════════════════════════════${NC}"
-    slow_echo "${BOLD}${GREEN}  Néron AI v1.7.4 — Endpoints disponibles${NC}"
+    slow_echo "${BOLD}${GREEN}  Néron AI v1.13.2 — Endpoints disponibles${NC}"
     slow_echo "${BOLD}${BLUE}═══════════════════════════════════════${NC}"
     echo
     slow_echo "${YELLOW}  Interface web   : http://localhost:7860${NC}"
@@ -67,7 +67,7 @@ show_endpoints() {
 
 echo
 slow_echo "${BOLD}${BLUE}╔════════════════════════════════════════╗${NC}"
-slow_echo "${BOLD}${BLUE}║     🧠 Démarrage de Néron AI v1.7.4    ║${NC}"
+slow_echo "${BOLD}${BLUE}║     🧠 Démarrage de Néron AI v1.13.2    ║${NC}"
 slow_echo "${BOLD}${BLUE}╚════════════════════════════════════════╝${NC}"
 echo
 
@@ -93,7 +93,7 @@ slow_echo "${GREEN}✔ Conteneurs arrêtés${NC}"
 
 slow_echo "${BOLD}${BLUE}Construction et relance des services…${NC}"
 docker compose --env-file /opt/Neron_AI/.env up -d --build --remove-orphans
-slow_echo "${GREEN}✔ Tous les services Néron v1.7.4 sont lancés !${NC}"
+slow_echo "${GREEN}✔ Tous les services Néron v1.13.2 sont lancés !${NC}"
 
 # — Nettoyage Docker —
 
