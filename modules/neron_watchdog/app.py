@@ -301,7 +301,8 @@ class ControlPlane:
             self.previous_states,
             self.restart_action.restart_counts,
             self.restart_action,
-            individual_checkers
+            individual_checkers,
+            control_plane=self
         )
         asyncio.create_task(watcher.watch())
         logger.info("👁️ Docker Event Watcher lancé en parallèle")
