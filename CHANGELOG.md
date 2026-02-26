@@ -5,6 +5,28 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.2.2/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+---
+
+## [À venir]
+
+#### En cours
+- **Watchdog** — score santé + tendance hebdo intégrés dans rapport quotidien
+- **Watchdog** — mode pause automatique pendant rebuild
+
+#### Planifié
+- **Watchdog** — endpoint HTTP pour consulter l'état
+- **neron_telegram** — port 8010, remplacement notifier dans tous les modules
+- **ha_agent.py** — contrôle Home Assistant (v1.4.x)
+- **Prometheus** — agent séparé pour scraping /metrics
+- **Grafana** — dashboards et alerting
+- **Redis Event Bus** — remplacement REST interne
+- **Streaming LLM** — support streaming pour les réponses LLM
+- **Multi-utilisateurs** — support plusieurs utilisateurs
+- **Interface mobile** — application native
+- **Plugins** — architecture extensible
+
+-----
+
 ## [v1.14.0] - 2026-02-26
 
 ### ✨ Nouveautés
@@ -17,30 +39,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **API HTTP watchdog** — endpoints REST sur port 8003
   - `/status`, `/score`, `/anomalies`, `/docker-stats`, `/rapport`, `/pause`, `/resume`, `/restart/<service>`
 - **Refactoring notifier** — neron_watchdog délègue à neron_telegram via `/notify`
-
----
-
-## [À venir]
-
-### 🚀 Prochaines étapes
-
-#### En cours
-- **Watchdog** — score santé + tendance hebdo intégrés dans rapport quotidien
-- **Watchdog** — mode pause automatique pendant rebuild
-
-#### Planifié
-- **Watchdog** — score santé + tendance hebdo dans rapport quotidien
-- **Watchdog** — mode pause pendant rebuild
-- **Watchdog** — endpoint HTTP pour consulter l'état
-- **neron_telegram** — port 8010, remplacement notifier dans tous les modules
-- **ha_agent.py** — contrôle Home Assistant (v1.4.x)
-- **Prometheus** — agent séparé pour scraping /metrics
-- **Grafana** — dashboards et alerting
-- **Redis Event Bus** — remplacement REST interne
-- **Streaming LLM** — support streaming pour les réponses LLM
-- **Multi-utilisateurs** — support plusieurs utilisateurs
-- **Interface mobile** — application native
-- **Plugins** — architecture extensible
 
 -----
 
