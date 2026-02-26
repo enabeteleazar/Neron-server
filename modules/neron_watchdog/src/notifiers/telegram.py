@@ -1,132 +1,56 @@
 """
-Telegram Notifier
-Envoie des notifications via Telegram Bot
+Notifier Telegram - délègue à neron_telegram
 """
 
-import aiohttp
 import logging
-from typing import Optional
+import httpx
+import os
 
 logger = logging.getLogger(__name__)
 
+NERON_TELEGRAM_URL = os.getenv("NERON_TELEGRAM_URL", "http://neron_telegram:8010")
+
 
 class TelegramNotifier:
-    """Gestionnaire des notifications Telegram"""
-    
-    def __init__(self, token: str, chat_id: str):
-        self.token = token
-        self.chat_id = chat_id
-        self.base_url = f"https://api.telegram.org/bot{token}"
-        
-        logger.info(f"Telegram notifier initialisé (chat_id: {chat_id})")
-    
+    """Envoie les notifications via le service neron_telegram"""
+
+    def __init__(self, token: str = None, chat_id: str = None):
+        # token et chat_id conservés pour compatibilité mais non utilisés
+        self.url = NERON_TELEGRAM_URL
+        logger.info(f"TelegramNotifier → {self.url}")
+
     async def send_message(self, text: str, parse_mode: str = "HTML") -> bool:
-        """
-        Envoyer un message Telegram
-        
-        Args:
-            text: Texte du message
-            parse_mode: Mode de parsing (HTML ou Markdown)
-        
-        Returns:
-            True si envoyé avec succès, False sinon
-        """
-        try:
-            url = f"{self.base_url}/sendMessage"
-            
-            payload = {
-                'chat_id': self.chat_id,
-                'text': text,
-                'parse_mode': parse_mode
-            }
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as response:
-                    if response.status == 200:
-                        logger.debug("Message Telegram envoyé avec succès")
-                        return True
-                    else:
-                        error_data = await response.text()
-                        logger.error(f"Erreur lors de l'envoi du message Telegram: {response.status} - {error_data}")
-                        return False
-        
-        except Exception as e:
-            logger.error(f"Exception lors de l'envoi du message Telegram: {e}")
-            return False
-    
+        return await self.send_info(text)
+
     async def send_alert(self, message: str) -> bool:
-        """
-        Envoyer une alerte critique (rouge)
-        
-        Args:
-            message: Message d'alerte
-        
-        Returns:
-            True si envoyé avec succès
-        """
-        logger.info(f"Envoi d'une alerte: {message[:50]}...")
-        return await self.send_message(f"🔴 {message}")
-    
+        return await self._notify("alert", message)
+
     async def send_warning(self, message: str) -> bool:
-        """
-        Envoyer un avertissement (jaune)
-        
-        Args:
-            message: Message d'avertissement
-        
-        Returns:
-            True si envoyé avec succès
-        """
-        logger.info(f"Envoi d'un avertissement: {message[:50]}...")
-        return await self.send_message(f"⚠️ {message}")
-    
-    async def send_success(self, message: str) -> bool:
-        """
-        Envoyer une notification de succès (vert)
-        
-        Args:
-            message: Message de succès
-        
-        Returns:
-            True si envoyé avec succès
-        """
-        logger.info(f"Envoi d'un succès: {message[:50]}...")
-        return await self.send_message(f"✅ {message}")
-    
+        return await self._notify("warning", message)
+
+    async def send_recovery(self, message: str) -> bool:
+        return await self._notify("info", message)
+
     async def send_info(self, message: str) -> bool:
-        """
-        Envoyer une information générale (bleu)
-        
-        Args:
-            message: Message d'information
-        
-        Returns:
-            True si envoyé avec succès
-        """
-        logger.info(f"Envoi d'une info: {message[:50]}...")
-        return await self.send_message(f"ℹ️ {message}")
-    
-    async def test_connection(self) -> bool:
-        """
-        Tester la connexion au bot Telegram
-        
-        Returns:
-            True si la connexion fonctionne
-        """
+        return await self._notify("info", message)
+
+    async def _notify(self, level: str, message: str) -> bool:
         try:
-            url = f"{self.base_url}/getMe"
-            
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        bot_name = data.get('result', {}).get('username', 'Unknown')
-                        logger.info(f"Connexion Telegram OK - Bot: @{bot_name}")
-                        return True
-                    else:
-                        logger.error(f"Erreur de connexion Telegram: {response.status}")
-                        return False
-        
+            async with httpx.AsyncClient() as client:
+                resp = await client.post(
+                    f"{self.url}/notify",
+                    json={"level": level, "message": message},
+                    timeout=10
+                )
+                return resp.status_code == 200
         except Exception as e:
-            logger.error(f"Exception lors du test de connexion Telegram: {e}")
+            logger.error(f"Erreur envoi notification: {e}")
+            return False
+
+    async def test_connection(self) -> bool:
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(f"{self.url}/health", timeout=5)
+                return resp.status_code == 200
+        except Exception:
             return False
