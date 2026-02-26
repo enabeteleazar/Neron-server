@@ -86,9 +86,9 @@ class ControlPlane:
         # Action de restart automatique
         self.memory = StrategicMemory()
         self.restart_action = RestartAction(self.notifier, memory=self.memory)
-        self.daily_report = DailyReport(self.notifier, self.memory)
-        self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
         self.docker_stats = DockerStatsCollector()
+        self.daily_report = DailyReport(self.notifier, self.memory, self.docker_stats)
+        self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
         self.running = False
         
         logger.info("WatchDog initialisé")
@@ -356,6 +356,8 @@ class ControlPlane:
                 # Stats Docker toutes les 5 minutes
                 if check_count % 5 == 0:
                     docker_stats = await self.docker_stats.collect_all()
+                    # Stocker dans mémoire JSONL
+                    self.memory.record_container_stats(docker_stats)
                     alerts = self.docker_stats.check_thresholds(docker_stats)
                     for level, msg in alerts:
                         logger.warning(msg)
