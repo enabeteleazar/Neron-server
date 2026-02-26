@@ -1,5 +1,5 @@
 """
-Configuration du Control Plane
+Configuration du WatchDog
 Charge les paramètres depuis les variables d'environnement et config.yaml
 """
 

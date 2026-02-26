@@ -5,26 +5,123 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.2.2/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Non publié]
+## [À venir]
 
-### A venir
+### 🚀 Prochaines étapes
 
-        ∙       neron_telegram : module Telegram dédié (API + lib) port 8010
-        ∙       Mémoire stratégique JSONL (/mnt/Data/memory/)
-        ∙       Bot Telegram bidirectionnel (/status, /metrics, /restart)
-        ∙       Détection de patterns et seuils dynamiques
-        ∙       Actions correctives automatiques (restart Docker)
-        ∙       ha_agent.py : controle Home Assistant (v1.4.x)
-        ∙       Prometheus agent séparé pour scraping /metrics
-        ∙       Grafana dashboards et alerting
-        ∙       Redis Event Bus (remplacement REST interne)
-        ∙       Support du streaming pour les réponses LLM
-        ∙       Support multi-utilisateurs
-        ∙       Interface mobile native
-        ∙       Plugins extensibles
+#### En cours
+- **neron_telegram** — module Telegram dédié bidirectionnel (port 8010)
+  - Bot bidirectionnel — commandes depuis Telegram
+  - `/status`, `/stats`, `/rapport`, `/restart <service>`, `/pause`, `/resume`, `/anomalies`, `/score`, `/logs`, `/history`
+  - File d'attente messages — anti-flood
+  - Whitelist chat_id — sécurité
 
+#### Planifié
+- **Watchdog** — score santé + tendance hebdo dans rapport quotidien
+- **Watchdog** — mode pause pendant rebuild
+- **Watchdog** — endpoint HTTP pour consulter l'état
+- **neron_telegram** — port 8010, remplacement notifier dans tous les modules
+- **ha_agent.py** — contrôle Home Assistant (v1.4.x)
+- **Prometheus** — agent séparé pour scraping /metrics
+- **Grafana** — dashboards et alerting
+- **Redis Event Bus** — remplacement REST interne
+- **Streaming LLM** — support streaming pour les réponses LLM
+- **Multi-utilisateurs** — support plusieurs utilisateurs
+- **Interface mobile** — application native
+- **Plugins** — architecture extensible
 
 -----
+
+## [v1.13.1] - 2026-02-26
+
+### ✨ Nouveautés
+- **Authentification API Key** — protection endpoint `/input/text` (401/403)
+- **API Key propagée** — neron_web_voice transmet la clé à neron_core
+- **Stats Docker par conteneur** — CPU/RAM/réseau toutes les 5min
+- **Stats Docker dans rapport** — section conteneurs dans le rapport 19h
+- **Détecteurs anomalies améliorés** — corrélation CPU/RAM et memory leak basés sur vraies stats
+
+### 🔧 Améliorations
+- **env_file** — docker-compose pointe vers `/opt/Neron_AI/.env`
+- **Seuils CPU** — alerte warn 95%, critique 100% (adapté LLM)
+
+---
+
+## [v1.13.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **Authentification API Key** — header `X-API-Key` sur neron_core
+
+---
+
+## [v1.12.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **Stats Docker** — collecteur CPU/RAM/réseau par conteneur
+- **Alertes conteneur** — seuils CPU/RAM par conteneur
+- **Intégration rapport** — stats Docker dans rapport quotidien
+
+---
+
+## [v1.11.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **Détection anomalies** — 12 patterns détectés automatiquement
+  - Crash récurrent à la même heure
+  - Dégradation progressive
+  - Cascade de crashs
+  - Crash après redémarrage
+  - Fréquence croissante
+  - Corrélation CPU/RAM
+  - Memory leak pattern
+  - Dépendance en cascade
+  - Jour de la semaine
+  - Heure de pointe
+  - Score de santé global
+  - Tendance hebdomadaire
+
+---
+
+## [v1.10.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **Rapport quotidien 19h** — uptime%, crashs, services instables
+- **Envoi Telegram** — rapport automatique chaque soir
+
+---
+
+## [v1.9.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **Mémoire stratégique JSONL** — journal crash/restart/recovery/instabilité
+- **Rétention 30 jours** — purge automatique
+- **Stats système** — CPU/RAM global enregistré
+
+---
+
+## [v1.8.2] - 2026-02-26
+
+### 🔧 Corrections
+- **Verrou anti-restart concurrent** — asyncio.Lock par service
+- **Filtre événements anciens** — ignore events Docker avant démarrage watchdog
+
+---
+
+## [v1.8.1] - 2026-02-26
+
+### 🔧 Refactoring
+- **Renommage** — neron_control → neron_watchdog
+
+---
+
+## [v1.8.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **Auto-restart autonome** — 3 tentatives silencieuses avec escalade
+- **Détection instabilité** — alerte après 3 crashs en 10min
+- **Docker Events** — surveillance temps réel
+
+---
 
 ## [1.7.4] - 2026-02-26
 

@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 """
-Neron Control Plane - Monitoring System
+Neron WatchDog - Monitoring System
 Surveille l'état de Neron et Neron avec notifications Telegram
 """
 
 import asyncio
 from src.watchers.docker_events import DockerEventWatcher
 from src.collectors.system import SystemCollector
+from src.actions.restart import RestartAction
+from src.memory.strategic import StrategicMemory
+from src.reports.daily import DailyReport
+from src.detectors.anomaly import AnomalyDetector
+from src.collectors.docker_stats import DockerStatsCollector
 import logging
 import sys
 import os
@@ -77,9 +82,16 @@ class ControlPlane:
         
         # État précédent pour détecter les changements
         self.previous_states: Dict[str, bool] = {}
+        
+        # Action de restart automatique
+        self.memory = StrategicMemory()
+        self.restart_action = RestartAction(self.notifier, memory=self.memory)
+        self.docker_stats = DockerStatsCollector()
+        self.daily_report = DailyReport(self.notifier, self.memory, self.docker_stats)
+        self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
         self.running = False
         
-        logger.info("Control Plane initialisé")
+        logger.info("WatchDog initialisé")
     
     async def check_service(self, checker) -> ServiceStatus:
         """Vérifier un service individuel"""
@@ -120,7 +132,12 @@ class ControlPlane:
                 logger.error(f"Exception lors du check: {result}")
                 continue
             
-            await self.handle_result(result)
+            # Si le checker retourne des résultats individuels, les traiter un par un
+            if hasattr(result, 'individual_results') and result.individual_results:
+                for individual in result.individual_results:
+                    await self.handle_result(individual)
+            else:
+                await self.handle_result(result)
         
         return [r for r in results if not isinstance(r, Exception)]
     
@@ -138,14 +155,27 @@ class ControlPlane:
         # Service est passé de UP à DOWN
         if was_healthy and not result.is_healthy:
             # Trouver le checker correspondant
-            checker = next((c for c in self.checkers if c.name == service_name), None)
+            # Chercher dans les checkers individuels du NeronChecker
+            checker = None
+            for c in self.checkers:
+                if hasattr(c, 'service_checkers'):
+                    checker = next((sc for sc in c.service_checkers if sc.name == service_name), None)
+                    if checker:
+                        break
+                elif c.name == service_name:
+                    checker = c
+                    break
 
             if checker:
+                # Ne pas retry si restart_action gère déjà
+                if self.restart_action.restart_counts.get(service_name, 0) > 0:
+                    self.previous_states[service_name] = False
+                    return
                 # Retry après 10s avant d'alerter
                 retry_result = await self.retry_check(checker, delay=10)
 
                 if not retry_result.is_healthy:
-                    # Toujours DOWN après retry -> alerte Telegram
+                    # Toujours DOWN après retry -> alerte Telegram + auto-restart
                     logger.warning(f"🔴 {service_name} confirmé DOWN après retry")
                     message = (
                         f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
@@ -159,17 +189,20 @@ class ControlPlane:
                         message += f"\n\n<b>Détails:</b>\n{result.details}"
                     await self.notifier.send_alert(message)
                     self.previous_states[service_name] = False
+                    # Lancer le pipeline de restart automatique
+                    asyncio.create_task(
+                        self.restart_action.handle_down(service_name, checker)
+                    )
                 else:
                     # Revenu UP entre les deux checks -> micro-coupure
                     logger.warning(f"⚡ Micro-coupure détectée sur {service_name} (revenu UP après retry)")
-                    message = (
+                    await self.notifier.send_info(
                         f"⚡ <b>Micro-coupure détectée</b>\n\n"
                         f"<b>Service:</b> {service_name}\n"
-                        f"<b>Durée:</b> < 10s\n"
+                        f"<b>Durée:</b> moins de 10s\n"
                         f"<b>Status:</b> Revenu UP automatiquement\n"
                         f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
                     )
-                    await self.notifier.send_info(message)
                     return
             else:
                 # Pas de checker trouvé -> alerte directe
@@ -188,19 +221,8 @@ class ControlPlane:
         
         # Service est revenu UP
         elif not was_healthy and result.is_healthy:
+            self.restart_action.reset_counter(service_name)
             logger.info(f"🟢 {service_name} est revenu UP")
-            message = (
-                f"🟢 <b>RÉCUPÉRATION - Service UP</b>\n\n"
-                f"<b>Service:</b> {service_name}\n"
-                f"<b>Status:</b> Opérationnel\n"
-                f"<b>Temps de réponse:</b> {result.response_time:.2f}s\n"
-                f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            # Ajouter les détails si disponibles
-            if hasattr(result, 'details') and result.details:
-                message += f"\n\n<b>Détails:</b>\n{result.details}"
-            
-            await self.notifier.send_success(message)
         
         # Service est UP mais lent
         elif result.is_healthy and result.response_time > self.config.max_response_time:
@@ -214,6 +236,9 @@ class ControlPlane:
             )
             await self.notifier.send_warning(message)
         
+        # Service toujours DOWN - le watchdog gère déjà le restart
+        elif not result.is_healthy:
+            logger.debug(f"🔴 {service_name} toujours DOWN ({result.response_time:.2f}s)")
         # Service est OK
         else:
             logger.info(f"✅ {service_name} OK ({result.response_time:.2f}s)")
@@ -263,13 +288,26 @@ class ControlPlane:
         logger.info(f"🚀 Démarrage du monitoring continu (intervalle: {interval}s)")
         
         # Démarrer le watchdog Docker Events en parallèle
-        watcher = DockerEventWatcher(self.notifier, self.previous_states)
+        # Construire le dict des checkers individuels
+        individual_checkers = {}
+        for c in self.checkers:
+            if hasattr(c, 'service_checkers'):
+                for sc in c.service_checkers:
+                    individual_checkers[sc.name] = sc
+
+        watcher = DockerEventWatcher(
+            self.notifier,
+            self.previous_states,
+            self.restart_action.restart_counts,
+            self.restart_action,
+            individual_checkers
+        )
         asyncio.create_task(watcher.watch())
         logger.info("👁️ Docker Event Watcher lancé en parallèle")
         
         # Envoyer une notification de démarrage
         await self.notifier.send_info(
-            "🚀 <b>Control Plane démarré</b>\n\n"
+            "🚀 <b>WatchDog démarré</b>\n\n"
             f"Monitoring de {len(self.checkers)} services:\n"
             + "\n".join(f"  • {c.name}" for c in self.checkers) +
             f"\n\nIntervalle: {interval}s"
@@ -282,6 +320,9 @@ class ControlPlane:
             while self.running:
                 check_count += 1
                 logger.info(f"--- Check #{check_count} ---")
+                # Purge hebdomadaire
+                if check_count % 100 == 0:
+                    self.memory.purge_old_entries()
                 
                 await self.check_all()
                 
@@ -308,6 +349,35 @@ class ControlPlane:
                 if check_count * interval % 86400 == 0:
                     await self.send_status_report()
                 
+                # Rapport quotidien à 19h
+                if self.daily_report.should_send():
+                    await self.daily_report.send()
+
+                # Stats Docker toutes les 5 minutes
+                if check_count % 5 == 0:
+                    docker_stats = await self.docker_stats.collect_all()
+                    # Stocker dans mémoire JSONL
+                    self.memory.record_container_stats(docker_stats)
+                    alerts = self.docker_stats.check_thresholds(docker_stats)
+                    for level, msg in alerts:
+                        logger.warning(msg)
+                        if level == 'critical':
+                            await self.notifier.send_alert(
+                                f"🔴 <b>ALERTE CONTENEUR</b>\n\n{msg}\n"
+                                f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
+                        else:
+                            await self.notifier.send_warning(
+                                f"⚠️ <b>AVERTISSEMENT CONTENEUR</b>\n\n{msg}\n"
+                                f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                            )
+                    if check_count % 60 == 0:
+                        logger.info(self.docker_stats.format_summary(docker_stats))
+
+                # Analyse anomalies toutes les heures
+                if check_count % 60 == 0:
+                    await self.anomaly_detector.run_analysis(days=7)
+
                 # Attendre avant le prochain check
                 await asyncio.sleep(interval)
                 
@@ -325,18 +395,18 @@ class ControlPlane:
     
     async def shutdown(self):
         """Arrêt propre du système"""
-        logger.info("Arrêt du Control Plane...")
+        logger.info("Arrêt du WatchDog...")
         self.running = False
         
         # Envoyer une notification d'arrêt
         await self.notifier.send_info(
-            "🛑 <b>Control Plane arrêté</b>\n\n"
+            "🛑 <b>WatchDog arrêté</b>\n\n"
             f"Arrêt à {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
         )
         
         # Fermer les connexions
         self.history.close()
-        logger.info("Control Plane arrêté proprement")
+        logger.info("WatchDog arrêté proprement")
 
 
 async def main():
