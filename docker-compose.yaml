@@ -1,5 +1,31 @@
 services:
 
+  neron_control:
+    build: ./modules/neron_control
+    container_name: neron_control
+    env_file:
+      - .env
+    environment:
+      - CHECK_INTERVAL=60
+      - CHECK_TIMEOUT=10
+      - MAX_RESPONSE_TIME=5.0
+    group_add:
+      - "988"
+    volumes:
+      - neron_control-data:/app/data
+      - neron_control-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/Data:/mnt/Data:ro
+      - /mnt/usb-storage:/mnt/usb-storage:ro
+      - /mnt/Backup:/mnt/Backup:ro
+    depends_on:
+      neron_core:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - Neron_Network
+      - neron_internal
+
   neron_core:
     build: ./modules/neron_core
     env_file:
@@ -152,18 +178,6 @@ services:
     networks:
       - neron_internal
 
-  neron_web:
-    build: ./modules/neron_web
-    container_name: neron_web
-    ports:
-      - "${NERON_WEB_HTTP:-7860}:7860"
-    depends_on:
-      - neron_core
-    networks:
-      - Neron_Network
-      - neron_internal
-    restart: unless-stopped
-
   neron_web_voice:
     build: ./modules/neron_web_voice
     container_name: neron_web_voice
@@ -209,3 +223,5 @@ volumes:
   ollama:
   memory:
   neron_memory-data:
+  neron_control-data:
+  neron_control-logs:
