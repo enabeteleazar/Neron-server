@@ -10,6 +10,7 @@ from src.collectors.system import SystemCollector
 from src.actions.restart import RestartAction
 from src.memory.strategic import StrategicMemory
 from src.reports.daily import DailyReport
+from src.detectors.anomaly import AnomalyDetector
 import logging
 import sys
 import os
@@ -85,6 +86,7 @@ class ControlPlane:
         self.memory = StrategicMemory()
         self.restart_action = RestartAction(self.notifier, memory=self.memory)
         self.daily_report = DailyReport(self.notifier, self.memory)
+        self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
         self.running = False
         
         logger.info("WatchDog initialisé")
@@ -348,6 +350,10 @@ class ControlPlane:
                 # Rapport quotidien à 19h
                 if self.daily_report.should_send():
                     await self.daily_report.send()
+
+                # Analyse anomalies toutes les heures
+                if check_count % 60 == 0:
+                    await self.anomaly_detector.run_analysis(days=7)
 
                 # Attendre avant le prochain check
                 await asyncio.sleep(interval)
