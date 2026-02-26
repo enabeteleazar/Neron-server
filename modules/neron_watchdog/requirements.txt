@@ -1,4 +1,4 @@
-# Homebox Control Plane - Dépendances Python
+# Neron WatchDog - Dépendances Python
 
 # HTTP async requests
 aiohttp>=3.9.0
