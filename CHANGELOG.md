@@ -5,20 +5,15 @@ Toutes les modifications notables de ce projet seront documentées dans ce fichi
 Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.2.2/),
 et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
+---
+
 ## [À venir]
 
-### 🚀 Prochaines étapes
-
 #### En cours
-- **neron_telegram** — module Telegram dédié bidirectionnel (port 8010)
-  - Bot bidirectionnel — commandes depuis Telegram
-  - `/status`, `/stats`, `/rapport`, `/restart <service>`, `/pause`, `/resume`, `/anomalies`, `/score`, `/logs`, `/history`
-  - File d'attente messages — anti-flood
-  - Whitelist chat_id — sécurité
+- **Watchdog** — score santé + tendance hebdo intégrés dans rapport quotidien
+- **Watchdog** — mode pause automatique pendant rebuild
 
 #### Planifié
-- **Watchdog** — score santé + tendance hebdo dans rapport quotidien
-- **Watchdog** — mode pause pendant rebuild
 - **Watchdog** — endpoint HTTP pour consulter l'état
 - **neron_telegram** — port 8010, remplacement notifier dans tous les modules
 - **ha_agent.py** — contrôle Home Assistant (v1.4.x)
@@ -29,6 +24,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Multi-utilisateurs** — support plusieurs utilisateurs
 - **Interface mobile** — application native
 - **Plugins** — architecture extensible
+
+-----
+
+## [v1.14.0] - 2026-02-26
+
+### ✨ Nouveautés
+- **neron_telegram** — module Telegram dédié bidirectionnel (port 8010)
+  - Bot bidirectionnel — commandes depuis Telegram
+  - `/start`, `/status`, `/stats`, `/rapport`, `/score`, `/anomalies`, `/restart <service>`, `/pause`, `/resume`
+  - Whitelist chat_id — sécurité
+  - Endpoint `/notify` — réception notifications des autres modules
+  - Messages texte → neron_core avec API Key
+- **API HTTP watchdog** — endpoints REST sur port 8003
+  - `/status`, `/score`, `/anomalies`, `/docker-stats`, `/rapport`, `/pause`, `/resume`, `/restart/<service>`
+- **Refactoring notifier** — neron_watchdog délègue à neron_telegram via `/notify`
 
 -----
 

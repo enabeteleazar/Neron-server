@@ -1,9 +1,12 @@
 
+
 services:
 
   neron_watchdog:
     build: ./modules/neron_watchdog
     container_name: neron_watchdog
+    ports:
+      - "8003:8003"
     env_file:
       - /opt/Neron_AI/.env
     environment:
@@ -199,16 +202,25 @@ services:
       - neron_internal
     restart: unless-stopped
 
-#  neron_telegram:
-#    build: ./neron-telegram
-#    container_name: neron-telegram
-#    env_file:
-#      - /opt/Homebox_AI/Env/.env
-#    depends_on:
-#      - neron_core
-#    networks:
-#      - neron_internal
-#    restart: unless-stopped
+  neron_telegram:
+    build: ./modules/neron_telegram
+    container_name: neron_telegram
+    env_file:
+      - /opt/Neron_AI/.env
+    ports:
+      - "8010:8010"
+    depends_on:
+      neron_core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - Neron_Network
 
 networks:
   Neron_Network:
