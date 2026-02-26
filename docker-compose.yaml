@@ -5,6 +5,8 @@ services:
   neron_watchdog:
     build: ./modules/neron_watchdog
     container_name: neron_watchdog
+    ports:
+      - "8003:8003"
     env_file:
       - /opt/Neron_AI/.env
     environment:

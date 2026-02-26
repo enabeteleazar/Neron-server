@@ -5,6 +5,7 @@ Surveille l'état de Neron et Neron avec notifications Telegram
 """
 
 import asyncio
+import uvicorn
 from src.watchers.docker_events import DockerEventWatcher
 from src.collectors.system import SystemCollector
 from src.actions.restart import RestartAction
@@ -409,9 +410,133 @@ class ControlPlane:
         logger.info("WatchDog arrêté proprement")
 
 
+
+# ─────────────────────────────────────────────
+# API HTTP
+# ─────────────────────────────────────────────
+from fastapi import FastAPI
+
+api = FastAPI(title="Neron WatchDog API", version="1.0.0")
+
+
+@api.get("/health")
+def health():
+    return {"status": "healthy", "service": "neron_watchdog"}
+
+
+@api.get("/status")
+async def status():
+    """État de tous les services"""
+    if control_plane is None:
+        return {"services": {}}
+    results = await control_plane.check_all()
+    services = {}
+    for r in results:
+        # Résultats individuels (multi-services dans un checker)
+        if hasattr(r, 'individual_results') and r.individual_results:
+            for individual in r.individual_results:
+                services[individual.service_name] = {
+                    "healthy": individual.is_healthy,
+                    "response_time": individual.response_time,
+                    "error": individual.error
+                }
+        else:
+            services[r.service_name] = {
+                "healthy": r.is_healthy,
+                "response_time": r.response_time,
+                "error": r.error
+            }
+    return {"services": services}
+
+
+@api.get("/score")
+def score():
+    """Score de santé global"""
+    if control_plane is None:
+        return {}
+    entries = control_plane.memory.read_all(days=7)
+    return control_plane.anomaly_detector.compute_health_score(entries)
+
+
+@api.get("/anomalies")
+async def anomalies():
+    """Anomalies détectées"""
+    if control_plane is None:
+        return {"anomalies": []}
+    entries = control_plane.memory.read_all(days=7)
+    results = []
+    for detector in [
+        control_plane.anomaly_detector.detect_recurring_crash,
+        control_plane.anomaly_detector.detect_cascade,
+        control_plane.anomaly_detector.detect_crash_after_restart,
+        control_plane.anomaly_detector.detect_increasing_frequency,
+    ]:
+        results.extend(detector(entries))
+    return {"anomalies": results}
+
+
+@api.get("/docker-stats")
+async def docker_stats():
+    """Stats Docker par conteneur"""
+    if control_plane is None:
+        return {"stats": {}}
+    snapshot = await control_plane.docker_stats.collect_all()
+    stats = {}
+    for name, s in snapshot.items():
+        stats[name] = {
+            "cpu": s.cpu_percent,
+            "ram_mb": s.ram_mb,
+            "ram_percent": s.ram_percent,
+            "status": s.status
+        }
+    return {"stats": stats}
+
+
+@api.post("/rapport")
+async def rapport():
+    """Envoyer le rapport immédiatement"""
+    if control_plane is None:
+        return {"status": "error"}
+    await control_plane.daily_report.send()
+    return {"status": "sent"}
+
+
+@api.post("/pause")
+def pause():
+    """Mettre le watchdog en pause"""
+    if control_plane:
+        control_plane.running = False
+    return {"status": "paused"}
+
+
+@api.post("/resume")
+def resume():
+    """Reprendre le watchdog"""
+    if control_plane:
+        control_plane.running = True
+    return {"status": "resumed"}
+
+
+@api.post("/restart/{service_name}")
+async def restart_service(service_name: str):
+    """Redémarrer un service manuellement"""
+    if control_plane is None:
+        return {"status": "error"}
+    try:
+        await control_plane.restart_action.restart_container(service_name)
+        return {"status": "restarted", "service": service_name}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# Variable globale pour accès depuis l'API
+control_plane = None
+
 async def main():
     """Point d'entrée principal"""
+    global control_plane
     cp = ControlPlane()
+    control_plane = cp
     
     # Gérer les signaux d'arrêt proprement
     def signal_handler(sig, frame):
@@ -442,7 +567,12 @@ async def main():
     else:
         # Mode monitoring continu (par défaut)
         logger.info("Mode: Monitoring continu")
-        await cp.run_continuous()
+        config = uvicorn.Config(api, host='0.0.0.0', port=8003, log_level='warning')
+    server = uvicorn.Server(config)
+    await asyncio.gather(
+        cp.run_continuous(),
+        server.serve()
+    )
 
 
 if __name__ == "__main__":
