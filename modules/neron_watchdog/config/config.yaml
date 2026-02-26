@@ -1,4 +1,4 @@
-# Configuration YAML du Control Plane
+# Configuration YAML du WatchDog
 # Les variables d'environnement ont la priorité sur ces valeurs
 
 # URLs des services (peuvent être overridées par les variables d'environnement)
