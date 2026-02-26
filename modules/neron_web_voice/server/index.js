@@ -10,6 +10,7 @@ const app = express();
 const PORT = parseInt(process.env.PORT || '8080', 10);
 
 let CORE_URL = process.env.NERON_CORE_URL || 'http://localhost:8000';
+const NERON_API_KEY = process.env.NERON_API_KEY || '';
 let STT_URL  = process.env.NERON_STT_URL  || 'http://localhost:8001';
 
 app.use((req, res, next) => {
@@ -67,7 +68,7 @@ app.post('/api/core', express.json(), async (req, res) => {
   try {
     const response = await fetch(`${CORE_URL}/input/text`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': NERON_API_KEY },
       body: JSON.stringify(req.body),
     });
     if (!response.ok) {
