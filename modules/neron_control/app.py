@@ -6,6 +6,7 @@ Surveille l'état de Neron et Neron avec notifications Telegram
 
 import asyncio
 from src.watchers.docker_events import DockerEventWatcher
+from src.collectors.system import SystemCollector
 import logging
 import sys
 import os
@@ -275,6 +276,7 @@ class ControlPlane:
         )
         
         check_count = 0
+        system_collector = SystemCollector()
         
         try:
             while self.running:
@@ -282,6 +284,25 @@ class ControlPlane:
                 logger.info(f"--- Check #{check_count} ---")
                 
                 await self.check_all()
+                
+                # Collecter et verifier les metriques systeme
+                metrics = system_collector.collect()
+                alerts = system_collector.check_thresholds(metrics)
+                
+                for level, msg in alerts:
+                    logger.warning(f"📊 {msg}")
+                    if level == "critical":
+                        await self.notifier.send_alert(
+                            f"🔴 <b>ALERTE SYSTÈME</b>\n\n"
+                            f"{msg}\n"
+                            f"<b>Heure:</b> {metrics.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
+                    else:
+                        await self.notifier.send_warning(
+                            f"⚠️ <b>AVERTISSEMENT SYSTÈME</b>\n\n"
+                            f"{msg}\n"
+                            f"<b>Heure:</b> {metrics.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
                 
                 # Envoyer un rapport toutes les 24h (86400 secondes)
                 if check_count * interval % 86400 == 0:
