@@ -20,10 +20,12 @@ WATCHED_CONTAINERS = {
 class DockerEventWatcher:
     """Surveille les evenements Docker via socket Unix"""
 
-    def __init__(self, notifier, previous_states: dict, restart_counts: dict = None):
+    def __init__(self, notifier, previous_states: dict, restart_counts: dict = None, restart_action=None, service_checkers: dict = None):
         self.notifier = notifier
         self.previous_states = previous_states
         self.restart_counts = restart_counts or {}
+        self.restart_action = restart_action
+        self.service_checkers = service_checkers or {}
         self.running = False
 
     async def watch(self):
@@ -72,29 +74,26 @@ class DockerEventWatcher:
 
         if action == "die":  # stop + die sont emis ensemble, on garde seulement die
             self.previous_states[service_name] = False
-            exit_code = event.get("Actor", {}).get("Attributes", {}).get("exitCode", "N/A")
-            message = (
-                f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
-                f"<b>Service:</b> {service_name}\n"
-                f"<b>Événement:</b> {action.upper()}\n"
-                f"<b>Exit code:</b> {exit_code}\n"
-                f"<b>Détection:</b> Instantanée (Docker Events)\n"
-                f"<b>Heure:</b> {timestamp}"
-            )
-            await self.notifier.send_alert(message)
-
-        elif action in ("start", "restart"):
-            was_healthy = self.previous_states.get(service_name, True)
-            # Si restart_counts > 0, le restart_action va gérer la notification
-            if not was_healthy and not self.restart_counts.get(service_name, 0):
-                message = (
-                    f"🟢 <b>RÉCUPÉRATION - Service UP</b>\n\n"
+            # Déclencher restart silencieux si pas déjà en cours
+            if self.restart_action and self.restart_counts.get(service_name, 0) == 0:
+                checker = self.service_checkers.get(service_name)
+                asyncio.create_task(
+                    self.restart_action.handle_down(service_name, checker)
+                )
+            else:
+                # Pas de restart_action -> alerte directe
+                exit_code = event.get("Actor", {}).get("Attributes", {}).get("exitCode", "N/A")
+                await self.notifier.send_alert(
+                    f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
                     f"<b>Service:</b> {service_name}\n"
-                    f"<b>Événement:</b> {action.upper()}\n"
-                    f"<b>Détection:</b> Instantanée (Docker Events)\n"
+                    f"<b>Exit code:</b> {exit_code}\n"
                     f"<b>Heure:</b> {timestamp}"
                 )
-                await self.notifier.send_success(message)
+
+        elif action in ("start", "restart"):
+            # Toujours silencieux - restart_action ou polling gèrent la notification
+            self.previous_states[service_name] = True
+            logger.info(f"🟢 {service_name} redémarré (géré par restart_action)")
 
     def stop(self):
         self.running = False
