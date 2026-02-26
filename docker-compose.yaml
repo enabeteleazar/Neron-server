@@ -1,5 +1,25 @@
 services:
 
+  neron_control:
+    build: ./modules/neron_control
+    container_name: neron_control
+    env_file:
+      - .env
+    environment:
+      - CHECK_INTERVAL=60
+      - CHECK_TIMEOUT=10
+      - MAX_RESPONSE_TIME=5.0
+    volumes:
+      - neron_control-data:/app/data
+      - neron_control-logs:/app/logs
+    depends_on:
+      neron_core:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - Neron_Network
+      - neron_internal
+
   neron_core:
     build: ./modules/neron_core
     env_file:
@@ -209,3 +229,5 @@ volumes:
   ollama:
   memory:
   neron_memory-data:
+  neron_control-data:
+  neron_control-logs:

@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# Data et logs (ne pas inclure dans l'image)
+data/
+logs/
+*.db
+*.log
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporaires
+*.tmp
+*.bak
+
+# Documentation (optionnel)
+README.md
+QUICKSTART.md
+TROUBLESHOOTING.md
+LICENSE
+
+# Tests
+test.py
+diagnose.py
+
+# Configuration locale
+.env
+.env.local

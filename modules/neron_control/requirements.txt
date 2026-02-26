@@ -1,0 +1,17 @@
+# Homebox Control Plane - Dépendances Python
+
+# HTTP async requests
+aiohttp>=3.9.0
+
+# Telegram bot
+python-telegram-bot>=20.7
+
+# Configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Base de données (inclus dans Python standard library, mais listé pour info)
+# sqlite3 - inclus dans Python
+
+# Logging amélioré (optionnel)
+coloredlogs>=15.0
