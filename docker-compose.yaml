@@ -172,18 +172,6 @@ services:
     networks:
       - neron_internal
 
-  neron_web:
-    build: ./modules/neron_web
-    container_name: neron_web
-    ports:
-      - "${NERON_WEB_HTTP:-8082}:7860"
-    depends_on:
-      - neron_core
-    networks:
-      - Neron_Network
-      - neron_internal
-    restart: unless-stopped
-
   neron_web_voice:
     build: ./modules/neron_web_voice
     container_name: neron_web_voice
