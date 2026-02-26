@@ -266,48 +266,49 @@ class AnomalyDetector:
     # 7. CRASH APRÈS LONGUE DURÉE (MEMORY LEAK)
     # ─────────────────────────────────────────────
     def detect_memory_leak_pattern(self, entries: list) -> List[Dict]:
-        """Détecte si un service tombe toujours après X heures de fonctionnement"""
+        """Détecte RAM croissante sur un conteneur (memory leak réel)"""
         anomalies = []
+        container_stats = [e for e in entries if e.get("type") == "container_stats"]
 
-        by_service = defaultdict(list)
-        recoveries = [e for e in entries if e.get("type") == "recovery"]
-        crashes = [e for e in entries if e.get("type") == "crash"]
+        if len(container_stats) < 10:
+            return anomalies
 
-        for recovery in recoveries:
-            service = recovery["service"]
-            try:
-                t_up = datetime.strptime(recovery["timestamp"], "%Y-%m-%d %H:%M:%S")
-            except Exception:
+        containers = [
+            "neron_core", "neron_stt", "neron_memory", "neron_tts",
+            "neron_llm", "neron_ollama", "neron_searxng", "neron_web_voice"
+        ]
+
+        service_map = {
+            "neron_core": "Neron Core", "neron_stt": "Neron STT",
+            "neron_memory": "Neron Memory", "neron_tts": "Neron TTS",
+            "neron_llm": "Neron LLM", "neron_ollama": "Neron Ollama",
+            "neron_searxng": "Neron SearXNG", "neron_web_voice": "Neron Web Voice"
+        }
+
+        for container in containers:
+            ram_values = []
+            for entry in container_stats:
+                cdata = entry.get(container)
+                if cdata and isinstance(cdata, dict):
+                    ram_values.append(cdata.get("ram_mb", 0))
+
+            if len(ram_values) < 10:
                 continue
 
-            next_crash = None
-            for crash in crashes:
-                if crash["service"] != service:
-                    continue
-                try:
-                    t_crash = datetime.strptime(crash["timestamp"], "%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    continue
-                if t_crash > t_up:
-                    if next_crash is None or t_crash < next_crash:
-                        next_crash = t_crash
+            # Comparer première moitié vs deuxième moitié
+            mid = len(ram_values) // 2
+            avg_first = sum(ram_values[:mid]) / mid
+            avg_second = sum(ram_values[mid:]) / (len(ram_values) - mid)
 
-            if next_crash:
-                uptime_hours = (next_crash - t_up).total_seconds() / 3600
-                by_service[service].append(uptime_hours)
-
-        for service, uptimes in by_service.items():
-            if len(uptimes) < 3:
-                continue
-            avg_uptime = sum(uptimes) / len(uptimes)
-            variance = sum((u - avg_uptime) ** 2 for u in uptimes) / len(uptimes)
-            # Faible variance = pattern régulier
-            if variance < (avg_uptime * 0.3) ** 2 and avg_uptime < 24:
+            # Croissance > 20% et > 50MB
+            if avg_second > avg_first * 1.2 and (avg_second - avg_first) > 50:
+                service = service_map.get(container, container)
                 anomalies.append({
                     "type": "memory_leak_pattern",
                     "service": service,
-                    "avg_uptime_hours": round(avg_uptime, 1),
-                    "message": f"{service} tombe régulièrement après ~{avg_uptime:.1f}h (possible memory leak)"
+                    "ram_before_mb": round(avg_first, 1),
+                    "ram_after_mb": round(avg_second, 1),
+                    "message": f"{service}: RAM en hausse continue {avg_first:.0f}MB → {avg_second:.0f}MB (possible memory leak)"
                 })
 
         return anomalies
