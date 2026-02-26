@@ -27,12 +27,14 @@ INSTABILITY_WINDOW = 10     # minutes
 class RestartAction:
     """Gere le restart automatique des services via Docker API"""
 
-    def __init__(self, notifier, socket_path: str = "/var/run/docker.sock"):
+    def __init__(self, notifier, socket_path: str = "/var/run/docker.sock", memory=None):
         self.notifier = notifier
         self.socket_path = socket_path
         self.restart_counts = {}   # service -> tentatives restart en cours
         self.crash_history = {}    # service -> liste de timestamps des crashs
         self._locks = {}           # service -> asyncio.Lock (anti doublon)
+        self.memory = memory       # Mémoire stratégique JSONL
+        self._down_since = {}      # service -> datetime du crash
 
     def _record_crash(self, service_name: str) -> int:
         """Enregistrer un crash et retourner le nombre de crashs recents"""
@@ -96,15 +98,21 @@ class RestartAction:
             return
         
         async with self._locks[service_name]:
+            self._down_since[service_name] = datetime.now()
             await self._do_restart(service_name, checker)
 
     async def _do_restart(self, service_name: str, checker=None):
         """Pipeline restart protégé par verrou"""
         # Enregistrer le crash
         crash_count = self._record_crash(service_name)
+        exit_code = "N/A"
+        if self.memory:
+            self.memory.record_crash(service_name, exit_code)
 
         # Alerte instabilité si seuil atteint
         if crash_count >= INSTABILITY_THRESHOLD:
+            if self.memory:
+                self.memory.record_instability(service_name, crash_count, INSTABILITY_WINDOW)
             logger.warning(f"🔴 {service_name} instable: {crash_count} crashs en {INSTABILITY_WINDOW}min")
             await self.notifier.send_alert(
                 f"🔴 <b>Service instable</b>\n\n"
@@ -136,6 +144,11 @@ class RestartAction:
                 if result.is_healthy:
                     logger.info(f"✅ {service_name} rétabli après restart {attempt}/{MAX_RETRIES}")
                     self.restart_counts[service_name] = 0
+                    if self.memory:
+                        down_since = self._down_since.get(service_name)
+                        downtime = (datetime.now() - down_since).total_seconds() if down_since else 0
+                        self.memory.record_restart(service_name, attempt, True, downtime)
+                        self.memory.record_recovery(service_name, downtime)
                     return
             else:
                 self.restart_counts[service_name] = 0
@@ -144,6 +157,8 @@ class RestartAction:
         # 3 restarts échoués -> intervention manuelle
         logger.error(f"🚨 {service_name} - intervention manuelle requise")
         self.restart_counts[service_name] = 0
+        if self.memory:
+            self.memory.record_manual_required(service_name, MAX_RETRIES)
         await self.notifier.send_alert(
             f"🚨 <b>INTERVENTION MANUELLE REQUISE</b>\n\n"
             f"<b>Service:</b> {service_name}\n"
