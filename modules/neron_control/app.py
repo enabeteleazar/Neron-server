@@ -7,6 +7,7 @@ Surveille l'état de Neron et Neron avec notifications Telegram
 import asyncio
 from src.watchers.docker_events import DockerEventWatcher
 from src.collectors.system import SystemCollector
+from src.actions.restart import RestartAction
 import logging
 import sys
 import os
@@ -77,6 +78,9 @@ class ControlPlane:
         
         # État précédent pour détecter les changements
         self.previous_states: Dict[str, bool] = {}
+        
+        # Action de restart automatique
+        self.restart_action = RestartAction(self.notifier)
         self.running = False
         
         logger.info("Control Plane initialisé")
@@ -120,7 +124,12 @@ class ControlPlane:
                 logger.error(f"Exception lors du check: {result}")
                 continue
             
-            await self.handle_result(result)
+            # Si le checker retourne des résultats individuels, les traiter un par un
+            if hasattr(result, 'individual_results') and result.individual_results:
+                for individual in result.individual_results:
+                    await self.handle_result(individual)
+            else:
+                await self.handle_result(result)
         
         return [r for r in results if not isinstance(r, Exception)]
     
@@ -138,14 +147,23 @@ class ControlPlane:
         # Service est passé de UP à DOWN
         if was_healthy and not result.is_healthy:
             # Trouver le checker correspondant
-            checker = next((c for c in self.checkers if c.name == service_name), None)
+            # Chercher dans les checkers individuels du NeronChecker
+            checker = None
+            for c in self.checkers:
+                if hasattr(c, 'service_checkers'):
+                    checker = next((sc for sc in c.service_checkers if sc.name == service_name), None)
+                    if checker:
+                        break
+                elif c.name == service_name:
+                    checker = c
+                    break
 
             if checker:
                 # Retry après 10s avant d'alerter
                 retry_result = await self.retry_check(checker, delay=10)
 
                 if not retry_result.is_healthy:
-                    # Toujours DOWN après retry -> alerte Telegram
+                    # Toujours DOWN après retry -> alerte Telegram + auto-restart
                     logger.warning(f"🔴 {service_name} confirmé DOWN après retry")
                     message = (
                         f"🔴 <b>ALERTE - Service DOWN</b>\n\n"
@@ -159,6 +177,10 @@ class ControlPlane:
                         message += f"\n\n<b>Détails:</b>\n{result.details}"
                     await self.notifier.send_alert(message)
                     self.previous_states[service_name] = False
+                    # Lancer le pipeline de restart automatique
+                    asyncio.create_task(
+                        self.restart_action.handle_down(service_name, checker)
+                    )
                 else:
                     # Revenu UP entre les deux checks -> micro-coupure
                     logger.warning(f"⚡ Micro-coupure détectée sur {service_name} (revenu UP après retry)")
@@ -188,6 +210,7 @@ class ControlPlane:
         
         # Service est revenu UP
         elif not was_healthy and result.is_healthy:
+            self.restart_action.reset_counter(service_name)
             logger.info(f"🟢 {service_name} est revenu UP")
             message = (
                 f"🟢 <b>RÉCUPÉRATION - Service UP</b>\n\n"
@@ -214,6 +237,9 @@ class ControlPlane:
             )
             await self.notifier.send_warning(message)
         
+        # Service toujours DOWN - le watchdog gère déjà le restart
+        elif not result.is_healthy:
+            logger.debug(f"🔴 {service_name} toujours DOWN ({result.response_time:.2f}s)")
         # Service est OK
         else:
             logger.info(f"✅ {service_name} OK ({result.response_time:.2f}s)")
@@ -263,7 +289,7 @@ class ControlPlane:
         logger.info(f"🚀 Démarrage du monitoring continu (intervalle: {interval}s)")
         
         # Démarrer le watchdog Docker Events en parallèle
-        watcher = DockerEventWatcher(self.notifier, self.previous_states)
+        watcher = DockerEventWatcher(self.notifier, self.previous_states, self.restart_action.restart_counts)
         asyncio.create_task(watcher.watch())
         logger.info("👁️ Docker Event Watcher lancé en parallèle")
         

@@ -20,9 +20,10 @@ WATCHED_CONTAINERS = {
 class DockerEventWatcher:
     """Surveille les evenements Docker via socket Unix"""
 
-    def __init__(self, notifier, previous_states: dict):
+    def __init__(self, notifier, previous_states: dict, restart_counts: dict = None):
         self.notifier = notifier
         self.previous_states = previous_states
+        self.restart_counts = restart_counts or {}
         self.running = False
 
     async def watch(self):
@@ -84,8 +85,8 @@ class DockerEventWatcher:
 
         elif action in ("start", "restart"):
             was_healthy = self.previous_states.get(service_name, True)
-            if not was_healthy:
-                self.previous_states[service_name] = True
+            # Si restart_counts > 0, le restart_action va gérer la notification
+            if not was_healthy and not self.restart_counts.get(service_name, 0):
                 message = (
                     f"🟢 <b>RÉCUPÉRATION - Service UP</b>\n\n"
                     f"<b>Service:</b> {service_name}\n"
