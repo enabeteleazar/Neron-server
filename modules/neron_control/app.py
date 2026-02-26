@@ -159,6 +159,10 @@ class ControlPlane:
                     break
 
             if checker:
+                # Ne pas retry si restart_action gère déjà
+                if self.restart_action.restart_counts.get(service_name, 0) > 0:
+                    self.previous_states[service_name] = False
+                    return
                 # Retry après 10s avant d'alerter
                 retry_result = await self.retry_check(checker, delay=10)
 
@@ -184,14 +188,13 @@ class ControlPlane:
                 else:
                     # Revenu UP entre les deux checks -> micro-coupure
                     logger.warning(f"⚡ Micro-coupure détectée sur {service_name} (revenu UP après retry)")
-                    message = (
+                    await self.notifier.send_info(
                         f"⚡ <b>Micro-coupure détectée</b>\n\n"
                         f"<b>Service:</b> {service_name}\n"
-                        f"<b>Durée:</b> < 10s\n"
+                        f"<b>Durée:</b> moins de 10s\n"
                         f"<b>Status:</b> Revenu UP automatiquement\n"
                         f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
                     )
-                    await self.notifier.send_info(message)
                     return
             else:
                 # Pas de checker trouvé -> alerte directe
@@ -212,18 +215,6 @@ class ControlPlane:
         elif not was_healthy and result.is_healthy:
             self.restart_action.reset_counter(service_name)
             logger.info(f"🟢 {service_name} est revenu UP")
-            message = (
-                f"🟢 <b>RÉCUPÉRATION - Service UP</b>\n\n"
-                f"<b>Service:</b> {service_name}\n"
-                f"<b>Status:</b> Opérationnel\n"
-                f"<b>Temps de réponse:</b> {result.response_time:.2f}s\n"
-                f"<b>Heure:</b> {result.timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
-            )
-            # Ajouter les détails si disponibles
-            if hasattr(result, 'details') and result.details:
-                message += f"\n\n<b>Détails:</b>\n{result.details}"
-            
-            await self.notifier.send_success(message)
         
         # Service est UP mais lent
         elif result.is_healthy and result.response_time > self.config.max_response_time:
@@ -289,7 +280,20 @@ class ControlPlane:
         logger.info(f"🚀 Démarrage du monitoring continu (intervalle: {interval}s)")
         
         # Démarrer le watchdog Docker Events en parallèle
-        watcher = DockerEventWatcher(self.notifier, self.previous_states, self.restart_action.restart_counts)
+        # Construire le dict des checkers individuels
+        individual_checkers = {}
+        for c in self.checkers:
+            if hasattr(c, 'service_checkers'):
+                for sc in c.service_checkers:
+                    individual_checkers[sc.name] = sc
+
+        watcher = DockerEventWatcher(
+            self.notifier,
+            self.previous_states,
+            self.restart_action.restart_counts,
+            self.restart_action,
+            individual_checkers
+        )
         asyncio.create_task(watcher.watch())
         logger.info("👁️ Docker Event Watcher lancé en parallèle")
         

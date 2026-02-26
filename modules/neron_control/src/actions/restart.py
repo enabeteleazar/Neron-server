@@ -1,12 +1,10 @@
 import asyncio
 import aiohttp
-import json
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
-# Mapping service -> nom conteneur Docker
 SERVICE_TO_CONTAINER = {
     "Neron Core":      "neron_core",
     "Neron STT":       "neron_stt",
@@ -19,7 +17,11 @@ SERVICE_TO_CONTAINER = {
 }
 
 MAX_RETRIES = 3
-RETRY_DELAYS = [10, 30, 60]  # secondes entre tentatives
+RETRY_DELAYS = [10, 30, 60]
+
+# Seuils instabilité
+INSTABILITY_THRESHOLD = 3   # crashs
+INSTABILITY_WINDOW = 10     # minutes
 
 
 class RestartAction:
@@ -28,10 +30,31 @@ class RestartAction:
     def __init__(self, notifier, socket_path: str = "/var/run/docker.sock"):
         self.notifier = notifier
         self.socket_path = socket_path
-        self.restart_counts = {}  # service -> nombre de restarts
+        self.restart_counts = {}   # service -> tentatives restart en cours
+        self.crash_history = {}    # service -> liste de timestamps des crashs
+
+    def _record_crash(self, service_name: str) -> int:
+        """Enregistrer un crash et retourner le nombre de crashs recents"""
+        now = datetime.now()
+        window = now - timedelta(minutes=INSTABILITY_WINDOW)
+
+        if service_name not in self.crash_history:
+            self.crash_history[service_name] = []
+
+        # Ajouter le crash actuel
+        self.crash_history[service_name].append(now)
+
+        # Nettoyer les crashs hors fenetre
+        self.crash_history[service_name] = [
+            t for t in self.crash_history[service_name] if t > window
+        ]
+
+        count = len(self.crash_history[service_name])
+        logger.info(f"📊 {service_name}: {count} crash(s) dans les {INSTABILITY_WINDOW} dernières minutes")
+        return count
 
     async def restart_service(self, service_name: str) -> bool:
-        """Tenter de redemarrer un service"""
+        """Tenter de redemarrer un service via Docker API"""
         container = SERVICE_TO_CONTAINER.get(service_name)
         if not container:
             logger.error(f"Conteneur inconnu pour le service: {service_name}")
@@ -55,67 +78,64 @@ class RestartAction:
             logger.error(f"❌ Erreur restart {container}: {e}")
             return False
 
-    async def handle_down(self, service_name: str, checker=None) -> bool:
+    async def handle_down(self, service_name: str, checker=None):
         """
-        Pipeline complet de restart avec retry et notifications
-        Retourne True si le service est revenu UP
+        Pipeline de restart silencieux.
+        Alerte uniquement si service instable (3 crashs en 10min)
+        ou intervention manuelle requise (3 restarts échoués).
         """
-        count = self.restart_counts.get(service_name, 0)
+        # Enregistrer le crash
+        crash_count = self._record_crash(service_name)
 
-        if count >= MAX_RETRIES:
-            logger.error(f"🚨 {service_name} a dépassé {MAX_RETRIES} restarts - intervention manuelle requise")
+        # Alerte instabilité si seuil atteint
+        if crash_count >= INSTABILITY_THRESHOLD:
+            logger.warning(f"🔴 {service_name} instable: {crash_count} crashs en {INSTABILITY_WINDOW}min")
             await self.notifier.send_alert(
-                f"🚨 <b>INTERVENTION MANUELLE REQUISE</b>\n\n"
+                f"🔴 <b>Service instable</b>\n\n"
                 f"<b>Service:</b> {service_name}\n"
-                f"<b>Tentatives:</b> {count}/{MAX_RETRIES}\n"
-                f"<b>Status:</b> Toujours DOWN après {MAX_RETRIES} restarts\n"
+                f"<b>Crashs:</b> {crash_count} en {INSTABILITY_WINDOW} minutes\n"
                 f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             )
-            return False
 
-        delay = RETRY_DELAYS[count] if count < len(RETRY_DELAYS) else RETRY_DELAYS[-1]
-        attempt = count + 1
+        # Pipeline restart silencieux
+        attempt = 0
+        while attempt < MAX_RETRIES:
+            attempt += 1
+            delay = RETRY_DELAYS[attempt - 1]
 
-        logger.warning(f"🔄 Tentative de restart {attempt}/{MAX_RETRIES} pour {service_name} (délai: {delay}s)")
+            logger.warning(f"🔄 Restart {attempt}/{MAX_RETRIES} pour {service_name} (délai: {delay}s)")
+            self.restart_counts[service_name] = attempt
 
-        await self.notifier.send_warning(
-            f"🔄 <b>Auto-restart en cours</b>\n\n"
-            f"<b>Service:</b> {service_name}\n"
-            f"<b>Tentative:</b> {attempt}/{MAX_RETRIES}\n"
-            f"<b>Délai avant restart:</b> {delay}s\n"
-            f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+            await asyncio.sleep(delay)
 
-        await asyncio.sleep(delay)
+            success = await self.restart_service(service_name)
+            if not success:
+                continue
 
-        success = await self.restart_service(service_name)
-        self.restart_counts[service_name] = attempt
-
-        if success:
-            # Attendre que le service soit vraiment UP
+            # Attendre démarrage
             await asyncio.sleep(15)
 
             if checker:
                 result = await checker.check()
                 if result.is_healthy:
-                    self.restart_counts[service_name] = 0  # Reset compteur
-                    await self.notifier.send_success(
-                        f"✅ <b>Service rétabli après restart</b>\n\n"
-                        f"<b>Service:</b> {service_name}\n"
-                        f"<b>Tentative:</b> {attempt}/{MAX_RETRIES}\n"
-                        f"<b>Temps de réponse:</b> {result.response_time:.2f}s\n"
-                        f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-                    )
-                    return True
-                else:
-                    # Toujours DOWN -> nouvelle tentative récursive
-                    return await self.handle_down(service_name, checker)
-            return True
+                    logger.info(f"✅ {service_name} rétabli après restart {attempt}/{MAX_RETRIES}")
+                    self.restart_counts[service_name] = 0
+                    return
+            else:
+                self.restart_counts[service_name] = 0
+                return
 
-        return False
+        # 3 restarts échoués -> intervention manuelle
+        logger.error(f"🚨 {service_name} - intervention manuelle requise")
+        self.restart_counts[service_name] = 0
+        await self.notifier.send_alert(
+            f"🚨 <b>INTERVENTION MANUELLE REQUISE</b>\n\n"
+            f"<b>Service:</b> {service_name}\n"
+            f"<b>Tentatives:</b> {MAX_RETRIES}/{MAX_RETRIES} échouées\n"
+            f"<b>Heure:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+        )
 
     def reset_counter(self, service_name: str):
-        """Remettre le compteur de restart a zero quand le service revient UP"""
+        """Remettre le compteur de restart a zero"""
         if service_name in self.restart_counts:
             self.restart_counts[service_name] = 0
-            logger.info(f"Compteur restart reset pour {service_name}")
