@@ -88,8 +88,8 @@ class ControlPlane:
         self.memory = StrategicMemory()
         self.restart_action = RestartAction(self.notifier, memory=self.memory)
         self.docker_stats = DockerStatsCollector()
-        self.daily_report = DailyReport(self.notifier, self.memory, self.docker_stats)
         self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
+        self.daily_report = DailyReport(self.notifier, self.memory, self.docker_stats, self.anomaly_detector)
         self.running = False
         
         logger.info("WatchDog initialisé")
