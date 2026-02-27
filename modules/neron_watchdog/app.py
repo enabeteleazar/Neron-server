@@ -415,7 +415,7 @@ class ControlPlane:
 # ─────────────────────────────────────────────
 # API HTTP
 # ─────────────────────────────────────────────
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 
 api = FastAPI(title="Neron WatchDog API", version="1.0.0")
 
@@ -576,6 +576,57 @@ async def main():
     )
 
 
+
+
+@api.get("/logs/{service_name}")
+async def get_logs(service_name: str, lines: int = 50):
+    """Dernières lignes de logs d'un conteneur via socket Docker"""
+    import http.client
+    import json as _json
+    try:
+        conn = http.client.HTTPConnection("localhost", timeout=10)
+        conn.sock = __import__('socket').socket(__import__('socket').AF_UNIX)
+        conn.sock.connect("/var/run/docker.sock")
+        conn.request("GET", f"/containers/{service_name}/logs?tail={lines}&stdout=1&stderr=1")
+        resp = conn.getresponse()
+        if resp.status == 404:
+            raise HTTPException(404, f"Conteneur {service_name} introuvable")
+        raw = resp.read()
+        # Supprimer les headers de stream Docker (8 bytes par ligne)
+        lines_out = []
+        i = 0
+        while i < len(raw):
+            if i + 8 <= len(raw):
+                size = int.from_bytes(raw[i+4:i+8], 'big')
+                line = raw[i+8:i+8+size].decode('utf-8', errors='replace').rstrip()
+                if line:
+                    lines_out.append(line)
+                i += 8 + size
+            else:
+                break
+        return {"service": service_name, "logs": lines_out}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@api.get("/history/{service_name}")
+async def get_history(service_name: str, days: int = 7):
+    """Historique des crashs d'un service depuis la mémoire JSONL"""
+    if control_plane is None:
+        return {"service": service_name, "events": []}
+    entries = control_plane.memory.read_all(days=days)
+    events = [
+        e for e in entries
+        if e.get("service") == service_name and e.get("type") in ("crash", "restart", "instability", "recovery")
+    ]
+    return {
+        "service": service_name,
+        "days": days,
+        "total": len(events),
+        "events": events[-50:]
+    }
 if __name__ == "__main__":
     try:
         asyncio.run(main())
@@ -588,17 +639,33 @@ if __name__ == "__main__":
 
 @api.get("/logs/{service_name}")
 async def get_logs(service_name: str, lines: int = 50):
-    """Dernières lignes de logs d'un conteneur"""
-    import subprocess
+    """Dernières lignes de logs d'un conteneur via socket Docker"""
+    import http.client
+    import json as _json
     try:
-        result = subprocess.run(
-            ["docker", "logs", "--tail", str(lines), service_name],
-            capture_output=True,
-            text=True,
-            timeout=10
-        )
-        output = result.stdout + result.stderr
-        return {"service": service_name, "logs": output.strip().split("\n")}
+        conn = http.client.HTTPConnection("localhost", timeout=10)
+        conn.sock = __import__('socket').socket(__import__('socket').AF_UNIX)
+        conn.sock.connect("/var/run/docker.sock")
+        conn.request("GET", f"/containers/{service_name}/logs?tail={lines}&stdout=1&stderr=1")
+        resp = conn.getresponse()
+        if resp.status == 404:
+            raise HTTPException(404, f"Conteneur {service_name} introuvable")
+        raw = resp.read()
+        # Supprimer les headers de stream Docker (8 bytes par ligne)
+        lines_out = []
+        i = 0
+        while i < len(raw):
+            if i + 8 <= len(raw):
+                size = int.from_bytes(raw[i+4:i+8], 'big')
+                line = raw[i+8:i+8+size].decode('utf-8', errors='replace').rstrip()
+                if line:
+                    lines_out.append(line)
+                i += 8 + size
+            else:
+                break
+        return {"service": service_name, "logs": lines_out}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(500, str(e))
 
