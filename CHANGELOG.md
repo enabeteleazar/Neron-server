@@ -27,6 +27,19 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
+## [v1.15.0] - 2026-02-27
+
+### ✨ Nouveautés
+- **Rapport quotidien** — score de santé /100 intégré
+- **Rapport quotidien** — tendance hebdomadaire (amélioration/dégradation/stable)
+- **Pause automatique rebuild** — watchdog détecte les rebuilds Docker et se met en pause
+  - Détection via events Docker (image build + container destroy)
+  - Reprise automatique après 60s
+  - Notification Telegram pause/reprise
+  - Die ignorés pendant rebuild (pas de faux restarts)
+
+---
+
 ## [v1.14.0] - 2026-02-26
 
 ### ✨ Nouveautés
