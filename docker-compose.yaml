@@ -7,6 +7,12 @@ services:
     container_name: neron_watchdog
     ports:
       - "8003:8003"
+    volumes:
+      - ${DOCKER_DATA_PATH:-./data}/watchdog:/app/data
+      - neron_watchdog-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/Data:/mnt/Data:ro
+      - /mnt/usb-storage:/mnt/usb-storage:ro
     env_file:
       - /opt/Neron_AI/.env
     environment:
@@ -15,13 +21,6 @@ services:
       - MAX_RESPONSE_TIME=5.0
     group_add:
       - "988"
-    volumes:
-      - neron_watchdog-data:/app/data
-      - neron_watchdog-logs:/app/logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /mnt/Data:/mnt/Data:ro
-      - /mnt/usb-storage:/mnt/usb-storage:ro
-      - /mnt/Backup:/mnt/Backup:ro
     restart: unless-stopped
     networks:
       - Neron_Network
@@ -143,7 +142,7 @@ services:
       - /opt/Neron_AI/.env
     container_name: neron_memory
     volumes:
-      - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
+      - ${DOCKER_DATA_PATH:-./data}/memory:/data
     expose:
       - "8002"
     healthcheck:
@@ -235,5 +234,4 @@ volumes:
   ollama:
   memory:
   neron_memory-data:
-  neron_watchdog-data:
   neron_watchdog-logs:
