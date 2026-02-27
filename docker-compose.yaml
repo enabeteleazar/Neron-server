@@ -8,6 +8,7 @@ services:
     ports:
       - "8003:8003"
     volumes:
+      - ./modules/neron_watchdog/app.py:/app/app.py
       - ${DOCKER_DATA_PATH:-./data}/watchdog:/app/data
       - neron_watchdog-logs:/app/logs
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -33,6 +34,8 @@ services:
     environment:
       - NERON_LLM_URL=http://neron_llm:5000
     container_name: neron_core
+    volumes:
+      - ./modules/neron_core/app.py:/app/app.py
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
     depends_on:
@@ -204,6 +207,8 @@ services:
   neron_telegram:
     build: ./modules/neron_telegram
     container_name: neron_telegram
+    volumes:
+      - ./modules/neron_telegram/app.py:/app/app.py
     env_file:
       - /opt/Neron_AI/.env
     ports:

@@ -159,6 +159,76 @@ async def cmd_anomalies(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
 
+async def cmd_logs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return await unauthorized(update)
+    if not context.args:
+        await update.message.reply_text("Usage: /logs <service>\nEx: /logs neron_tts")
+        return
+    service = context.args[0]
+    lines = int(context.args[1]) if len(context.args) > 1 else 30
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{NERON_WATCHDOG_URL}/logs/{service}",
+                params={"lines": lines},
+                timeout=15
+            )
+            data = resp.json()
+            logs = data.get("logs", [])
+            # Limiter à 50 lignes pour Telegram
+            text = "\n".join(logs[-30:])
+            if len(text) > 4000:
+                text = text[-4000:]
+            await update.message.reply_text(
+                f"📋 <b>Logs {service}</b> (dernières {lines} lignes)\n\n<code>{text}</code>",
+                parse_mode='HTML'
+            )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {str(e)}")
+
+
+async def cmd_history(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return await unauthorized(update)
+    if not context.args:
+        await update.message.reply_text("Usage: /history <service>\nEx: /history neron_tts")
+        return
+    service = context.args[0]
+    # Convertir nom conteneur → nom service
+    service_map = {
+        "neron_core": "Neron Core",
+        "neron_stt": "Neron STT",
+        "neron_memory": "Neron Memory",
+        "neron_tts": "Neron TTS",
+        "neron_llm": "Neron LLM",
+        "neron_ollama": "Neron Ollama",
+        "neron_searxng": "Neron SearXNG",
+        "neron_web_voice": "Neron Web Voice",
+    }
+    service_name = service_map.get(service, service)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{NERON_WATCHDOG_URL}/history/{service_name}",
+                timeout=15
+            )
+            data = resp.json()
+            events = data.get("events", [])
+            total = data.get("total", 0)
+            if not events:
+                await update.message.reply_text(f"✅ Aucun événement pour {service_name}")
+                return
+            lines = [f"📊 <b>Historique {service_name}</b> ({total} événements)\n"]
+            for e in events[-10:]:
+                icon = {"crash": "🔴", "restart": "🔄", "instability": "⚠️", "recovery": "✅"}.get(e.get("type"), "•")
+                ts = e.get("timestamp", "")[:16]
+                lines.append(f"{icon} {ts} — {e.get('type')}")
+            await update.message.reply_text("\n".join(lines), parse_mode='HTML')
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {str(e)}")
+
+
 async def cmd_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         return await unauthorized(update)
@@ -255,6 +325,8 @@ async def lifespan(app: FastAPI):
     telegram_app.add_handler(CommandHandler("restart", cmd_restart))
     telegram_app.add_handler(CommandHandler("pause", cmd_pause))
     telegram_app.add_handler(CommandHandler("resume", cmd_resume))
+    telegram_app.add_handler(CommandHandler("logs", cmd_logs))
+    telegram_app.add_handler(CommandHandler("history", cmd_history))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await telegram_app.initialize()
