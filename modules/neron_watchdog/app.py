@@ -584,3 +584,38 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Erreur fatale: {e}", exc_info=True)
         sys.exit(1)
+
+
+@api.get("/logs/{service_name}")
+async def get_logs(service_name: str, lines: int = 50):
+    """Dernières lignes de logs d'un conteneur"""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["docker", "logs", "--tail", str(lines), service_name],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        output = result.stdout + result.stderr
+        return {"service": service_name, "logs": output.strip().split("\n")}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@api.get("/history/{service_name}")
+async def get_history(service_name: str, days: int = 7):
+    """Historique des crashs d'un service depuis la mémoire JSONL"""
+    if control_plane is None:
+        return {"service": service_name, "events": []}
+    entries = control_plane.memory.read_all(days=days)
+    events = [
+        e for e in entries
+        if e.get("service") == service_name and e.get("type") in ("crash", "restart", "instability", "recovery")
+    ]
+    return {
+        "service": service_name,
+        "days": days,
+        "total": len(events),
+        "events": events[-50:]  # max 50 entrées
+    }
