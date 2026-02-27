@@ -17,10 +17,11 @@ SERVICES = [
 
 class DailyReport:
 
-    def __init__(self, notifier, memory, docker_stats=None, check_interval: int = 60):
+    def __init__(self, notifier, memory, docker_stats=None, anomaly_detector=None, check_interval: int = 60):
         self.notifier = notifier
         self.memory = memory
         self.docker_stats = docker_stats
+        self.anomaly_detector = anomaly_detector
         self.check_interval = check_interval
         self._last_report_date = None
 
@@ -58,6 +59,8 @@ class DailyReport:
     def generate(self, docker_stats_snapshot=None) -> str:
         now = datetime.now()
         entries = self.memory.read_all(days=1)
+        entries_7d = self.memory.read_all(days=7)
+        entries_14d = self.memory.read_all(days=14)
 
         crashes = [e for e in entries if e.get("type") == "crash"]
         restarts = [e for e in entries if e.get("type") == "restart"]
@@ -82,13 +85,39 @@ class DailyReport:
         instable_text = ", ".join(instable_services) if instable_services else "Aucun"
         manual_text = str(len(manual)) if manual else "Aucune"
 
+        # Score de santé
+        health = self.anomaly_detector.compute_health_score(entries_7d) if self.anomaly_detector else {"score": 0, "level": "N/A", "crashes": 0}
+        score_section = (
+            f"\n<b>Score de santé</b>\n"
+            f"  {health.get('level', 'N/A')} — {health.get('score', 0)}/100\n"
+            f"  Crashs 7j: {health.get('crashes', 0)}\n"
+        )
+
+        # Tendance hebdomadaire
+        crashes_7d = len([e for e in entries_7d if e.get("type") == "crash"])
+        crashes_14d_prev = len([e for e in entries_14d if e.get("type") == "crash"]) - crashes_7d
+        if crashes_14d_prev == 0:
+            trend_icon = "➡️"
+            trend_text = "Stable"
+        elif crashes_7d < crashes_14d_prev:
+            trend_icon = "📈"
+            trend_text = f"Amélioration ({crashes_14d_prev} → {crashes_7d} crashs)"
+        else:
+            trend_icon = "📉"
+            trend_text = f"Dégradation ({crashes_14d_prev} → {crashes_7d} crashs)"
+
+        trend_section = (
+            f"\n<b>Tendance hebdomadaire</b>\n"
+            f"  {trend_icon} {trend_text}\n"
+        )
+
         # Stats Docker
         docker_section = ""
         if docker_stats_snapshot:
             docker_section = "\n<b>Stats conteneurs</b>\n"
             for name, s in docker_stats_snapshot.items():
                 if s.status == "running":
-                    docker_section += f"  {name}: CPU {s.cpu_percent}% | RAM {s.ram_mb}MB\n" 
+                    docker_section += f"  {name}: CPU {s.cpu_percent}% | RAM {s.ram_mb}MB\n"
 
         return (
             f"📊 <b>Rapport Quotidien WatchDog</b>\n"
@@ -103,6 +132,8 @@ class DailyReport:
             f"{uptime_lines}\n"
             f"<b>Services instables</b>\n"
             f"  {instable_text}\n"
+            f"{score_section}"
+            f"{trend_section}"
             f"{docker_section}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"<i>Prochain rapport demain a 19h</i>"
