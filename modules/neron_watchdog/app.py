@@ -88,8 +88,8 @@ class ControlPlane:
         self.memory = StrategicMemory()
         self.restart_action = RestartAction(self.notifier, memory=self.memory)
         self.docker_stats = DockerStatsCollector()
-        self.daily_report = DailyReport(self.notifier, self.memory, self.docker_stats)
         self.anomaly_detector = AnomalyDetector(self.memory, self.notifier)
+        self.daily_report = DailyReport(self.notifier, self.memory, self.docker_stats, self.anomaly_detector)
         self.running = False
         
         logger.info("WatchDog initialisé")
@@ -301,7 +301,8 @@ class ControlPlane:
             self.previous_states,
             self.restart_action.restart_counts,
             self.restart_action,
-            individual_checkers
+            individual_checkers,
+            control_plane=self
         )
         asyncio.create_task(watcher.watch())
         logger.info("👁️ Docker Event Watcher lancé en parallèle")
