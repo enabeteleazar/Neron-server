@@ -68,6 +68,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/score — score de santé\n"
         "/anomalies — anomalies détectées\n"
         "/restart &lt;service&gt; — redémarrer un service\n"
+        "/logs &lt;service&gt; — derniers logs d'un service\n"
+        "/history &lt;service&gt; — historique crashs d'un service\n"
         "/pause — mettre le watchdog en pause\n"
         "/resume — reprendre le watchdog\n"
         "/help — aide\n\n"
