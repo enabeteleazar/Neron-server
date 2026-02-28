@@ -226,6 +226,22 @@ services:
     networks:
       - Neron_Network
 
+  neron_hud:
+    build: ./modules/neron_hud
+    container_name: neron_hud
+    ports:
+      - "8085:8080"
+    environment:
+      - NERON_CORE_URL=http://neron_core:8000
+      - NERON_STT_URL=http://neron_stt:8001
+      - NERON_WATCHDOG_URL=http://neron_watchdog:8003
+    depends_on:
+      - neron_core
+      - neron_watchdog
+    networks:
+      - Neron_Network
+    restart: unless-stopped
+
 networks:
   Neron_Network:
     external: true
