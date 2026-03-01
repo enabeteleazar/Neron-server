@@ -27,6 +27,55 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
+## [v1.17.0] - 2026-03-01
+
+### Ajouts
+- **neron_hud** — nouveau module interface HUD style JARVIS (port 8085)
+  - Dashboard React/TypeScript avec CSS vanilla (zéro Tailwind)
+  - Score système et liste services en temps réel (polling watchdog)
+  - Animation centrale ArcReactor avec anneaux rotatifs (requestAnimationFrame)
+  - Interface chat textuel connectée à neron_core
+  - Reconnaissance vocale via MediaRecorder API → STT → neron_core
+  - Panneau anomalies depuis watchdog
+  - Horloge temps réel
+  - Build Docker multi-stage Node 20
+- **cloudflared** — tunnel HTTPS gratuit via trycloudflare.com
+  - Service systemd `cloudflared-hud` avec restart automatique
+  - Service systemd `cloudflared-hud-notify` — envoi URL Telegram au démarrage
+- **neron_telegram** — commande `/url` pour récupérer URL HUD Cloudflare
+
+### Corrections
+- Fix `/api/system/metrics` — services est un objet et non un tableau
+- Fix endpoint STT `/speech` → `/transcribe`
+- Fix `NERON_API_KEY` manquant dans environment neron_hud
+- Fix horloge HUD figée — remplacée par setInterval React
+
+-----
+
+/
+## [v1.16.0] - 2026-02-27
+
+### Ajouts
+- Volumes persistants USB pour watchdog (JSONL), memory (SQLite) et ollama (modèles)
+- Endpoint API watchdog `/logs/<service>` via socket Docker unix
+- Endpoint API watchdog `/history/<service>` depuis mémoire JSONL
+- Commandes Telegram `/logs <service>` et `/history <service>`
+- Menu /start mis à jour avec les nouvelles commandes
+
+### Corrections
+- Fix schéma memory.db : colonne `timestamp` manquante causait 34 crashs en boucle
+- Fix endpoints /logs et /history placés après `asyncio.run()` (jamais exécutés)
+- Fix `HTTPException` non importé dans watchdog
+- Fix doublon `volumes:` et `group_add` dans docker-compose.yaml
+- Fix token Telegram exposé dans les logs (rotation recommandée)
+
+### Améliorations
+- Hot-reload app.py sans rebuild pour neron_telegram, neron_watchdog, neron_core
+- Migration `docker cp` pour forcer la mise à jour du fichier dans le conteneur
+- Toutes les modifications de fichiers via Python (abandon de sed)
+
+-----
+
 ## [v1.15.0] - 2026-02-27
 
 ### ✨ Nouveautés

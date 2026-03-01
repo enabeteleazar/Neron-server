@@ -7,6 +7,13 @@ services:
     container_name: neron_watchdog
     ports:
       - "8003:8003"
+    volumes:
+      - ./modules/neron_watchdog/app.py:/app/app.py
+      - ${DOCKER_DATA_PATH:-./data}/watchdog:/app/data
+      - neron_watchdog-logs:/app/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /mnt/Data:/mnt/Data:ro
+      - /mnt/usb-storage:/mnt/usb-storage:ro
     env_file:
       - /opt/Neron_AI/.env
     environment:
@@ -15,13 +22,6 @@ services:
       - MAX_RESPONSE_TIME=5.0
     group_add:
       - "988"
-    volumes:
-      - neron_watchdog-data:/app/data
-      - neron_watchdog-logs:/app/logs
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /mnt/Data:/mnt/Data:ro
-      - /mnt/usb-storage:/mnt/usb-storage:ro
-      - /mnt/Backup:/mnt/Backup:ro
     restart: unless-stopped
     networks:
       - Neron_Network
@@ -34,6 +34,8 @@ services:
     environment:
       - NERON_LLM_URL=http://neron_llm:5000
     container_name: neron_core
+    volumes:
+      - ./modules/neron_core/app.py:/app/app.py
     ports:
       - "${NERON_CORE_HTTP:-8000}:8000"
     depends_on:
@@ -143,7 +145,7 @@ services:
       - /opt/Neron_AI/.env
     container_name: neron_memory
     volumes:
-      - ${DOCKER_DATA_PATH:-/opt/Homebox_AI/Data}/neron-memory-data:/data
+      - ${DOCKER_DATA_PATH:-./data}/memory:/data
     expose:
       - "8002"
     healthcheck:
@@ -205,6 +207,8 @@ services:
   neron_telegram:
     build: ./modules/neron_telegram
     container_name: neron_telegram
+    volumes:
+      - ./modules/neron_telegram/app.py:/app/app.py
     env_file:
       - /opt/Neron_AI/.env
     ports:
@@ -222,6 +226,25 @@ services:
     networks:
       - Neron_Network
 
+  neron_hud:
+    build: ./modules/neron_hud
+    container_name: neron_hud
+    ports:
+      - "8085:8080"
+    environment:
+      - NERON_CORE_URL=http://neron_core:8000
+      - NERON_STT_URL=http://neron_stt:8001
+      - NERON_WATCHDOG_URL=http://neron_watchdog:8003
+      - NERON_API_KEY=2bb7c0545915c7e1ff871d27acf39d7d0dd9793a9d29d1f73dac4e17ff7a3858
+    depends_on:
+      - neron_core
+      - neron_watchdog
+    volumes:
+      - /tmp/cloudflared-hud-url.txt:/tmp/cloudflared-hud-url.txt:ro
+    networks:
+      - Neron_Network
+    restart: unless-stopped
+
 networks:
   Neron_Network:
     external: true
@@ -235,5 +258,4 @@ volumes:
   ollama:
   memory:
   neron_memory-data:
-  neron_watchdog-data:
   neron_watchdog-logs:
