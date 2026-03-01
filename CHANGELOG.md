@@ -27,6 +27,32 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 -----
 
+## [v1.17.0] - 2026-03-01
+
+### Ajouts
+- **neron_hud** — nouveau module interface HUD style JARVIS (port 8085)
+  - Dashboard React/TypeScript avec CSS vanilla (zéro Tailwind)
+  - Score système et liste services en temps réel (polling watchdog)
+  - Animation centrale ArcReactor avec anneaux rotatifs (requestAnimationFrame)
+  - Interface chat textuel connectée à neron_core
+  - Reconnaissance vocale via MediaRecorder API → STT → neron_core
+  - Panneau anomalies depuis watchdog
+  - Horloge temps réel
+  - Build Docker multi-stage Node 20
+- **cloudflared** — tunnel HTTPS gratuit via trycloudflare.com
+  - Service systemd `cloudflared-hud` avec restart automatique
+  - Service systemd `cloudflared-hud-notify` — envoi URL Telegram au démarrage
+- **neron_telegram** — commande `/url` pour récupérer URL HUD Cloudflare
+
+### Corrections
+- Fix `/api/system/metrics` — services est un objet et non un tableau
+- Fix endpoint STT `/speech` → `/transcribe`
+- Fix `NERON_API_KEY` manquant dans environment neron_hud
+- Fix horloge HUD figée — remplacée par setInterval React
+
+-----
+
+/
 ## [v1.16.0] - 2026-02-27
 
 ### Ajouts
