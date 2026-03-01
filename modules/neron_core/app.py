@@ -243,7 +243,7 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
 
     try:
         if intent_result.intent == Intent.TIME_QUERY:
-            core_response = _handle_time_query(intent_result, metadata, start)
+            core_response = _handle_time_query(intent_result, metadata, start, query)
         elif intent_result.intent == Intent.WEB_SEARCH:
             core_response = await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:
@@ -320,8 +320,25 @@ async def audio_input(file: UploadFile = File(...)):
         metrics.record_request_end(elapsed)
 
 
-def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreResponse:
-    response = "Il est " + time_provider.human() + "."
+def _handle_time_query(intent_result, metadata: dict, start: float, query: str = "") -> CoreResponse:
+    q = query.lower()
+    heure_keys = ["heure", "time", "il est", "quelle heure"]
+    date_keys = ["date", "jour", "quel jour", "quel mois", "quelle date", "on est"]
+    
+    want_heure = any(k in q for k in heure_keys)
+    want_date = any(k in q for k in date_keys)
+    
+    n = time_provider.now()
+    from neron_time.time_provider import JOURS, MOIS
+    jour = JOURS[n.weekday()]
+    mois = MOIS[n.month - 1]
+    
+    if want_heure and not want_date:
+        response = f"Il est {n.hour:02d}h{n.minute:02d}."
+    elif want_date and not want_heure:
+        response = f"Nous sommes {jour} {n.day} {mois} {n.year}."
+    else:
+        response = f"Il est {n.hour:02d}h{n.minute:02d}, {jour} {n.day} {mois} {n.year}."
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
     return CoreResponse(
         response=response,
