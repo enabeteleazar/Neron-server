@@ -105,5 +105,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch { res.json({ logs: [] }); }
   });
 
+    app.get("/url", (_req, res) => {
+    try {
+      const fs = require("fs");
+      const url = fs.readFileSync("/tmp/cloudflared-hud-url.txt", "utf8").trim();
+      res.json({ url });
+    } catch { res.json({ url: null }); }
+  });
+
   return httpServer;
 }

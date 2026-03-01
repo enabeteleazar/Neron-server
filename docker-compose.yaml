@@ -239,6 +239,8 @@ services:
     depends_on:
       - neron_core
       - neron_watchdog
+    volumes:
+      - /tmp/cloudflared-hud-url.txt:/tmp/cloudflared-hud-url.txt:ro
     networks:
       - Neron_Network
     restart: unless-stopped

@@ -72,6 +72,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/history &lt;service&gt; — historique crashs d'un service\n"
         "/pause — mettre le watchdog en pause\n"
         "/resume — reprendre le watchdog\n"
+        "/url — URL du HUD\n"
         "/help — aide\n\n"
         "Ou envoyez un message pour parler à Néron !",
         parse_mode='HTML'
@@ -81,6 +82,21 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await cmd_start(update, context)
 
+
+async def cmd_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return await unauthorized(update)
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get("http://neron_hud:8080/url", timeout=5)
+            data = resp.json()
+            url = data.get("url")
+            if url:
+                await update.message.reply_text(f"🌐 <b>Neron HUD</b>\n{url}", parse_mode='HTML')
+            else:
+                await update.message.reply_text("❌ URL non disponible")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
@@ -329,6 +345,7 @@ async def lifespan(app: FastAPI):
     telegram_app.add_handler(CommandHandler("resume", cmd_resume))
     telegram_app.add_handler(CommandHandler("logs", cmd_logs))
     telegram_app.add_handler(CommandHandler("history", cmd_history))
+    telegram_app.add_handler(CommandHandler("url", cmd_url))
     telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await telegram_app.initialize()
