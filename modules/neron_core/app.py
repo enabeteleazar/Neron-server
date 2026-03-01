@@ -340,10 +340,42 @@ def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreRespo
     )
 
 
+
+async def _get_memory_context(query: str) -> str:
+    """Récupère le contexte mémoire : historique récent + recherche sémantique"""
+    memory_url = os.getenv("NERON_MEMORY_URL", "http://neron_memory:8002")
+    context_parts = []
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            # Court terme : 5 derniers échanges
+            resp = await client.get(f"{memory_url}/retrieve", params={"limit": 3})
+            if resp.status_code == 200:
+                recent = resp.json()
+                if recent:
+                    history = []
+                    for entry in reversed(recent):
+                        history.append(f"Utilisateur: {entry['input']}")
+                        history.append(f"Néron: {entry['response'][:80]}")
+                    context_parts.append("Historique récent:\n" + "\n".join(history))
+            # Long terme : recherche par mots-clés
+            resp = await client.get(f"{memory_url}/search", params={"query": query, "limit": 3})
+            if resp.status_code == 200:
+                relevant = resp.json()
+                if relevant:
+                    facts = []
+                    for entry in relevant:
+                        facts.append(f"- Q: {entry['input']} → R: {entry['response'][:100]}")
+                    context_parts.append("Mémoire pertinente:\n" + "\n".join(facts))
+    except Exception as e:
+        logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
+    return "\n\n".join(context_parts)
+
+
 async def _handle_conversation(
     query: str, intent_result, metadata: dict, start: float
 ) -> CoreResponse:
-    result = await llm_agent.execute(query)
+    memory_context = await _get_memory_context(query)
+    result = await llm_agent.execute(query, context_data=memory_context if memory_context else None)
 
     if not result.success:
         metrics.record_error("llm_agent")

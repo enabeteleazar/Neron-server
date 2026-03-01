@@ -19,12 +19,21 @@ class LLMAgent(BaseAgent):
 
         prompt = query
         if context_data:
-            prompt = (
-                "Voici des informations pertinentes :\n\n"
-                + context_data
-                + "\n\nEn te basant sur ces informations, reponds a la question suivante : "
-                + query
-            )
+            if context_data.startswith("Historique"):
+                prompt = (
+                    "Tu es Néron, un assistant IA personnel. "
+                    "Voici le contexte de notre conversation :\n\n"
+                    + context_data
+                    + "\n\nRéponds maintenant à cette nouvelle question en tenant compte du contexte : "
+                    + query
+                )
+            else:
+                prompt = (
+                    "Voici des informations pertinentes :\n\n"
+                    + context_data
+                    + "\n\nEn te basant sur ces informations, reponds a la question suivante : "
+                    + query
+                )
 
         try:
             async with httpx.AsyncClient(
