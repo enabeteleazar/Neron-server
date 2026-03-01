@@ -79,6 +79,39 @@
       "enabled": true,
       "description": "Interface vocale (Node.js)",
       "critical": false,
+      "ssl_verify": false,
+      "ssl": true
+    },
+    {
+      "name": "Neron Telegram",
+      "host": "neron_telegram",
+      "port": 8010,
+      "health_path": "/health",
+      "enabled": true,
+      "description": "Bot Telegram",
+      "critical": false,
+      "ssl_verify": false,
+      "ssl": false
+    },
+    {
+      "name": "Neron Watchdog",
+      "host": "neron_watchdog",
+      "port": 8003,
+      "health_path": "/health",
+      "enabled": true,
+      "description": "Agent de surveillance",
+      "critical": true,
+      "ssl_verify": false,
+      "ssl": false
+    },
+    {
+      "name": "Neron HUD",
+      "host": "neron_hud",
+      "port": 8080,
+      "health_path": "/health",
+      "enabled": false,
+      "description": "Dashboard JARVIS",
+      "critical": false,
       "ssl_verify": false
     }
   ],

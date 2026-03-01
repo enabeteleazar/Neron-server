@@ -180,7 +180,13 @@ class NeronChecker:
                 port = service['port']
                 host = service.get('host', base_url.replace('http://', '').replace('https://', ''))
                 ssl_verify = service.get('ssl_verify', True)
-                scheme = "https" if not ssl_verify else "http"
+                # ssl field explicite, sinon on déduit du base_url
+                if 'ssl' in service:
+                    scheme = "https" if service['ssl'] else "http"
+                elif not ssl_verify:
+                    scheme = "http"
+                else:
+                    scheme = base_url.split("://")[0] if "://" in base_url else "http"
                 url = f"{scheme}://{host}:{port}"
                 health_path = service.get('health_path', '/health')
                 critical = service.get('critical', True)
