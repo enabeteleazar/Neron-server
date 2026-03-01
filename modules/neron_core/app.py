@@ -267,6 +267,40 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     return core_response
 
 
+
+@app.post("/input/stream")
+async def text_input_stream(input_data: TextInput, _: None = Depends(verify_api_key)):
+    """Pipeline texte avec streaming SSE"""
+    from fastapi.responses import StreamingResponse
+    import json
+
+    query = input_data.text.strip()
+
+    async def generate():
+        # Time query — pas de streaming nécessaire
+        intent_result = await router.route(query)
+        if intent_result.intent == Intent.TIME_QUERY:
+            response = _handle_time_query(intent_result, {}, 0, query).response
+            yield f"data: {json.dumps({'token': response, 'done': True})}\n\n"
+            return
+
+        # Contexte mémoire
+        memory_context = await _get_memory_context(query)
+
+        # Stream LLM
+        full_response = ""
+        async for token in llm_agent.stream(query, context_data=memory_context or None):
+            full_response += token
+            yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
+
+        yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
+
+        # Stocker en mémoire
+        await _store_memory(query, full_response, {"intent": intent_result.intent.value})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
+
+
 @app.post("/input/audio", response_model=CoreResponse)
 async def audio_input(file: UploadFile = File(...)):
     start = time.monotonic()

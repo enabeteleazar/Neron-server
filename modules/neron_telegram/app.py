@@ -291,32 +291,52 @@ async def cmd_resume(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Messages texte → neron_core"""
+    """Messages texte → neron_core avec streaming"""
     if not is_authorized(update):
         return await unauthorized(update)
 
+    import json, time as time_module
+
     user_message = update.message.text
     await update.message.chat.send_action("typing")
+    sent = await update.message.reply_text("⏳ Néron réfléchit...")
+
+    accumulated = ""
+    last_edit = ""
+    last_update = time_module.time()
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(
-                f"{NERON_CORE_URL}/input/text",
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream(
+                "POST",
+                f"{NERON_CORE_URL}/input/stream",
                 json={"text": user_message},
-                headers={"X-API-Key": NERON_API_KEY},
-                timeout=120
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                await update.message.reply_text(
-                    data.get("response", "Pas de réponse")
-                )
-            else:
-                await update.message.reply_text(f"❌ Erreur {resp.status_code}")
-    except httpx.TimeoutException:
-        await update.message.reply_text("⏱️ Timeout — Néron prend trop de temps")
+                headers={"X-API-Key": NERON_API_KEY}
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    try:
+                        data = json.loads(line[6:])
+                    except Exception:
+                        continue
+                    token = data.get("token", "")
+                    done = data.get("done", False)
+                    accumulated += token
+                    now = time_module.time()
+                    if (now - last_update > 2.0 or done) and accumulated != last_edit:
+                        try:
+                            await sent.edit_text(accumulated or "⏳ Néron réfléchit...")
+                            last_edit = accumulated
+                            last_update = now
+                        except Exception:
+                            pass
+                    if done:
+                        break
+        if not accumulated:
+            await sent.edit_text("❌ Pas de réponse")
     except Exception as e:
-        await update.message.reply_text(f"❌ Erreur: {str(e)}")
+        await sent.edit_text(f"❌ Erreur: {str(e)}")
 
 
 # ─────────────────────────────────────────────
