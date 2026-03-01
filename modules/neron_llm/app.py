@@ -189,6 +189,54 @@ async def ask(request: PromptRequest):
         )
 
 
+
+@app.post("/ask/stream")
+async def ask_stream(request: PromptRequest):
+    """
+    Génère une réponse en streaming (Server-Sent Events)
+    """
+    from fastapi.responses import StreamingResponse
+    import httpx
+    import json
+
+    logger.info(f"Stream request pour le modèle: {request.model}")
+
+    payload = {
+        "model": request.model,
+        "prompt": request.prompt,
+        "stream": True
+    }
+    if request.system_prompt:
+        payload["system"] = request.system_prompt
+    options = {}
+    if request.temperature is not None:
+        options["temperature"] = request.temperature
+    if request.max_tokens is not None:
+        options["num_predict"] = request.max_tokens
+    if options:
+        payload["options"] = options
+
+    async def generate_stream():
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream(
+                "POST",
+                f"{settings.OLLAMA_HOST}/api/generate",
+                json=payload
+            ) as response:
+                async for line in response.aiter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            token = data.get("response", "")
+                            done = data.get("done", False)
+                            yield f"data: {json.dumps({'token': token, 'done': done})}\n\n"
+                            if done:
+                                break
+                        except Exception:
+                            continue
+
+    return StreamingResponse(generate_stream(), media_type="text/event-stream")
+
 @app.post("/generate", response_model=LLMResponse)
 async def generate(request: PromptRequest):
     """

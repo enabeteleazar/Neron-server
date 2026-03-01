@@ -13,6 +13,45 @@ class LLMAgent(BaseAgent):
         super().__init__(name="llm_agent")
         self.logger.info("LLMAgent init avec modele : " + OLLAMA_MODEL)
 
+
+    async def stream(self, query: str, context_data: str = None):
+        """Génère une réponse en streaming, yield token par token"""
+        import json
+
+        prompt = query
+        if context_data:
+            if context_data.startswith("Historique"):
+                prompt = (
+                    "Tu es Néron, un assistant IA personnel. "
+                    "Voici le contexte de notre conversation:\n\n"
+                    + context_data
+                    + "\n\nRéponds maintenant à cette nouvelle question : "
+                    + query
+                )
+            else:
+                prompt = (
+                    "Voici des informations pertinentes :\n\n"
+                    + context_data
+                    + "\n\nEn te basant sur ces informations, réponds : "
+                    + query
+                )
+
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            async with client.stream(
+                "POST",
+                f"{NERON_LLM_URL}/ask/stream",
+                json={"prompt": prompt, "model": OLLAMA_MODEL}
+            ) as response:
+                async for line in response.aiter_lines():
+                    if line.startswith("data: "):
+                        try:
+                            data = json.loads(line[6:])
+                            yield data.get("token", "")
+                            if data.get("done"):
+                                break
+                        except Exception:
+                            continue
+
     async def execute(self, query: str, context_data: str = None, **kwargs) -> AgentResult:
         self.logger.info("LLM query : " + repr(query[:80]))
         start = self._timer()
