@@ -20,7 +20,7 @@ app = FastAPI(
     version="0.2.0"
 )
 
-db_path = "/data/memory.db"
+db_path = "/mnt/usb-storage/Neron_AI/data/memory.db"
 
 
 @contextmanager
