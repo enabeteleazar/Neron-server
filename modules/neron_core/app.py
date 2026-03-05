@@ -8,15 +8,15 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
-import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
-from agents.stt_agent import STTAgent
-from agents.tts_agent import TTSAgent
+from agents.stt_agent import STTAgent, load_model as stt_load_model
+from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
+from agents.memory_agent import MemoryAgent, init_db as memory_init_db
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
@@ -132,6 +132,7 @@ class Metrics:
 metrics = Metrics()
 
 llm_agent: LLMAgent = None
+memory_agent: MemoryAgent = None
 web_agent: WebAgent = None
 stt_agent: STTAgent = None
 tts_agent: TTSAgent = None
@@ -141,13 +142,17 @@ time_provider: TimeProvider = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time
+    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time, memory_agent
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
     llm_agent = LLMAgent()
     web_agent = WebAgent()
+    memory_init_db()
+    memory_agent = MemoryAgent()
+    stt_load_model()
     stt_agent = STTAgent()
+    tts_load_engine()
     tts_agent = TTSAgent()
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
@@ -393,30 +398,22 @@ def _handle_time_query(intent_result, metadata: dict, start: float, query: str =
 
 
 async def _get_memory_context(query: str) -> str:
-    """Récupère le contexte mémoire : historique récent + recherche sémantique"""
-    memory_url = os.getenv("NERON_MEMORY_URL", "http://neron_memory:8002")
+    """Récupère le contexte mémoire : historique récent + recherche directe SQLite"""
     context_parts = []
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            # Court terme : 5 derniers échanges
-            resp = await client.get(f"{memory_url}/retrieve", params={"limit": 3})
-            if resp.status_code == 200:
-                recent = resp.json()
-                if recent:
-                    history = []
-                    for entry in reversed(recent):
-                        history.append(f"Utilisateur: {entry['input']}")
-                        history.append(f"Néron: {entry['response'][:80]}")
-                    context_parts.append("Historique récent:\n" + "\n".join(history))
-            # Long terme : recherche par mots-clés
-            resp = await client.get(f"{memory_url}/search", params={"query": query, "limit": 3})
-            if resp.status_code == 200:
-                relevant = resp.json()
-                if relevant:
-                    facts = []
-                    for entry in relevant:
-                        facts.append(f"- Q: {entry['input']} → R: {entry['response'][:100]}")
-                    context_parts.append("Mémoire pertinente:\n" + "\n".join(facts))
+        recent = memory_agent.retrieve(limit=3)
+        if recent:
+            history = []
+            for entry in reversed(recent):
+                history.append(f"Utilisateur: {entry['input']}")
+                history.append(f"Néron: {entry['response'][:80]}")
+            context_parts.append("Historique récent:\n" + "\n".join(history))
+        relevant = memory_agent.search(query, limit=3)
+        if relevant:
+            facts = []
+            for entry in relevant:
+                facts.append(f"- Q: {entry['input']} → R: {entry['response'][:100]}")
+            context_parts.append("Mémoire pertinente:\n" + "\n".join(facts))
     except Exception as e:
         logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
     return "\n\n".join(context_parts)
@@ -506,13 +503,8 @@ async def _handle_web_search(
 
 
 async def _store_memory(query: str, response: str, metadata: dict):
-    memory_url = os.getenv("NERON_MEMORY_URL", "http://neron_memory:8002")
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{memory_url}/store",
-                json={"input": query, "response": response, "metadata": metadata}
-            )
+        memory_agent.store(query, response, metadata)
     except Exception as e:
         logger.warning(json.dumps({"event": "memory_store_failed", "error": str(e)}))
 
