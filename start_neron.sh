@@ -1,13 +1,11 @@
 #!/bin/bash
-
-# start_neron.sh - Lance Néron v1.17.0 sur Homebox (Docker Compose moderne)
-# Inclut rebuild, relance et nettoyage Docker
+# start_neron.sh - Lance Néron v2.0.0 sur Homebox (natif Ubuntu)
 
 set -euo pipefail
 
 clear
 
-# — Couleurs —
+# --- Couleurs ---
 BOLD=$(tput bold)
 RESET=$(tput sgr0)
 RED=$(tput setaf 1)
@@ -16,7 +14,12 @@ YELLOW=$(tput setaf 3)
 BLUE=$(tput setaf 4)
 NC=$RESET
 
-# — Fonctions —
+BASE_DIR="/mnt/usb-storage/Neron_AI"
+VENV_DIR="$BASE_DIR/venv"
+LOG_DIR="$BASE_DIR/logs"
+PID_FILE="/tmp/neron_system.pid"
+
+# --- Fonctions ---
 
 slow_echo() {
     local text="$1"
@@ -28,100 +31,99 @@ slow_echo() {
     echo
 }
 
-check_docker() {
-    if ! command -v docker >/dev/null 2>&1; then
-        echo -e "${RED}Docker n’est pas installé. Installez docker.io et le plugin docker compose.${NC}"
+check_deps() {
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo -e "${RED}❌ Python3 non trouvé${NC}"
         exit 1
     fi
-}
-
-
-check_ollama() {
     if ! command -v ollama >/dev/null 2>&1; then
-        echo -e "${YELLOW}Ollama non trouvé. Installation en cours...${NC}"
-        curl -s https://ollama.com/install.sh | bash
-        export PATH="$HOME/.ollama/bin:$PATH"
-    else
-        echo -e "${GREEN}✔ Ollama trouvé${NC}"
+        echo -e "${RED}❌ Ollama non trouvé${NC}"
+        exit 1
     fi
-}
-
-check_llama_model() {
-    MODEL="llama3.2:3b"
-    if ! ollama list | grep -q "$MODEL"; then
-        echo -e "${YELLOW}Modèle $MODEL absent. Téléchargement...${NC}"
-        ollama pull $MODEL
-    else
-        echo -e "${GREEN}✔ Modèle $MODEL déjà présent${NC}"
+    if ! ollama list >/dev/null 2>&1; then
+        echo -e "${RED}❌ Ollama ne répond pas${NC}"
+        exit 1
     fi
-}
-
-show_status() {
-    echo
-    slow_echo "${BOLD}${BLUE}Statut des conteneurs Néron:${NC}"
-    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-    echo
 }
 
 show_endpoints() {
     echo
     slow_echo "${BOLD}${BLUE}═══════════════════════════════════════${NC}"
-    slow_echo "${BOLD}${GREEN}  Néron AI v1.17.0 — Endpoints disponibles${NC}"
+    slow_echo "${BOLD}${GREEN}  Néron AI v2.0.0 — Endpoints disponibles${NC}"
     slow_echo "${BOLD}${BLUE}═══════════════════════════════════════${NC}"
     echo
     slow_echo "${YELLOW}  API Core        : http://localhost:8000${NC}"
     slow_echo "${YELLOW}  Health          : http://localhost:8000/health${NC}"
-    slow_echo "${YELLOW}  Métriques       : http://localhost:8000/metrics${NC}"
     echo
     slow_echo "${YELLOW}  POST /input/text   → pipeline texte${NC}"
     slow_echo "${YELLOW}  POST /input/audio  → pipeline STT → texte${NC}"
     slow_echo "${YELLOW}  POST /input/voice  → pipeline STT → LLM → TTS → audio${NC}"
     echo
-    slow_echo "${YELLOW}  Logs  : docker compose logs -f neron_core${NC}"
-    slow_echo "${YELLOW}  Tests : pytest modules/neron_core -v${NC}"
+    slow_echo "${YELLOW}  Logs   : tail -f $LOG_DIR/neron_system.log${NC}"
+    slow_echo "${YELLOW}  Stop   : pkill -f neron_system && rm -f $PID_FILE${NC}"
     slow_echo "${BOLD}${BLUE}═══════════════════════════════════════${NC}"
     echo
 }
 
-# — Début du script —
+# --- Début ---
 
 echo
 slow_echo "${BOLD}${BLUE}╔════════════════════════════════════════╗${NC}"
-slow_echo "${BOLD}${BLUE}║     🧠 Démarrage de Néron AI v1.17.0   ║${NC}"
+slow_echo "${BOLD}${BLUE}║     🧠 Démarrage de Néron AI v2.0.0    ║${NC}"
 slow_echo "${BOLD}${BLUE}╚════════════════════════════════════════╝${NC}"
 echo
 
-slow_echo "${BOLD}${BLUE}Vérification Docker…${NC}"
-check_docker
-slow_echo "${GREEN}✔ Docker OK${NC}"
+# --- Vérifications ---
+slow_echo "${BOLD}${BLUE}Vérification des dépendances…${NC}"
+check_deps
+slow_echo "${GREEN}✔ Python3 OK${NC}"
+slow_echo "${GREEN}✔ Ollama OK${NC}"
 
-# — Git update —
+# --- Git update ---
+slow_echo "${BOLD}${BLUE}Récupération des dernières modifications…${NC}"
+git -C "$BASE_DIR" fetch --all
+git -C "$BASE_DIR" pull origin "$(git -C "$BASE_DIR" branch --show-current)"
+slow_echo "${GREEN}✔ Dépôt à jour${NC}"
 
-#slow_echo "${BOLD}${BLUE}Récupération des dernières modifications…${NC}"
-#git fetch --all
-#git checkout master
-#git pull origin master
-#slow_echo "${GREEN}✔ Dépôt à jour${NC}"
+# --- Arrêt instance existante ---
+if [ -f "$PID_FILE" ]; then
+    OLD_PID=$(cat "$PID_FILE")
+    if kill -0 "$OLD_PID" 2>/dev/null; then
+        slow_echo "${BOLD}${BLUE}Arrêt de l'instance existante (PID $OLD_PID)…${NC}"
+        kill "$OLD_PID"
+        sleep 2
+        slow_echo "${GREEN}✔ Instance arrêtée${NC}"
+    fi
+    rm -f "$PID_FILE"
+fi
 
-# — Arrêt des conteneurs existants —
+# --- Venv ---
+slow_echo "${BOLD}${BLUE}Activation de l'environnement Python…${NC}"
+if [ ! -d "$VENV_DIR" ]; then
+    python3 -m venv "$VENV_DIR"
+fi
+source "$VENV_DIR/bin/activate"
+slow_echo "${GREEN}✔ Venv activé${NC}"
 
-slow_echo "${BOLD}${BLUE}Arrêt des conteneurs existants…${NC}"
-docker compose --env-file /opt/Neron_AI/.env down --remove-orphans
-slow_echo "${GREEN}✔ Conteneurs arrêtés${NC}"
+# --- Dépendances ---
+slow_echo "${BOLD}${BLUE}Installation des dépendances…${NC}"
+pip install --upgrade pip -q
+pip install -r "$BASE_DIR/requirements.txt" -q
+slow_echo "${GREEN}✔ Dépendances installées${NC}"
 
-# — Construction et relance —
+# --- Logs ---
+mkdir -p "$LOG_DIR"
 
-slow_echo "${BOLD}${BLUE}Construction et relance des services…${NC}"
-docker compose --env-file /opt/Neron_AI/.env up -d --build --remove-orphans
-slow_echo "${GREEN}✔ Tous les services Néron v1.17.0 sont lancés !${NC}"
+# --- Lancement ---
+slow_echo "${BOLD}${BLUE}Lancement de Néron System…${NC}"
+cd "$BASE_DIR"
+python3 "$BASE_DIR/neron_system.py" &
+NERON_PID=$!
+echo $NERON_PID > "$PID_FILE"
+slow_echo "${GREEN}✔ Néron démarré (PID $NERON_PID)${NC}"
 
-# — Nettoyage Docker —
-
-slow_echo "${BOLD}${BLUE}Nettoyage du cache Docker…${NC}"
-docker system prune -af --volumes
-slow_echo "${GREEN}✔ Nettoyage terminé${NC}"
-
-# — Affichage du statut —
-
-show_status
+# --- Endpoints ---
 show_endpoints
+
+# --- Logs live ---
+tail -f "$LOG_DIR/neron_system.log"
