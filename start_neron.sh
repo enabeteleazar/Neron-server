@@ -35,6 +35,27 @@ check_docker() {
     fi
 }
 
+
+check_ollama() {
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo -e "${YELLOW}Ollama non trouvé. Installation en cours...${NC}"
+        curl -s https://ollama.com/install.sh | bash
+        export PATH="$HOME/.ollama/bin:$PATH"
+    else
+        echo -e "${GREEN}✔ Ollama trouvé${NC}"
+    fi
+}
+
+check_llama_model() {
+    MODEL="llama3.2:3b"
+    if ! ollama list | grep -q "$MODEL"; then
+        echo -e "${YELLOW}Modèle $MODEL absent. Téléchargement...${NC}"
+        ollama pull $MODEL
+    else
+        echo -e "${GREEN}✔ Modèle $MODEL déjà présent${NC}"
+    fi
+}
+
 show_status() {
     echo
     slow_echo "${BOLD}${BLUE}Statut des conteneurs Néron:${NC}"
@@ -76,11 +97,11 @@ slow_echo "${GREEN}✔ Docker OK${NC}"
 
 # — Git update —
 
-slow_echo "${BOLD}${BLUE}Récupération des dernières modifications…${NC}"
-git fetch --all
-git checkout master
-git pull origin master
-slow_echo "${GREEN}✔ Dépôt à jour${NC}"
+#slow_echo "${BOLD}${BLUE}Récupération des dernières modifications…${NC}"
+#git fetch --all
+#git checkout master
+#git pull origin master
+#slow_echo "${GREEN}✔ Dépôt à jour${NC}"
 
 # — Arrêt des conteneurs existants —
 
