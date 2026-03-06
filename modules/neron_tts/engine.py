@@ -36,12 +36,12 @@ class Pyttsx3Engine(TTSEngine):
         # Chercher une voix francaise si disponible
         voices = self.engine.getProperty("voices")
         for voice in voices:
-            if lang in voice.id.lower() or lang in (voice.languages[0] if voice.languages else ""):
+            if "french" in voice.name.lower() or lang in voice.id.lower():
                 self.engine.setProperty("voice", voice.id)
                 logger.info(f"Voix selectionnee : {voice.id}")
                 break
 
-        self._lang = lang
+        self._lang = "fr" if lang == "fr" else lang
         self._rate = rate
         logger.info(f"Pyttsx3Engine init : rate={rate}, volume={volume}, lang={lang}")
 
