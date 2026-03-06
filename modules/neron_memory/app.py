@@ -20,7 +20,7 @@ app = FastAPI(
     version="0.2.0"
 )
 
-db_path = "/mnt/usb-storage/Neron_AI/data/memory.db"
+db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data", "memory.db")
 
 
 @contextmanager

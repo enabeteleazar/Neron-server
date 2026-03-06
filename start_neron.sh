@@ -14,7 +14,7 @@ BLUE=$(tput setaf 4)
 CYAN=$(tput setaf 6)
 NC=$RESET
 
-BASE_DIR="/mnt/usb-storage/Neron_AI"
+BASE_DIR="$(cd "$(dirname "$0")" && pwd)"
 LOG_DIR="$BASE_DIR/logs"
 VENV_DIR="$BASE_DIR/venv"
 
