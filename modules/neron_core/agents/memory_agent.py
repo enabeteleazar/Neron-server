@@ -10,7 +10,7 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger("memory_agent")
 
-DB_PATH = os.getenv("MEMORY_DB_PATH", "/mnt/usb-storage/Neron_AI/data/memory.db")
+DB_PATH = os.getenv("MEMORY_DB_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "memory.db"))
 
 
 @contextmanager
