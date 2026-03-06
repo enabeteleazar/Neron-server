@@ -80,10 +80,10 @@ slow_echo "${GREEN}✔ Python3 OK${NC}"
 slow_echo "${GREEN}✔ Ollama OK${NC}"
 
 # --- Git update ---
-slow_echo "${BOLD}${BLUE}Récupération des dernières modifications…${NC}"
-git -C "$BASE_DIR" fetch --all
-git -C "$BASE_DIR" pull origin "$(git -C "$BASE_DIR" branch --show-current)"
-slow_echo "${GREEN}✔ Dépôt à jour${NC}"
+# slow_echo "${BOLD}${BLUE}Récupération des dernières modifications…${NC}"
+# git -C "$BASE_DIR" fetch --all
+# git -C "$BASE_DIR" pull origin "$(git -C "$BASE_DIR" branch --show-current)"
+# slow_echo "${GREEN}✔ Dépôt à jour${NC}"
 
 # --- Arrêt instance existante ---
 if [ -f "$PID_FILE" ]; then
