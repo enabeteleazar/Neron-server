@@ -390,6 +390,83 @@ class AnomalyDetector:
 
 _detector = AnomalyDetector()
 
+async def _send_weekly_report():
+    """Rapport hebdomadaire — envoyé le lundi à 08h00"""
+    if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
+        return
+    try:
+        from datetime import datetime, timedelta
+
+        # Stats 7 derniers jours
+        entries = read_events(days=7)
+        crashes    = [e for e in entries if e.get("type") == "crash"]
+        recoveries = [e for e in entries if e.get("type") == "recovery"]
+        manuals    = [e for e in entries if e.get("type") == "manual_required"]
+        instab     = [e for e in entries if e.get("type") == "instability"]
+        auto_rst   = [e for e in recoveries if "auto-restart" in e.get("message","")]
+
+        # Score actuel
+        score = get_health_score()
+
+        # Uptime
+        elapsed = time.monotonic() - _start_time
+        days_up  = int(elapsed // 86400)
+        hours_up = int((elapsed % 86400) // 3600)
+
+        # Agents les plus touchés
+        crash_by_agent = {}
+        for e in crashes:
+            svc = e.get("service","inconnu")
+            crash_by_agent[svc] = crash_by_agent.get(svc, 0) + 1
+        top_crashes = sorted(crash_by_agent.items(), key=lambda x: x[1], reverse=True)
+
+        # Construire le rapport
+        lines = [
+            f"📊 <b>Rapport hebdomadaire Néron</b>",
+            f"Semaine du {(datetime.now() - timedelta(days=7)).strftime('%d/%m')} au {datetime.now().strftime('%d/%m/%Y')}",
+            "",
+            f"{score['level']} <b>Score santé : {score['score']}/100</b>",
+            "",
+            f"⏱ Uptime : {days_up}j {hours_up}h",
+            f"🔴 Crashs : {len(crashes)}",
+            f"✅ Recoveries : {len(recoveries)}",
+            f"🔄 Auto-restarts : {len(auto_rst)}",
+            f"🔧 Interventions manuelles : {len(manuals)}",
+            f"⚠️ Instabilités : {len(instab)}",
+        ]
+
+        if top_crashes:
+            lines.append("")
+            lines.append("📋 <b>Agents touchés :</b>")
+            for agent, count in top_crashes[:3]:
+                lines.append(f"  • {agent} : {count} crash(s)")
+
+        # Tendance vs semaine précédente
+        entries_14 = read_events(days=14)
+        last_week_crashes = len([e for e in entries_14
+                                  if e.get("type") == "crash"
+                                  and e not in entries])
+        if last_week_crashes > 0:
+            diff = len(crashes) - last_week_crashes
+            trend = f"📈 +{diff}" if diff > 0 else f"📉 {diff}" if diff < 0 else "➡️ stable"
+            lines.append("")
+            lines.append(f"📈 Tendance crashs : {trend} vs semaine précédente")
+
+        lines.append("")
+        lines.append("━━━━━━━━━━━━━━━━━━")
+        lines.append("Bonne semaine ! 🚀")
+
+        await _watchdog_bot_app.bot.send_message(
+            chat_id=WATCHDOG_CHAT_ID,
+            text="\n".join(lines),
+            parse_mode="HTML"
+        )
+        log_event("check", message="rapport_hebdomadaire")
+        logger.info("Rapport hebdomadaire envoyé")
+    except Exception as e:
+        logger.error(f"Rapport hebdomadaire erreur: {e}")
+
+
 async def _send_daily_report():
     """Envoie un rapport quotidien à heure fixe"""
     if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
@@ -440,10 +517,13 @@ async def _watchdog_loop():
             if cycle % 10 == 0:
                 await _detector.run_analysis(_notify_fn)
 
-            # Rapport quotidien à 08h00
+            # Rapports automatiques
             now = datetime.now()
             if now.hour == 8 and now.minute == 0 and now.second < CHECK_INTERVAL:
                 await _send_daily_report()
+                # Rapport hebdomadaire le lundi
+                if now.weekday() == 0:
+                    await _send_weekly_report()
 
         except Exception as e:
             logger.error(f"Watchdog loop error: {e}")
@@ -810,6 +890,13 @@ async def _wdog_cmd_trend(update, context):
         await update.message.reply_text(f"❌ {e}")
 
 
+async def _wdog_cmd_rapport_hebdo(update, context):
+    """Force un rapport hebdomadaire immédiat"""
+    if not _wdog_authorized(update): return
+    await update.message.reply_text("📊 Génération du rapport hebdomadaire...")
+    await _send_weekly_report()
+
+
 async def _wdog_cmd_rapport(update, context):
     """Force un rapport immédiat"""
     if not _wdog_authorized(update): return
@@ -872,6 +959,7 @@ async def start_watchdog_bot():
     _watchdog_bot_app.add_handler(TGCommandHandler("stats",     _wdog_cmd_stats))
     _watchdog_bot_app.add_handler(TGCommandHandler("trend",     _wdog_cmd_trend))
     _watchdog_bot_app.add_handler(TGCommandHandler("rapport",   _wdog_cmd_rapport))
+    _watchdog_bot_app.add_handler(TGCommandHandler("hebdo",     _wdog_cmd_rapport_hebdo))
     _watchdog_bot_app.add_handler(TGCommandHandler("history",   _wdog_cmd_history))
     await _watchdog_bot_app.initialize()
     await _watchdog_bot_app.start()
