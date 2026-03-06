@@ -32,6 +32,10 @@ _watchdog_bot_app = None
 _task       = None
 _last_alert: dict = {}
 _alerted_anomalies: set = set()
+_agent_failures: dict = {}   # {agent: [timestamp, ...]}
+AUTO_RESTART_THRESHOLD = 3
+AUTO_RESTART_WINDOW    = 300  # secondes
+_start_time: float = time.monotonic()
 
 
 # ─── DB EVENTS ────────────────────────────────────────────
@@ -164,6 +168,27 @@ async def _check_agents() -> List[str]:
     if issues:
         msg = "🔴 Agents en erreur : " + ", ".join(issues)
         await _notify(msg, "alert", key="agents_" + "_".join(issues))
+
+    # Auto-restart si échecs répétés
+    for issue in issues:
+        key = issue.split()[0].lower()  # "llm", "stt", "tts"
+        now = time.monotonic()
+        _agent_failures.setdefault(key, [])
+        _agent_failures[key].append(now)
+        # Nettoyer les vieux échecs
+        _agent_failures[key] = [t for t in _agent_failures[key] if now - t < AUTO_RESTART_WINDOW]
+        if len(_agent_failures[key]) >= AUTO_RESTART_THRESHOLD:
+            agent = _agents.get(key)
+            if agent:
+                logger.warning(f"Auto-restart {key} ({AUTO_RESTART_THRESHOLD} échecs en {AUTO_RESTART_WINDOW}s)")
+                try:
+                    ok = await agent.reload() if asyncio.iscoroutinefunction(agent.reload) else agent.reload()
+                    status = "✅ réussi" if ok else "⚠️ incertain"
+                    log_event("recovery", service=key, message=f"auto-restart {status}")
+                    await _notify(f"🔄 Auto-restart {key} — {status}", "info", key=f"auto_restart_{key}")
+                except Exception as e:
+                    logger.error(f"Auto-restart {key} échoué: {e}")
+                _agent_failures[key] = []  # reset
 
     return issues
 
@@ -352,6 +377,36 @@ class AnomalyDetector:
 
 _detector = AnomalyDetector()
 
+async def _send_daily_report():
+    """Envoie un rapport quotidien à heure fixe"""
+    if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
+        return
+    try:
+        sys_  = get_status()
+        score = get_health_score()
+        entries = read_events(days=1)
+        crashes = len([e for e in entries if e.get("type") == "crash"])
+        elapsed = time.monotonic() - _start_time
+        h = int(elapsed // 3600)
+        m = int((elapsed % 3600) // 60)
+
+        await _watchdog_bot_app.bot.send_message(
+            chat_id=WATCHDOG_CHAT_ID,
+            text=(
+                f"📊 <b>Rapport quotidien Néron</b>\n\n"
+                f"{score['level']} — Score: {score['score']}/100\n"
+                f"Uptime: {h}h {m}m\n"
+                f"Crashs 24h: {crashes}\n"
+                f"CPU: {sys_.get('cpu_pct')}% | RAM: {sys_.get('ram_pct')}%\n"
+                f"Process: {sys_.get('process_ram_mb')}MB"
+            ),
+            parse_mode="HTML"
+        )
+        log_event("check", message="rapport_quotidien")
+    except Exception as e:
+        logger.error(f"Rapport quotidien erreur: {e}")
+
+
 async def _watchdog_loop():
     logger.info(f"Watchdog démarré — intervalle {CHECK_INTERVAL}s")
     await asyncio.sleep(10)
@@ -372,6 +427,11 @@ async def _watchdog_loop():
             if cycle % 10 == 0:
                 await _detector.run_analysis(_notify_fn)
 
+            # Rapport quotidien à 08h00
+            now = datetime.now()
+            if now.hour == 8 and now.minute == 0 and now.second < CHECK_INTERVAL:
+                await _send_daily_report()
+
         except Exception as e:
             logger.error(f"Watchdog loop error: {e}")
 
@@ -379,7 +439,8 @@ async def _watchdog_loop():
 
 
 async def start_watchdog():
-    global _task
+    global _task, _start_time
+    _start_time = time.monotonic()
     _task = asyncio.create_task(_watchdog_loop())
     logger.info("Watchdog task créée")
 
@@ -517,12 +578,55 @@ async def _wdog_cmd_start(update, context):
         "/score — score de santé 7 jours\n"
         "/anomalies — anomalies détectées\n"
         "/restart &lt;agent&gt; — recharger un agent\n"
+        "/uptime — temps de fonctionnement\n"
+        "/history [agent] — historique events 7j\n"
         "/help — cette aide",
         parse_mode='HTML'
     )
 
 async def _wdog_cmd_help(update, context):
     await _wdog_cmd_start(update, context)
+
+async def _wdog_cmd_uptime(update, context):
+    if not _wdog_authorized(update): return
+    elapsed = time.monotonic() - _start_time
+    h = int(elapsed // 3600)
+    m = int((elapsed % 3600) // 60)
+    s = int(elapsed % 60)
+    sys_ = get_status()
+    await update.message.reply_text(
+        f"⏱ <b>Uptime</b>\n\n"
+        f"Démarré il y a {h}h {m}m {s}s\n"
+        f"Process RAM: {sys_.get('process_ram_mb')}MB\n"
+        f"CPU: {sys_.get('cpu_pct')}% | RAM sys: {sys_.get('ram_pct')}%",
+        parse_mode='HTML'
+    )
+
+
+async def _wdog_cmd_history(update, context):
+    if not _wdog_authorized(update): return
+    service = context.args[0].lower() if context.args else None
+    entries = read_events(days=7)
+
+    if service:
+        entries = [e for e in entries if e.get("service","").lower() == service]
+
+    if not entries:
+        await update.message.reply_text(f"📭 Aucun event{' pour ' + service if service else ''}")
+        return
+
+    # Derniers 10 events
+    recent = entries[-10:]
+    icons = {"crash": "🔴", "recovery": "✅", "instability": "⚠️", "check": "📊", "restart": "🔄"}
+    lines = [f"📋 <b>Historique{' — ' + service if service else ''}</b> ({len(entries)} events 7j)\n"]
+    for e in recent:
+        icon = icons.get(e.get("type",""), "•")
+        ts = e.get("timestamp","")[:16]
+        svc = e.get("service","") or ""
+        msg = e.get("message","")[:40]
+        lines.append(f"{icon} {ts} {svc} {msg}")
+    await update.message.reply_text("\n".join(lines), parse_mode='HTML')
+
 
 async def _wdog_cmd_restart(update, context):
     if not _wdog_authorized(update): return
@@ -567,14 +671,33 @@ async def start_watchdog_bot():
     _watchdog_bot_app.add_handler(TGCommandHandler("score",     _wdog_cmd_score))
     _watchdog_bot_app.add_handler(TGCommandHandler("anomalies", _wdog_cmd_anomalies))
     _watchdog_bot_app.add_handler(TGCommandHandler("restart",   _wdog_cmd_restart))
+    _watchdog_bot_app.add_handler(TGCommandHandler("uptime",    _wdog_cmd_uptime))
+    _watchdog_bot_app.add_handler(TGCommandHandler("history",   _wdog_cmd_history))
     await _watchdog_bot_app.initialize()
     await _watchdog_bot_app.start()
     await _watchdog_bot_app.updater.start_polling(allowed_updates=TGUpdate.ALL_TYPES)
     logger.info("Bot Watchdog démarré (@Neron_Watchdog_bot)")
+    if WATCHDOG_CHAT_ID:
+        try:
+            await _watchdog_bot_app.bot.send_message(
+                chat_id=WATCHDOG_CHAT_ID,
+                text="🟢 <b>Néron v2 démarré</b>\nTous les agents sont en ligne.",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
 
 async def stop_watchdog_bot():
     global _watchdog_bot_app
     if _watchdog_bot_app:
+        try:
+            await _watchdog_bot_app.bot.send_message(
+                chat_id=WATCHDOG_CHAT_ID,
+                text="🔴 <b>Néron v2 arrêté</b>",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
         await _watchdog_bot_app.updater.stop()
         await _watchdog_bot_app.stop()
         await _watchdog_bot_app.shutdown()
