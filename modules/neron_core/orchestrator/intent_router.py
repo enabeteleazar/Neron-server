@@ -24,7 +24,9 @@ class IntentRouter:
         self.llm_agent = llm_agent
 
     async def route(self, query: str) -> IntentResult:
-        q = query.lower()
+        import unicodedata
+        q = unicodedata.normalize("NFD", query.lower().strip())
+        q = "".join(c for c in q if unicodedata.category(c) != "Mn")
 
         if any(w in q for w in [
             "heure", "quelle heure", "il est quelle heure",
