@@ -675,6 +675,136 @@ async def _wdog_cmd_restart(update, context):
         await update.message.reply_text(f"❌ Erreur: {e}")
 
 
+async def _wdog_cmd_logs(update, context):
+    """Dernières lignes du log neron_core"""
+    if not _wdog_authorized(update): return
+    import os
+    log_path = os.path.join(os.path.dirname(__file__), "../../../logs/neron_core.log")
+    log_path = os.path.abspath(log_path)
+    try:
+        n = int(context.args[0]) if context.args else 20
+        n = min(n, 50)
+        with open(log_path) as f:
+            lines = f.readlines()
+        last = lines[-n:]
+        # Filtrer pour garder seulement ERROR/WARNING/INFO utiles
+        filtered = [l.strip() for l in last if any(x in l for x in ["ERROR","WARNING","INFO","CRITICAL"])]
+        if not filtered:
+            filtered = [l.strip() for l in last]
+        text = "\n".join(filtered[-20:])
+        # Tronquer si trop long
+        if len(text) > 3500:
+            text = "..." + text[-3500:]
+        await update.message.reply_text(
+            f"📄 <b>Logs ({n} dernières lignes)</b>\n\n<pre>{text}</pre>",
+            parse_mode="HTML"
+        )
+    except FileNotFoundError:
+        await update.message.reply_text("❌ Fichier log introuvable")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
+async def _wdog_cmd_stats(update, context):
+    """Graphique ASCII CPU/RAM sur les derniers events watchdog"""
+    if not _wdog_authorized(update): return
+    try:
+        entries = read_events(days=1)
+        checks = [e for e in entries if e.get("type") == "check" and e.get("message","").startswith("[watchdog]")]
+        if len(checks) < 2:
+            await update.message.reply_text("📊 Pas encore assez de données (attendre quelques cycles)")
+            return
+
+        # Extraire CPU et RAM depuis message "[watchdog] CPU=X% RAM=Y%..."
+        import re
+        cpu_vals, ram_vals, labels = [], [], []
+        for e in checks[-12:]:  # max 12 points
+            msg = e.get("message","")
+            cpu_m = re.search(r"CPU=([\d.]+)%", msg)
+            ram_m = re.search(r"RAM=([\d.]+)%", msg)
+            ts    = e.get("timestamp","")[11:16]  # HH:MM
+            if cpu_m and ram_m:
+                cpu_vals.append(float(cpu_m.group(1)))
+                ram_vals.append(float(ram_m.group(1)))
+                labels.append(ts)
+
+        if not cpu_vals:
+            await update.message.reply_text("📊 Données insuffisantes")
+            return
+
+        def bar(val, max_val=100, width=15):
+            filled = int(val / max_val * width)
+            return "█" * filled + "░" * (width - filled)
+
+        lines = ["📊 <b>Stats CPU / RAM (24h)</b>\n"]
+        lines.append("<pre>")
+        for i, (ts, cpu, ram) in enumerate(zip(labels, cpu_vals, ram_vals)):
+            lines.append(f"{ts} CPU {bar(cpu)} {cpu:.1f}%")
+            lines.append(f"     RAM {bar(ram)} {ram:.1f}%")
+            if i < len(labels) - 1:
+                lines.append("")
+        lines.append("</pre>")
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
+async def _wdog_cmd_trend(update, context):
+    """Tendance cette semaine vs semaine dernière"""
+    if not _wdog_authorized(update): return
+    try:
+        entries_14 = read_events(days=14)
+        entries_7  = read_events(days=7)
+
+        # Cette semaine vs semaine précédente
+        from datetime import datetime, timedelta
+        now = datetime.now()
+        week_ago = now - timedelta(days=7)
+
+        this_week = [e for e in entries_14
+                     if datetime.fromisoformat(e["timestamp"]) >= week_ago]
+        last_week = [e for e in entries_14
+                     if datetime.fromisoformat(e["timestamp"]) < week_ago]
+
+        def count_type(lst, t):
+            return len([e for e in lst if e.get("type") == t])
+
+        def trend_icon(this, last):
+            if last == 0:
+                return "🆕" if this > 0 else "➡️"
+            diff = this - last
+            if diff > 0:   return f"📈 +{diff}"
+            if diff < 0:   return f"📉 {diff}"
+            return "➡️ ="
+
+        tw_crash    = count_type(this_week, "crash")
+        lw_crash    = count_type(last_week, "crash")
+        tw_recovery = count_type(this_week, "recovery")
+        lw_recovery = count_type(last_week, "recovery")
+        tw_manual   = count_type(this_week, "manual_required")
+        lw_manual   = count_type(last_week, "manual_required")
+
+        score_this = get_health_score()
+
+        lines = [
+            "📈 <b>Tendance 7j vs 7j précédents</b>\n",
+            f"🔴 Crashs     : {tw_crash} {trend_icon(tw_crash, lw_crash)}",
+            f"✅ Recoveries : {tw_recovery} {trend_icon(tw_recovery, lw_recovery)}",
+            f"🔧 Interventions: {tw_manual} {trend_icon(tw_manual, lw_manual)}",
+            f"\n{score_this['level']} Score actuel: {score_this['score']}/100",
+        ]
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
+async def _wdog_cmd_rapport(update, context):
+    """Force un rapport immédiat"""
+    if not _wdog_authorized(update): return
+    await update.message.reply_text("📊 Génération du rapport...")
+    await _send_daily_report()
+
+
 async def _wdog_cmd_confirm(update, context):
     if not _wdog_authorized(update): return
     chat_id = str(update.message.chat_id)
@@ -726,6 +856,10 @@ async def start_watchdog_bot():
     _watchdog_bot_app.add_handler(TGCommandHandler("confirm",   _wdog_cmd_confirm))
     _watchdog_bot_app.add_handler(TGCommandHandler("cancel",    _wdog_cmd_cancel))
     _watchdog_bot_app.add_handler(TGCommandHandler("uptime",    _wdog_cmd_uptime))
+    _watchdog_bot_app.add_handler(TGCommandHandler("logs",      _wdog_cmd_logs))
+    _watchdog_bot_app.add_handler(TGCommandHandler("stats",     _wdog_cmd_stats))
+    _watchdog_bot_app.add_handler(TGCommandHandler("trend",     _wdog_cmd_trend))
+    _watchdog_bot_app.add_handler(TGCommandHandler("rapport",   _wdog_cmd_rapport))
     _watchdog_bot_app.add_handler(TGCommandHandler("history",   _wdog_cmd_history))
     await _watchdog_bot_app.initialize()
     await _watchdog_bot_app.start()

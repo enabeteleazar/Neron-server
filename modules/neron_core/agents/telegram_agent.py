@@ -43,37 +43,6 @@ async def unauthorized(update: Update):
 
 # ─── COMMANDES ────────────────────────────────────────────
 
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update): return await unauthorized(update)
-    await update.message.reply_text(
-        "🧠 <b>Néron AI v2.0</b>\n\n"
-        "Commandes:\n"
-        "/status — état des agents\n"
-        "/memory — derniers échanges\n"
-        "/help — aide\n\n"
-        "Ou envoyez un message pour parler à Néron !",
-        parse_mode='HTML'
-    )
-
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await cmd_start(update, context)
-
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update): return await unauthorized(update)
-    try:
-        llm_ok  = await _agents["llm"].check_connection()
-        stt_ok  = await _agents["stt"].check_connection()
-        tts_ok  = await _agents["tts"].check_connection()
-        mem_ok  = len(_agents["memory"].retrieve(1)) >= 0
-
-        lines = ["📊 <b>État des agents</b>\n"]
-        lines.append(f"{'✅' if llm_ok  else '🔴'} LLM (Ollama)")
-        lines.append(f"{'✅' if stt_ok  else '🔴'} STT (faster-whisper)")
-        lines.append(f"{'✅' if tts_ok  else '🔴'} TTS (espeak)")
-        lines.append(f"{'✅' if mem_ok  else '🔴'} Memory (SQLite)")
-        await update.message.reply_text("\n".join(lines), parse_mode='HTML')
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
 async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update): return await unauthorized(update)
@@ -92,38 +61,6 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ─── MESSAGES ─────────────────────────────────────────────
-
-async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update): return await unauthorized(update)
-    try:
-        from agents.watchdog_agent import get_health_score
-        score = get_health_score()
-        await update.message.reply_text(
-            f"🏥 <b>Score de santé</b>\n\n"
-            f"{score['level']} — {score['score']}/100\n"
-            f"Crashs 7j: {score['crashes']}\n"
-            f"Interventions: {score['manual_interventions']}",
-            parse_mode='HTML'
-        )
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur: {str(e)}")
-
-
-async def cmd_anomalies(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_authorized(update): return await unauthorized(update)
-    try:
-        from agents.watchdog_agent import get_anomalies
-        anomalies = get_anomalies(days=7)
-        if not anomalies:
-            await update.message.reply_text("✅ Aucune anomalie détectée")
-            return
-        lines = [f"🔍 <b>Anomalies ({len(anomalies)})</b>\n"]
-        for a in anomalies[:10]:
-            lines.append(f"• {a.get('message')}")
-        await update.message.reply_text("\n".join(lines), parse_mode='HTML')
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur: {str(e)}")
-
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Messages texte → streaming via /input/stream de core"""
@@ -184,12 +121,7 @@ async def start_bot():
         return
 
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    _telegram_app.add_handler(CommandHandler("start",   cmd_start))
-    _telegram_app.add_handler(CommandHandler("help",    cmd_help))
-    _telegram_app.add_handler(CommandHandler("status",    cmd_status))
     _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
-    _telegram_app.add_handler(CommandHandler("score",     cmd_score))
-    _telegram_app.add_handler(CommandHandler("anomalies", cmd_anomalies))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()
