@@ -702,8 +702,9 @@ async def _wdog_cmd_start(update, context):
         "/hebdo — rapport hebdomadaire immédiat\n"
         "\n🔧 <b>Actions</b>\n"
         "/restart &lt;agent&gt; — recharger un agent\n"
-        "/confirm — confirmer une action\n"
-        "/cancel — annuler une action\n"
+        "/mute &lt;min&gt; — couper les alertes X minutes\n"
+        "/config [clé] [valeur] — voir/modifier les seuils\n"
+        "/clear — effacer l'historique events\n"
         "\n❓ <b>Aide</b>\n"
         "/help — cette aide",
         parse_mode="HTML"
@@ -859,10 +860,23 @@ async def _wdog_cmd_config(update, context):
         "temp":     "CPU_TEMP_ALERT_C",
     }
     if not context.args:
+        descriptions = {
+            "cpu":      ("CPU_ALERT_PCT",           "% CPU système avant alerte"),
+            "ram":      ("RAM_ALERT_PCT",            "% RAM système avant alerte"),
+            "disk":     ("DISK_ALERT_PCT",           "% disque avant alerte"),
+            "procram":  ("RAM_PROCESS_ALERT_MB",     "MB RAM process Néron avant alerte"),
+            "ollama":   ("OLLAMA_SILENT_MINUTES",    "min sans réponse Ollama avant alerte"),
+            "silence":  ("NERON_SILENT_HOURS",       "h sans conversation avant alerte"),
+            "interval": ("CHECK_INTERVAL",           "s entre chaque check watchdog"),
+            "cooldown": ("ALERT_COOLDOWN",           "s minimum entre 2 alertes identiques"),
+            "temp":     ("CPU_TEMP_ALERT_C",         "°C température CPU avant alerte"),
+        }
         lines = ["⚙️ <b>Configuration Watchdog</b>\n"]
-        for k, v in config_map.items():
-            lines.append(f"{k:10} : {getattr(mod, v)}")
-        lines.append("\nUsage: /config &lt;clé&gt; &lt;valeur&gt;")
+        for k, (var, desc) in descriptions.items():
+            val = getattr(mod, var)
+            lines.append(f"<b>{k}</b> = {val}\n  └ {desc}")
+        lines.append("\n📝 Usage: /config &lt;clé&gt; &lt;valeur&gt;")
+        lines.append("Ex: /config cpu 90  |  /config temp 80")
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
         return
     if len(context.args) < 2:
