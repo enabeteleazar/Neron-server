@@ -33,6 +33,7 @@ _task       = None
 _last_alert: dict = {}
 _alerted_anomalies: set = set()
 _agent_failures: dict = {}   # {agent: [timestamp, ...]}
+_pending_confirm: dict = {}  # {chat_id: {"action": ..., "expires": ...}}
 AUTO_RESTART_THRESHOLD = 3
 AUTO_RESTART_WINDOW    = 300  # secondes
 _start_time: float = time.monotonic()
@@ -632,31 +633,82 @@ async def _wdog_cmd_restart(update, context):
     if not _wdog_authorized(update): return
     if not context.args:
         await update.message.reply_text(
-        await update.message.reply_text(
-            "Usage: /restart <agent>\nAgents: llm, stt, tts, memory"
-        )
+            "Usage: /restart <agent>\nAgents: core, llm, stt, tts, memory"
         )
         return
 
     agent_name = context.args[0].lower()
-    agent = _agents.get(agent_name)
 
-    if not agent:
-        await update.message.reply_text(f"❌ Agent inconnu: {agent_name}\nDisponibles: llm, stt, tts, memory")
+    # Restart core — demande confirmation
+    if agent_name == "core":
+        chat_id = str(update.message.chat_id)
+        _pending_confirm[chat_id] = {
+            "action": "restart_core",
+            "expires": time.monotonic() + 30
+        }
+        await update.message.reply_text(
+            "⚠️ <b>Redémarrage complet de Néron Core</b>\n\n"
+            "Tous les agents seront coupés puis relancés.\n"
+            "Confirmer avec /confirm ou annuler avec /cancel\n"
+            "<i>(expire dans 30 secondes)</i>",
+            parse_mode="HTML"
+        )
         return
 
+    agent = _agents.get(agent_name)
+    if not agent:
+        await update.message.reply_text(
+            f"❌ Agent inconnu: {agent_name}\nDisponibles: core, llm, stt, tts, memory"
+        )
+        return
 
     await update.message.reply_text(f"🔄 Rechargement de {agent_name}...")
     try:
         ok = await agent.reload() if asyncio.iscoroutinefunction(agent.reload) else agent.reload()
         if ok:
-            log_event("recovery", service=agent_name, message=f"reload manuel via Telegram")
+            log_event("recovery", service=agent_name, message="reload manuel via Telegram")
             await update.message.reply_text(f"✅ {agent_name} rechargé avec succès")
         else:
             await update.message.reply_text(f"⚠️ {agent_name} rechargé mais connexion non confirmée")
     except Exception as e:
         log_event("crash", service=agent_name, message=f"reload échoué: {e}")
-        await update.message.reply_text(f"❌ Erreur lors du rechargement: {e}")
+        await update.message.reply_text(f"❌ Erreur: {e}")
+
+
+async def _wdog_cmd_confirm(update, context):
+    if not _wdog_authorized(update): return
+    chat_id = str(update.message.chat_id)
+    pending = _pending_confirm.get(chat_id)
+
+    if not pending:
+        await update.message.reply_text("❌ Aucune action en attente de confirmation.")
+        return
+
+    if time.monotonic() > pending["expires"]:
+        del _pending_confirm[chat_id]
+        await update.message.reply_text("⏰ Confirmation expirée (30s). Recommencez.")
+        return
+
+    action = pending["action"]
+    del _pending_confirm[chat_id]
+
+    if action == "restart_core":
+        await update.message.reply_text("🔄 Redémarrage de Néron Core...")
+        log_event("restart", service="core", message="restart manuel via Telegram")
+        await _notify("🔄 Redémarrage Core déclenché via Telegram", "warning")
+        await asyncio.sleep(1)
+        import os, sys
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+
+async def _wdog_cmd_cancel(update, context):
+    if not _wdog_authorized(update): return
+    chat_id = str(update.message.chat_id)
+    if chat_id in _pending_confirm:
+        del _pending_confirm[chat_id]
+        await update.message.reply_text("✅ Action annulée.")
+    else:
+        await update.message.reply_text("ℹ️ Aucune action en attente.")
 
 
 async def start_watchdog_bot():
@@ -671,6 +723,8 @@ async def start_watchdog_bot():
     _watchdog_bot_app.add_handler(TGCommandHandler("score",     _wdog_cmd_score))
     _watchdog_bot_app.add_handler(TGCommandHandler("anomalies", _wdog_cmd_anomalies))
     _watchdog_bot_app.add_handler(TGCommandHandler("restart",   _wdog_cmd_restart))
+    _watchdog_bot_app.add_handler(TGCommandHandler("confirm",   _wdog_cmd_confirm))
+    _watchdog_bot_app.add_handler(TGCommandHandler("cancel",    _wdog_cmd_cancel))
     _watchdog_bot_app.add_handler(TGCommandHandler("uptime",    _wdog_cmd_uptime))
     _watchdog_bot_app.add_handler(TGCommandHandler("history",   _wdog_cmd_history))
     await _watchdog_bot_app.initialize()
