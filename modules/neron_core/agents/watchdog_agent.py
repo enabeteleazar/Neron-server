@@ -36,6 +36,16 @@ _agent_failures: dict = {}   # {agent: [timestamp, ...]}
 _pending_confirm: dict = {}  # {chat_id: {"action": ..., "expires": ...}}
 AUTO_RESTART_THRESHOLD = 3
 AUTO_RESTART_WINDOW    = 300  # secondes
+
+# Alertes intelligentes
+RAM_PROCESS_ALERT_MB   = 500   # alerte si process RAM > 500MB
+OLLAMA_SILENT_MINUTES  = 10    # alerte si Ollama ne répond pas depuis X min
+NERON_SILENT_HOURS     = 24    # alerte si aucune conversation depuis X heures
+_last_ollama_ok: float = 0.0   # timestamp dernière réponse Ollama OK
+_last_conversation: float = 0.0  # timestamp dernière conversation
+_cpu_high_count: int = 0          # compteur checks CPU élevé consécutifs
+CPU_HIGH_CONSECUTIVE = 3          # alerter seulement après N checks consécutifs
+AUTO_RESTART_WINDOW    = 300  # secondes
 _start_time: float = time.monotonic()
 
 
@@ -169,6 +179,8 @@ async def _check_agents() -> List[str]:
     if issues:
         msg = "🔴 Agents en erreur : " + ", ".join(issues)
         await _notify(msg, "alert", key="agents_" + "_".join(issues))
+
+
 
     # Auto-restart si échecs répétés
     for issue in issues:

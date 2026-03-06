@@ -66,6 +66,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Messages texte → streaming via /input/stream de core"""
     if not is_authorized(update): return await unauthorized(update)
 
+    # Mettre à jour le timestamp de dernière conversation
+    try:
+        from agents.watchdog_agent import _last_conversation as _wdog_lc
+        import agents.watchdog_agent as _wdog_mod
+        _wdog_mod._last_conversation = time.monotonic()
+    except Exception:
+        pass
+
     user_message = update.message.text
     await update.message.chat.send_action("typing")
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
