@@ -7,7 +7,7 @@ import struct
 import tempfile
 import os
 
-sys.path.insert(0, "/mnt/usb-storage/Neron_AI/modules/neron_core")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "modules", "neron_core"))
 
 # ━━━ MEMORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
