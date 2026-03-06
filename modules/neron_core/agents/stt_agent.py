@@ -16,7 +16,7 @@ logger = get_logger("stt_agent")
 
 WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
 WHISPER_LANGUAGE   = os.getenv("WHISPER_LANGUAGE", "fr")
-WHISPER_DOWNLOAD_ROOT = os.getenv("WHISPER_DOWNLOAD_ROOT", "/mnt/usb-storage/Neron_AI/data/models")
+WHISPER_DOWNLOAD_ROOT = os.getenv("WHISPER_DOWNLOAD_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "models"))
 AUDIO_MAX_SIZE_MB  = float(os.getenv("AUDIO_MAX_SIZE_MB", "10"))
 AUDIO_MAX_SIZE_BYTES = int(AUDIO_MAX_SIZE_MB * 1024 * 1024)
 SUPPORTED_FORMATS  = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm"}

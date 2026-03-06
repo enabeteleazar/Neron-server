@@ -22,7 +22,7 @@ CPU_ALERT_PCT   = float(os.getenv("WATCHDOG_CPU_ALERT", "85"))
 RAM_ALERT_PCT   = float(os.getenv("WATCHDOG_RAM_ALERT", "85"))
 DISK_ALERT_PCT  = float(os.getenv("WATCHDOG_DISK_ALERT","90"))
 ALERT_COOLDOWN  = 300   # secondes entre deux alertes identiques
-DB_PATH              = os.getenv("MEMORY_DB_PATH", "/mnt/usb-storage/Neron_AI/data/memory.db")
+DB_PATH              = os.getenv("MEMORY_DB_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "memory.db"))
 WATCHDOG_BOT_TOKEN   = os.getenv("WATCHDOG_BOT_TOKEN", "")
 WATCHDOG_CHAT_ID     = os.getenv("WATCHDOG_CHAT_ID", "")
 
