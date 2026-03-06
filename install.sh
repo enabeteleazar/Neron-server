@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh - Néron AI v2.0 — Installation one-liner
+# install.sh - Néron AI v2.0 — Bootstrap one-liner
 # Usage: curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/main/install.sh | bash
 
 set -euo pipefail
@@ -13,89 +13,96 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
-INSTALL_DIR="/mnt/usb-storage/Neron_AI"
+INSTALL_DIR="/opt/Neron_AI"
 
+clear
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
 echo "╚════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# --- Prérequis OS ---
-echo -e "${BLUE}Vérification du système...${NC}"
+# --- Vérification OS ---
+echo -e "${BLUE}[1/6] Vérification du système...${NC}"
 if ! command -v apt-get >/dev/null 2>&1; then
-    echo -e "${RED}❌ Système non supporté — Ubuntu/Debian requis${NC}"
+    echo -e "${RED}❌ Ubuntu/Debian requis${NC}"
     exit 1
 fi
-echo -e "${GREEN}✔ Ubuntu/Debian OK${NC}"
+echo -e "${GREEN}✔ OS OK${NC}"
 
-# --- Prérequis Python ---
-if ! command -v python3 >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Python3 non trouvé — installation...${NC}"
-    sudo apt-get install -y python3
-fi
-echo -e "${GREEN}✔ Python3 OK${NC}"
+# --- Dépendances de base ---
+echo -e "${BLUE}[2/6] Installation des dépendances système...${NC}"
+sudo apt-get update -qq
+sudo apt-get install -y -qq \
+    python3 \
+    python3.12-venv \
+    python3-pip \
+    git \
+    make \
+    curl \
+    espeak \
+    libespeak1 \
+    ffmpeg \
+    nano \
+    tree
+echo -e "${GREEN}✔ Dépendances OK${NC}"
 
-# --- Prérequis git ---
-if ! command -v git >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Git non trouvé — installation...${NC}"
-    sudo apt-get install -y git
-fi
-echo -e "${GREEN}✔ Git OK${NC}"
-
-# --- Prérequis make ---
-if ! command -v make >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Make non trouvé — installation...${NC}"
-    sudo apt-get install -y make
-fi
-echo -e "${GREEN}✔ Make OK${NC}"
-
-# --- Prérequis Ollama ---
-echo -e "${BLUE}Vérification Ollama...${NC}"
+# --- Ollama ---
+echo -e "${BLUE}[3/6] Vérification Ollama...${NC}"
 if ! command -v ollama >/dev/null 2>&1; then
     echo -e "${YELLOW}⚠ Ollama non trouvé — installation...${NC}"
     curl -fsSL https://ollama.ai/install.sh | sh
     echo -e "${GREEN}✔ Ollama installé${NC}"
 else
-    echo -e "${GREEN}✔ Ollama OK${NC}"
+    echo -e "${GREEN}✔ Ollama OK ($(ollama --version))${NC}"
 fi
 
-# --- Clone du repo ---
-echo -e "${BLUE}Clonage du dépôt Néron AI...${NC}"
-if [ -d "$INSTALL_DIR" ]; then
-    echo -e "${YELLOW}⚠ Dossier existant — mise à jour...${NC}"
+# --- Clone ---
+echo -e "${BLUE}[4/6] Récupération de Néron AI...${NC}"
+if [ -d "$INSTALL_DIR/.git" ]; then
+    echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
     git -C "$INSTALL_DIR" pull origin main
 else
     git clone "$REPO_URL" "$INSTALL_DIR"
 fi
 echo -e "${GREEN}✔ Dépôt OK${NC}"
 
-# --- Installation via Makefile ---
-echo -e "${BLUE}Installation des dépendances...${NC}"
+# --- Make install ---
+echo -e "${BLUE}[5/6] Installation via Makefile...${NC}"
 make -C "$INSTALL_DIR" install
 
 # --- Configuration .env ---
+echo -e "${BLUE}[6/6] Configuration...${NC}"
+if [ ! -f "$INSTALL_DIR/.env" ]; then
+    cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
+    echo -e "${YELLOW}⚠ Fichier .env créé depuis .env.example${NC}"
+else
+    echo -e "${GREEN}✔ .env existant conservé${NC}"
+fi
+
+# --- Résumé ---
 echo ""
-echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}${YELLOW}  ⚙️  Configuration requise${NC}"
-echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -e "  Éditez votre fichier .env :"
-echo -e "  ${BOLD}nano $INSTALL_DIR/.env${NC}"
-echo ""
-echo -e "  Variables obligatoires :"
-echo -e "  ${YELLOW}TELEGRAM_BOT_TOKEN${NC}   — token @HomeBox_Neron_bot"
-echo -e "  ${YELLOW}TELEGRAM_CHAT_ID${NC}     — votre chat ID"
-echo -e "  ${YELLOW}WATCHDOG_BOT_TOKEN${NC}   — token @Neron_Watchdog_bot"
-echo -e "  ${YELLOW}WATCHDOG_CHAT_ID${NC}     — votre chat ID"
-echo -e "  ${YELLOW}OLLAMA_MODEL${NC}         — ex: llama3.2:3b"
-echo ""
-echo -e "${BOLD}${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
-echo -e "${BOLD}${GREEN}✅ Installation terminée !${NC}"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}${GREEN}  ✅ Installation terminée !${NC}"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "  Prochaines étapes :"
-echo -e "  ${BOLD}1.${NC} nano $INSTALL_DIR/.env"
-echo -e "  ${BOLD}2.${NC} ollama pull llama3.2:3b"
-echo -e "  ${BOLD}3.${NC} make -C $INSTALL_DIR start"
+echo ""
+echo -e "  ${BOLD}1.${NC} Éditez votre configuration :"
+echo -e "     ${YELLOW}nano $INSTALL_DIR/.env${NC}"
+echo ""
+echo -e "  ${BOLD}2.${NC} Variables obligatoires :"
+echo -e "     ${YELLOW}TELEGRAM_BOT_TOKEN${NC}   — token @HomeBox_Neron_bot"
+echo -e "     ${YELLOW}TELEGRAM_CHAT_ID${NC}     — votre chat ID"
+echo -e "     ${YELLOW}WATCHDOG_BOT_TOKEN${NC}   — token @Neron_Watchdog_bot"
+echo -e "     ${YELLOW}WATCHDOG_CHAT_ID${NC}     — votre chat ID"
+echo -e "     ${YELLOW}OLLAMA_MODEL${NC}         — ex: llama3.2:3b"
+echo ""
+echo -e "  ${BOLD}3.${NC} Téléchargez un modèle :"
+echo -e "     ${YELLOW}make -C $INSTALL_DIR model-set${NC}"
+echo ""
+echo -e "  ${BOLD}4.${NC} Démarrez Néron :"
+echo -e "     ${YELLOW}make -C $INSTALL_DIR start${NC}"
+echo ""
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
