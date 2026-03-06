@@ -10,6 +10,7 @@ from telegram import Update, Bot
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 from agents.base_agent import get_logger
+from agents.watchdog_agent import get_status, get_health_score, get_anomalies
 
 logger = get_logger("telegram_agent")
 
@@ -92,6 +93,38 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── MESSAGES ─────────────────────────────────────────────
 
+async def cmd_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    try:
+        from agents.watchdog_agent import get_health_score
+        score = get_health_score()
+        await update.message.reply_text(
+            f"🏥 <b>Score de santé</b>\n\n"
+            f"{score['level']} — {score['score']}/100\n"
+            f"Crashs 7j: {score['crashes']}\n"
+            f"Interventions: {score['manual_interventions']}",
+            parse_mode='HTML'
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {str(e)}")
+
+
+async def cmd_anomalies(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    try:
+        from agents.watchdog_agent import get_anomalies
+        anomalies = get_anomalies(days=7)
+        if not anomalies:
+            await update.message.reply_text("✅ Aucune anomalie détectée")
+            return
+        lines = [f"🔍 <b>Anomalies ({len(anomalies)})</b>\n"]
+        for a in anomalies[:10]:
+            lines.append(f"• {a.get('message')}")
+        await update.message.reply_text("\n".join(lines), parse_mode='HTML')
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {str(e)}")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Messages texte → streaming via /input/stream de core"""
     if not is_authorized(update): return await unauthorized(update)
@@ -153,8 +186,10 @@ async def start_bot():
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
     _telegram_app.add_handler(CommandHandler("start",   cmd_start))
     _telegram_app.add_handler(CommandHandler("help",    cmd_help))
-    _telegram_app.add_handler(CommandHandler("status",  cmd_status))
-    _telegram_app.add_handler(CommandHandler("memory",  cmd_memory))
+    _telegram_app.add_handler(CommandHandler("status",    cmd_status))
+    _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
+    _telegram_app.add_handler(CommandHandler("score",     cmd_score))
+    _telegram_app.add_handler(CommandHandler("anomalies", cmd_anomalies))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()
