@@ -118,9 +118,14 @@ mkdir -p "$LOG_DIR"
 slow_echo "${BOLD}${BLUE}Lancement de Néron System…${NC}"
 cd "$BASE_DIR"
 # Charger les variables d'environnement
-set -a
-source "$BASE_DIR/.env"
-set +a
+while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    line="${line%%#*}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [[ "$line" != *=* ]] && continue
+    export "$line"
+done < "$BASE_DIR/.env"
 
 # Lancer neron_core (process unique)
 cd "$BASE_DIR/modules/neron_core"

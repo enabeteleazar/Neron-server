@@ -86,5 +86,14 @@ class TTSAgent:
                 latency_ms=latency_ms, metadata={}
             )
 
+    async def reload(self) -> bool:
+        """Recharge le moteur TTS"""
+        try:
+            load_engine()
+            return True
+        except Exception as e:
+            logger.error(f"TTS reload error: {e}")
+            return False
+
     async def check_connection(self) -> bool:
         return _tts_engine is not None

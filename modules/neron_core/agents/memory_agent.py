@@ -44,6 +44,14 @@ def init_db():
 class MemoryAgent:
     """Accès direct SQLite — remplace les appels HTTP à neron_memory:8002"""
 
+    def reload(self) -> bool:
+        """Réinitialise la connexion SQLite"""
+        try:
+            init_db()
+            return True
+        except Exception as e:
+            return False
+
     def store(self, input_text: str, response: str, metadata: dict = None) -> int:
         try:
             with get_db() as conn:
