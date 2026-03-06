@@ -130,5 +130,14 @@ class STTAgent:
             if tmp_path and os.path.exists(tmp_path):
                 os.remove(tmp_path)
 
+    async def reload(self) -> bool:
+        """Recharge le modèle faster-whisper"""
+        try:
+            load_model()
+            return True
+        except Exception as e:
+            logger.error(f"STT reload error: {e}")
+            return False
+
     async def check_connection(self) -> bool:
         return _whisper_model is not None
