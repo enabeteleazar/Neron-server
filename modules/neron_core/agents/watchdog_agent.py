@@ -38,7 +38,8 @@ AUTO_RESTART_THRESHOLD = 3
 AUTO_RESTART_WINDOW    = 300  # secondes
 
 # Alertes intelligentes
-RAM_PROCESS_ALERT_MB   = 500   # alerte si process RAM > 500MB
+RAM_PROCESS_ALERT_MB   = 500
+CPU_TEMP_ALERT_C       = float(os.getenv("WATCHDOG_CPU_TEMP_ALERT", "75"))  # °C   # alerte si process RAM > 500MB
 OLLAMA_SILENT_MINUTES  = 10    # alerte si Ollama ne répond pas depuis X min
 NERON_SILENT_HOURS     = 24    # alerte si aucune conversation depuis X heures
 _last_ollama_ok: float = 0.0   # timestamp dernière réponse Ollama OK
@@ -132,6 +133,22 @@ async def _notify(msg: str, level: str = "warning", key: str = None):
 
 
 # ─── CHECKS SYSTÈME ───────────────────────────────────────
+
+def _get_cpu_temp() -> float:
+    """Retourne la température CPU ou 0 si indisponible"""
+    try:
+        temps = psutil.sensors_temperatures()
+        if "coretemp" in temps:
+            for e in temps["coretemp"]:
+                if "Package" in e.label:
+                    return e.current
+            return temps["coretemp"][0].current
+        if "acpitz" in temps:
+            return max(e.current for e in temps["acpitz"])
+    except Exception:
+        pass
+    return 0.0
+
 
 async def _check_system() -> dict:
     cpu  = psutil.cpu_percent(interval=1)
@@ -636,7 +653,9 @@ async def _wdog_cmd_status(update, context):
         lines.append(f"{'✅' if ok_stt    else '🔴'} STT")
         lines.append(f"{'✅' if ok_tts    else '🔴'} TTS")
         lines.append(f"{'✅' if ok_memory else '🔴'} Mémoire")
-        lines.append(f"\n🖥 CPU: {sys_.get('cpu_pct')}% | RAM: {sys_.get('ram_pct')}%")
+        cpu_temp = _get_cpu_temp()
+        temp_str = f" | 🌡️ {cpu_temp:.1f}°C" if cpu_temp > 0 else ""
+        lines.append(f"\n🖥 CPU: {sys_.get('cpu_pct')}%{temp_str} | RAM: {sys_.get('ram_pct')}%")
         lines.append(f"💾 Disque: {sys_.get('disk_pct')}% | Process: {sys_.get('process_ram_mb')}MB")
         lines.append(f"\n{score['level']} — Score: {score['score']}/100")
         await update.message.reply_text("\n".join(lines), parse_mode='HTML')
@@ -771,6 +790,11 @@ async def _wdog_cmd_stats(update, context):
             filled = int(val / 100 * width)
             return "█" * filled + "░" * (width - filled)
         lines = ["📊 <b>Stats CPU / RAM (24h)</b>\n<pre>"]
+        # Ajouter température si disponible
+        temp_now = _get_cpu_temp()
+        if temp_now > 0:
+            lines[1] = lines[1].replace("</b>", f" | 🌡️ {temp_now:.1f}°C actuellement</b>")
+
         for ts, cpu, ram in zip(labels, cpu_vals, ram_vals):
             lines.append(f"{ts} CPU {bar(cpu)} {cpu:.1f}%")
             lines.append(f"     RAM {bar(ram)} {ram:.1f}%")
@@ -832,6 +856,7 @@ async def _wdog_cmd_config(update, context):
         "silence":  "NERON_SILENT_HOURS",
         "interval": "CHECK_INTERVAL",
         "cooldown": "ALERT_COOLDOWN",
+        "temp":     "CPU_TEMP_ALERT_C",
     }
     if not context.args:
         lines = ["⚙️ <b>Configuration Watchdog</b>\n"]
