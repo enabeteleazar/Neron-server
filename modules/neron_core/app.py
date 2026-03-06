@@ -26,7 +26,7 @@ from neron_time.time_provider import TimeProvider
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("neron_core")
 
-VERSION = "1.4.0"
+VERSION = "2.0.0"
 _startup_time: float = 0.0
 
 
