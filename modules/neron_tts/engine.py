@@ -41,16 +41,25 @@ class Pyttsx3Engine(TTSEngine):
                 logger.info(f"Voix selectionnee : {voice.id}")
                 break
 
+        self._lang = lang
+        self._rate = rate
         logger.info(f"Pyttsx3Engine init : rate={rate}, volume={volume}, lang={lang}")
 
     def synthesize(self, text: str) -> bytes:
+        import subprocess
         tmp_path = None
         try:
             with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                 tmp_path = f.name
 
-            self.engine.save_to_file(text, tmp_path)
-            self.engine.runAndWait()
+            # espeak CLI — plus fiable que pyttsx3 save_to_file
+            result = subprocess.run(
+                ["espeak", "-v", self._lang, "-s", str(self._rate), "-w", tmp_path, text],
+                capture_output=True, timeout=30
+            )
+
+            if result.returncode != 0:
+                raise RuntimeError(f"espeak error: {result.stderr.decode()}")
 
             with open(tmp_path, "rb") as f:
                 audio_bytes = f.read()
