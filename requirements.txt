@@ -25,7 +25,6 @@ numpy==1.26.4
 pyttsx3==2.90
 
 # Web UI
-gradio==4.16.0
 huggingface-hub==0.20.3
 
 # Base de données
