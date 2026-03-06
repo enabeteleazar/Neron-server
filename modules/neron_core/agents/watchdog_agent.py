@@ -44,6 +44,7 @@ NERON_SILENT_HOURS     = 24    # alerte si aucune conversation depuis X heures
 _last_ollama_ok: float = 0.0   # timestamp dernière réponse Ollama OK
 _last_conversation: float = 0.0  # timestamp dernière conversation
 _cpu_high_count: int = 0          # compteur checks CPU élevé consécutifs
+_mute_until: float = 0.0          # timestamp fin de mute alertes
 CPU_HIGH_CONSECUTIVE = 3          # alerter seulement après N checks consécutifs
 AUTO_RESTART_WINDOW    = 300  # secondes
 _start_time: float = time.monotonic()
@@ -667,18 +668,30 @@ async def _wdog_cmd_start(update, context):
     await update.message.reply_text(
         "🔍 <b>Néron Watchdog v2</b>\n\n"
         "Commandes disponibles:\n"
+        "\n📊 <b>Monitoring</b>\n"
         "/status — état complet (Core, Ollama, agents)\n"
         "/score — score de santé 7 jours\n"
         "/anomalies — anomalies détectées\n"
-        "/restart &lt;agent&gt; — recharger un agent\n"
+        "/stats — graphique CPU/RAM 24h\n"
+        "/trend — tendance 7j vs 7j précédents\n"
         "/uptime — temps de fonctionnement\n"
+        "\n📋 <b>Historique</b>\n"
         "/history [agent] — historique events 7j\n"
+        "/logs [n] — dernières lignes de log\n"
+        "\n📊 <b>Rapports</b>\n"
+        "/rapport — rapport quotidien immédiat\n"
+        "/hebdo — rapport hebdomadaire immédiat\n"
+        "\n🔧 <b>Actions</b>\n"
+        "/restart &lt;agent&gt; — recharger un agent\n"
+        "/confirm — confirmer une action\n"
+        "/cancel — annuler une action\n"
+        "\n❓ <b>Aide</b>\n"
         "/help — cette aide",
-        parse_mode='HTML'
+        parse_mode="HTML"
     )
 
-async def _wdog_cmd_help(update, context):
-    await _wdog_cmd_start(update, context)
+
+
 
 async def _wdog_cmd_uptime(update, context):
     if not _wdog_authorized(update): return
@@ -688,11 +701,10 @@ async def _wdog_cmd_uptime(update, context):
     s = int(elapsed % 60)
     sys_ = get_status()
     await update.message.reply_text(
-        f"⏱ <b>Uptime</b>\n\n"
-        f"Démarré il y a {h}h {m}m {s}s\n"
+        f"⏱ <b>Uptime</b>\n\nDémarré il y a {h}h {m}m {s}s\n"
         f"Process RAM: {sys_.get('process_ram_mb')}MB\n"
         f"CPU: {sys_.get('cpu_pct')}% | RAM sys: {sys_.get('ram_pct')}%",
-        parse_mode='HTML'
+        parse_mode="HTML"
     )
 
 
@@ -700,97 +712,36 @@ async def _wdog_cmd_history(update, context):
     if not _wdog_authorized(update): return
     service = context.args[0].lower() if context.args else None
     entries = read_events(days=7)
-
     if service:
         entries = [e for e in entries if e.get("service","").lower() == service]
-
     if not entries:
         await update.message.reply_text(f"📭 Aucun event{' pour ' + service if service else ''}")
         return
-
-    # Derniers 10 events
     recent = entries[-10:]
-    icons = {"crash": "🔴", "recovery": "✅", "instability": "⚠️", "check": "📊", "restart": "🔄"}
-    lines = [f"📋 <b>Historique{' — ' + service if service else ''}</b> ({len(entries)} events 7j)\n"]
+    icons = {"crash":"🔴","recovery":"✅","instability":"⚠️","check":"📊","restart":"🔄"}
+    lines = [f"📋 <b>Historique{' — '+service if service else ''}</b> ({len(entries)} events 7j)\n"]
     for e in recent:
-        icon = icons.get(e.get("type",""), "•")
-        ts = e.get("timestamp","")[:16]
-        svc = e.get("service","") or ""
-        msg = e.get("message","")[:40]
+        icon = icons.get(e.get("type",""),"•")
+        ts   = e.get("timestamp","")[:16]
+        svc  = e.get("service","") or ""
+        msg  = e.get("message","")[:40]
         lines.append(f"{icon} {ts} {svc} {msg}")
-    await update.message.reply_text("\n".join(lines), parse_mode='HTML')
-
-
-async def _wdog_cmd_restart(update, context):
-    if not _wdog_authorized(update): return
-    if not context.args:
-        await update.message.reply_text(
-            "Usage: /restart <agent>\nAgents: core, llm, stt, tts, memory"
-        )
-        return
-
-    agent_name = context.args[0].lower()
-
-    # Restart core — demande confirmation
-    if agent_name == "core":
-        chat_id = str(update.message.chat_id)
-        _pending_confirm[chat_id] = {
-            "action": "restart_core",
-            "expires": time.monotonic() + 30
-        }
-        await update.message.reply_text(
-            "⚠️ <b>Redémarrage complet de Néron Core</b>\n\n"
-            "Tous les agents seront coupés puis relancés.\n"
-            "Confirmer avec /confirm ou annuler avec /cancel\n"
-            "<i>(expire dans 30 secondes)</i>",
-            parse_mode="HTML"
-        )
-        return
-
-    agent = _agents.get(agent_name)
-    if not agent:
-        await update.message.reply_text(
-            f"❌ Agent inconnu: {agent_name}\nDisponibles: core, llm, stt, tts, memory"
-        )
-        return
-
-    await update.message.reply_text(f"🔄 Rechargement de {agent_name}...")
-    try:
-        ok = await agent.reload() if asyncio.iscoroutinefunction(agent.reload) else agent.reload()
-        if ok:
-            log_event("recovery", service=agent_name, message="reload manuel via Telegram")
-            await update.message.reply_text(f"✅ {agent_name} rechargé avec succès")
-        else:
-            await update.message.reply_text(f"⚠️ {agent_name} rechargé mais connexion non confirmée")
-    except Exception as e:
-        log_event("crash", service=agent_name, message=f"reload échoué: {e}")
-        await update.message.reply_text(f"❌ Erreur: {e}")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def _wdog_cmd_logs(update, context):
-    """Dernières lignes du log neron_core"""
     if not _wdog_authorized(update): return
-    import os
-    log_path = os.path.join(os.path.dirname(__file__), "../../../logs/neron_core.log")
-    log_path = os.path.abspath(log_path)
+    import os as _os
+    log_path = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "../../../logs/neron_core.log"))
     try:
-        n = int(context.args[0]) if context.args else 20
-        n = min(n, 50)
+        n = min(int(context.args[0]) if context.args else 20, 50)
         with open(log_path) as f:
             lines = f.readlines()
-        last = lines[-n:]
-        # Filtrer pour garder seulement ERROR/WARNING/INFO utiles
-        filtered = [l.strip() for l in last if any(x in l for x in ["ERROR","WARNING","INFO","CRITICAL"])]
-        if not filtered:
-            filtered = [l.strip() for l in last]
-        text = "\n".join(filtered[-20:])
-        # Tronquer si trop long
+        last = [l.strip() for l in lines[-n:] if any(x in l for x in ["ERROR","WARNING","INFO"])]
+        text = "\n".join(last[-20:])
         if len(text) > 3500:
             text = "..." + text[-3500:]
-        await update.message.reply_text(
-            f"📄 <b>Logs ({n} dernières lignes)</b>\n\n<pre>{text}</pre>",
-            parse_mode="HTML"
-        )
+        await update.message.reply_text(f"📄 <b>Logs ({n} lignes)</b>\n\n<pre>{text}</pre>", parse_mode="HTML")
     except FileNotFoundError:
         await update.message.reply_text("❌ Fichier log introuvable")
     except Exception as e:
@@ -798,43 +749,32 @@ async def _wdog_cmd_logs(update, context):
 
 
 async def _wdog_cmd_stats(update, context):
-    """Graphique ASCII CPU/RAM sur les derniers events watchdog"""
     if not _wdog_authorized(update): return
     try:
+        import re as _re
         entries = read_events(days=1)
-        checks = [e for e in entries if e.get("type") == "check" and e.get("message","").startswith("[watchdog]")]
+        checks  = [e for e in entries if e.get("type") == "check" and "[watchdog]" in e.get("message","")]
         if len(checks) < 2:
-            await update.message.reply_text("📊 Pas encore assez de données (attendre quelques cycles)")
+            await update.message.reply_text("📊 Pas encore assez de données")
             return
-
-        # Extraire CPU et RAM depuis message "[watchdog] CPU=X% RAM=Y%..."
-        import re
         cpu_vals, ram_vals, labels = [], [], []
-        for e in checks[-12:]:  # max 12 points
-            msg = e.get("message","")
-            cpu_m = re.search(r"CPU=([\d.]+)%", msg)
-            ram_m = re.search(r"RAM=([\d.]+)%", msg)
-            ts    = e.get("timestamp","")[11:16]  # HH:MM
+        for e in checks[-12:]:
+            msg   = e.get("message","")
+            cpu_m = _re.search(r"CPU=([\d.]+)%", msg)
+            ram_m = _re.search(r"RAM=([\d.]+)%", msg)
+            ts    = e.get("timestamp","")[11:16]
             if cpu_m and ram_m:
                 cpu_vals.append(float(cpu_m.group(1)))
                 ram_vals.append(float(ram_m.group(1)))
                 labels.append(ts)
-
-        if not cpu_vals:
-            await update.message.reply_text("📊 Données insuffisantes")
-            return
-
-        def bar(val, max_val=100, width=15):
-            filled = int(val / max_val * width)
+        def bar(val, width=15):
+            filled = int(val / 100 * width)
             return "█" * filled + "░" * (width - filled)
-
-        lines = ["📊 <b>Stats CPU / RAM (24h)</b>\n"]
-        lines.append("<pre>")
-        for i, (ts, cpu, ram) in enumerate(zip(labels, cpu_vals, ram_vals)):
+        lines = ["📊 <b>Stats CPU / RAM (24h)</b>\n<pre>"]
+        for ts, cpu, ram in zip(labels, cpu_vals, ram_vals):
             lines.append(f"{ts} CPU {bar(cpu)} {cpu:.1f}%")
             lines.append(f"     RAM {bar(ram)} {ram:.1f}%")
-            if i < len(labels) - 1:
-                lines.append("")
+            lines.append("")
         lines.append("</pre>")
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
     except Exception as e:
@@ -842,92 +782,112 @@ async def _wdog_cmd_stats(update, context):
 
 
 async def _wdog_cmd_trend(update, context):
-    """Tendance cette semaine vs semaine dernière"""
     if not _wdog_authorized(update): return
     try:
+        from datetime import datetime as _dt, timedelta as _td
         entries_14 = read_events(days=14)
-        entries_7  = read_events(days=7)
-
-        # Cette semaine vs semaine précédente
-        from datetime import datetime, timedelta
-        now = datetime.now()
-        week_ago = now - timedelta(days=7)
-
-        this_week = [e for e in entries_14
-                     if datetime.fromisoformat(e["timestamp"]) >= week_ago]
-        last_week = [e for e in entries_14
-                     if datetime.fromisoformat(e["timestamp"]) < week_ago]
-
-        def count_type(lst, t):
-            return len([e for e in lst if e.get("type") == t])
-
-        def trend_icon(this, last):
-            if last == 0:
-                return "🆕" if this > 0 else "➡️"
-            diff = this - last
-            if diff > 0:   return f"📈 +{diff}"
-            if diff < 0:   return f"📉 {diff}"
-            return "➡️ ="
-
-        tw_crash    = count_type(this_week, "crash")
-        lw_crash    = count_type(last_week, "crash")
-        tw_recovery = count_type(this_week, "recovery")
-        lw_recovery = count_type(last_week, "recovery")
-        tw_manual   = count_type(this_week, "manual_required")
-        lw_manual   = count_type(last_week, "manual_required")
-
-        score_this = get_health_score()
-
+        now       = _dt.now()
+        week_ago  = now - _td(days=7)
+        this_week = [e for e in entries_14 if _dt.fromisoformat(e["timestamp"]) >= week_ago]
+        last_week = [e for e in entries_14 if _dt.fromisoformat(e["timestamp"]) <  week_ago]
+        def ct(lst, t): return len([e for e in lst if e.get("type") == t])
+        def ti(a, b):
+            d = a - b
+            return f"📈 +{d}" if d > 0 else f"📉 {d}" if d < 0 else "➡️ ="
+        score = get_health_score()
         lines = [
             "📈 <b>Tendance 7j vs 7j précédents</b>\n",
-            f"🔴 Crashs     : {tw_crash} {trend_icon(tw_crash, lw_crash)}",
-            f"✅ Recoveries : {tw_recovery} {trend_icon(tw_recovery, lw_recovery)}",
-            f"🔧 Interventions: {tw_manual} {trend_icon(tw_manual, lw_manual)}",
-            f"\n{score_this['level']} Score actuel: {score_this['score']}/100",
+            f"🔴 Crashs      : {ct(this_week,'crash')} {ti(ct(this_week,'crash'),ct(last_week,'crash'))}",
+            f"✅ Recoveries  : {ct(this_week,'recovery')} {ti(ct(this_week,'recovery'),ct(last_week,'recovery'))}",
+            f"🔧 Interventions: {ct(this_week,'manual_required')} {ti(ct(this_week,'manual_required'),ct(last_week,'manual_required'))}",
+            f"\n{score['level']} Score: {score['score']}/100",
         ]
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
     except Exception as e:
         await update.message.reply_text(f"❌ {e}")
 
 
-async def _wdog_cmd_rapport_hebdo(update, context):
-    """Force un rapport hebdomadaire immédiat"""
-    if not _wdog_authorized(update): return
-    await update.message.reply_text("📊 Génération du rapport hebdomadaire...")
-    await _send_weekly_report()
-
-
 async def _wdog_cmd_rapport(update, context):
-    """Force un rapport immédiat"""
     if not _wdog_authorized(update): return
     await update.message.reply_text("📊 Génération du rapport...")
     await _send_daily_report()
 
 
-async def _wdog_cmd_confirm(update, context):
+async def _wdog_cmd_rapport_hebdo(update, context):
+    if not _wdog_authorized(update): return
+    await update.message.reply_text("📊 Génération du rapport hebdomadaire...")
+    await _send_weekly_report()
+
+
+async def _wdog_cmd_config(update, context):
+    if not _wdog_authorized(update): return
+    import sys as _sys
+    mod = _sys.modules[__name__]
+    config_map = {
+        "cpu":      "CPU_ALERT_PCT",
+        "ram":      "RAM_ALERT_PCT",
+        "disk":     "DISK_ALERT_PCT",
+        "procram":  "RAM_PROCESS_ALERT_MB",
+        "ollama":   "OLLAMA_SILENT_MINUTES",
+        "silence":  "NERON_SILENT_HOURS",
+        "interval": "CHECK_INTERVAL",
+        "cooldown": "ALERT_COOLDOWN",
+    }
+    if not context.args:
+        lines = ["⚙️ <b>Configuration Watchdog</b>\n"]
+        for k, v in config_map.items():
+            lines.append(f"{k:10} : {getattr(mod, v)}")
+        lines.append("\nUsage: /config &lt;clé&gt; &lt;valeur&gt;")
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+        return
+    if len(context.args) < 2:
+        await update.message.reply_text("Usage: /config <clé> <valeur>")
+        return
+    key = context.args[0].lower()
+    if key not in config_map:
+        await update.message.reply_text(f"❌ Clé inconnue: {key}\nDisponibles: {', '.join(config_map)}")
+        return
+    try:
+        value   = float(context.args[1])
+        var     = config_map[key]
+        old_val = getattr(mod, var)
+        setattr(mod, var, type(old_val)(value))
+        await update.message.reply_text(f"✅ <b>{var}</b>: {old_val} → {getattr(mod, var)}", parse_mode="HTML")
+    except Exception as e:
+        await update.message.reply_text(f"❌ {e}")
+
+
+async def _wdog_cmd_mute(update, context):
+    if not _wdog_authorized(update): return
+    global _mute_until
+    if not context.args:
+        if _mute_until > time.monotonic():
+            rem = int((_mute_until - time.monotonic()) / 60)
+            await update.message.reply_text(f"🔕 Alertes coupées encore {rem} min\n/mute 0 pour réactiver")
+        else:
+            await update.message.reply_text("🔔 Alertes actives\nUsage: /mute <minutes>")
+        return
+    try:
+        minutes = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ Valeur invalide")
+        return
+    if minutes == 0:
+        _mute_until = 0.0
+        await update.message.reply_text("🔔 Alertes réactivées")
+    else:
+        _mute_until = time.monotonic() + minutes * 60
+        await update.message.reply_text(f"🔕 Alertes coupées pendant {minutes} min")
+
+
+async def _wdog_cmd_clear(update, context):
     if not _wdog_authorized(update): return
     chat_id = str(update.message.chat_id)
-    pending = _pending_confirm.get(chat_id)
-
-    if not pending:
-        await update.message.reply_text("❌ Aucune action en attente de confirmation.")
-        return
-
-    if time.monotonic() > pending["expires"]:
-        del _pending_confirm[chat_id]
-        await update.message.reply_text("⏰ Confirmation expirée (30s). Recommencez.")
-        return
-
-    action = pending["action"]
-    del _pending_confirm[chat_id]
-
-    if action == "restart_core":
-        await update.message.reply_text("🔄 Redémarrage de Néron Core...")
-        log_event("restart", service="core", message="restart manuel via Telegram")
-        await _notify("🔄 Redémarrage Core déclenché via Telegram", "warning")
-        await asyncio.sleep(1)
-        import os, sys
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+    _pending_confirm[chat_id] = {"action": "clear_events", "expires": time.monotonic() + 30}
+    await update.message.reply_text(
+        "⚠️ <b>Effacer tous les events ?</b>\n\nIrréversible.\n/confirm | /cancel\n<i>(expire 30s)</i>",
+        parse_mode="HTML"
+    )
 
 
 async def _wdog_cmd_cancel(update, context):
@@ -940,20 +900,89 @@ async def _wdog_cmd_cancel(update, context):
         await update.message.reply_text("ℹ️ Aucune action en attente.")
 
 
+async def _wdog_cmd_confirm(update, context):
+    if not _wdog_authorized(update): return
+    chat_id = str(update.message.chat_id)
+    pending = _pending_confirm.get(chat_id)
+    if not pending:
+        await update.message.reply_text("❌ Aucune action en attente.")
+        return
+    if time.monotonic() > pending["expires"]:
+        del _pending_confirm[chat_id]
+        await update.message.reply_text("⏰ Confirmation expirée. Recommencez.")
+        return
+    action = pending["action"]
+    del _pending_confirm[chat_id]
+    if action == "restart_core":
+        await update.message.reply_text("🔄 Redémarrage de Néron Core...")
+        log_event("restart", service="core", message="restart manuel via Telegram")
+        await _notify("🔄 Redémarrage Core déclenché via Telegram", "warning")
+        await asyncio.sleep(1)
+        import os as _os, sys as _sys
+        _os.execv(_sys.executable, [_sys.executable] + _sys.argv)
+    elif action == "clear_events":
+        try:
+            import sqlite3 as _sq
+            conn = _sq.connect(DB_PATH)
+            conn.execute("DELETE FROM events")
+            conn.commit()
+            conn.close()
+            await update.message.reply_text("✅ Historique events effacé")
+        except Exception as e:
+            await update.message.reply_text(f"❌ {e}")
+
+
+async def _wdog_cmd_restart(update, context):
+    if not _wdog_authorized(update): return
+    if not context.args:
+        await update.message.reply_text("Usage: /restart <agent>\nAgents: core, llm, stt, tts, memory")
+        return
+    agent_name = context.args[0].lower()
+    if agent_name == "core":
+        chat_id = str(update.message.chat_id)
+        _pending_confirm[chat_id] = {"action": "restart_core", "expires": time.monotonic() + 30}
+        await update.message.reply_text(
+            "⚠️ <b>Redémarrage complet de Néron Core</b>\n\n"
+            "Confirmer avec /confirm ou annuler avec /cancel\n<i>(expire dans 30s)</i>",
+            parse_mode="HTML"
+        )
+        return
+    agent = _agents.get(agent_name)
+    if not agent:
+        await update.message.reply_text(f"❌ Agent inconnu: {agent_name}\nDisponibles: core, llm, stt, tts, memory")
+        return
+    await update.message.reply_text(f"🔄 Rechargement de {agent_name}...")
+    try:
+        ok = await agent.reload() if asyncio.iscoroutinefunction(agent.reload) else agent.reload()
+        if ok:
+            log_event("recovery", service=agent_name, message="reload manuel via Telegram")
+            await update.message.reply_text(f"✅ {agent_name} rechargé avec succès")
+        else:
+            await update.message.reply_text(f"⚠️ {agent_name} rechargé mais non confirmé")
+    except Exception as e:
+        log_event("crash", service=agent_name, message=f"reload échoué: {e}")
+        await update.message.reply_text(f"❌ {e}")
+
 async def start_watchdog_bot():
     global _watchdog_bot_app
-    if not WATCHDOG_BOT_TOKEN:
-        logger.warning("WATCHDOG_BOT_TOKEN manquant — bot watchdog désactivé")
+    token = os.getenv("WATCHDOG_BOT_TOKEN")
+    if not token:
+        logger.warning("WATCHDOG_BOT_TOKEN non défini — bot watchdog désactivé")
         return
-    _watchdog_bot_app = TGApplication.builder().token(WATCHDOG_BOT_TOKEN).build()
+
+    _watchdog_bot_app = TGApplication.builder().token(token).build()
+
     _watchdog_bot_app.add_handler(TGCommandHandler("start",     _wdog_cmd_start))
-    _watchdog_bot_app.add_handler(TGCommandHandler("help",      _wdog_cmd_help))
+    _watchdog_bot_app.add_handler(TGCommandHandler("help",      _wdog_cmd_start))
     _watchdog_bot_app.add_handler(TGCommandHandler("status",    _wdog_cmd_status))
     _watchdog_bot_app.add_handler(TGCommandHandler("score",     _wdog_cmd_score))
     _watchdog_bot_app.add_handler(TGCommandHandler("anomalies", _wdog_cmd_anomalies))
     _watchdog_bot_app.add_handler(TGCommandHandler("restart",   _wdog_cmd_restart))
     _watchdog_bot_app.add_handler(TGCommandHandler("confirm",   _wdog_cmd_confirm))
     _watchdog_bot_app.add_handler(TGCommandHandler("cancel",    _wdog_cmd_cancel))
+    _watchdog_bot_app.add_handler(TGCommandHandler("config",    _wdog_cmd_config))
+    _watchdog_bot_app.add_handler(TGCommandHandler("mute",      _wdog_cmd_mute))
+    _watchdog_bot_app.add_handler(TGCommandHandler("clear",     _wdog_cmd_clear))
     _watchdog_bot_app.add_handler(TGCommandHandler("uptime",    _wdog_cmd_uptime))
     _watchdog_bot_app.add_handler(TGCommandHandler("logs",      _wdog_cmd_logs))
     _watchdog_bot_app.add_handler(TGCommandHandler("stats",     _wdog_cmd_stats))
@@ -961,10 +990,12 @@ async def start_watchdog_bot():
     _watchdog_bot_app.add_handler(TGCommandHandler("rapport",   _wdog_cmd_rapport))
     _watchdog_bot_app.add_handler(TGCommandHandler("hebdo",     _wdog_cmd_rapport_hebdo))
     _watchdog_bot_app.add_handler(TGCommandHandler("history",   _wdog_cmd_history))
+
     await _watchdog_bot_app.initialize()
     await _watchdog_bot_app.start()
-    await _watchdog_bot_app.updater.start_polling(allowed_updates=TGUpdate.ALL_TYPES)
-    logger.info("Bot Watchdog démarré (@Neron_Watchdog_bot)")
+    await _watchdog_bot_app.updater.start_polling()
+
+    # Notification démarrage
     if WATCHDOG_CHAT_ID:
         try:
             await _watchdog_bot_app.bot.send_message(
@@ -974,6 +1005,9 @@ async def start_watchdog_bot():
             )
         except Exception:
             pass
+
+    logger.info("Bot Watchdog démarré (@Neron_Watchdog_bot)")
+
 
 async def stop_watchdog_bot():
     global _watchdog_bot_app
