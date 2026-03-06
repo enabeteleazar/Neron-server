@@ -17,6 +17,7 @@ from agents.web_agent import WebAgent
 from agents.stt_agent import STTAgent, load_model as stt_load_model
 from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
 from agents.memory_agent import MemoryAgent, init_db as memory_init_db
+from agents.telegram_agent import start_bot, stop_bot, set_agents
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
@@ -158,9 +159,21 @@ async def lifespan(app: FastAPI):
     time_provider = TimeProvider()
     logger.info(json.dumps({
         "event": "agents_ready",
-        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider"]
+        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider", "telegram"]
     }))
+
+    # Démarrer le bot Telegram
+    set_agents({
+        "llm": llm_agent,
+        "stt": stt_agent,
+        "tts": tts_agent,
+        "memory": memory_agent
+    })
+    await start_bot()
+
     yield
+
+    await stop_bot()
     logger.info(json.dumps({"event": "shutdown"}))
 
 
