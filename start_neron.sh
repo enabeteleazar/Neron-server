@@ -17,7 +17,7 @@ NC=$RESET
 BASE_DIR="/mnt/usb-storage/Neron_AI"
 VENV_DIR="$BASE_DIR/venv"
 LOG_DIR="$BASE_DIR/logs"
-PID_FILE="/tmp/neron_system.pid"
+PID_FILE="/tmp/neron_core.pid"
 
 # --- Fonctions ---
 
@@ -59,8 +59,8 @@ show_endpoints() {
     slow_echo "${YELLOW}  POST /input/audio  → pipeline STT → texte${NC}"
     slow_echo "${YELLOW}  POST /input/voice  → pipeline STT → LLM → TTS → audio${NC}"
     echo
-    slow_echo "${YELLOW}  Logs   : tail -f $LOG_DIR/neron_system.log${NC}"
-    slow_echo "${YELLOW}  Stop   : pkill -f neron_system && rm -f $PID_FILE${NC}"
+    slow_echo "${YELLOW}  Logs   : tail -f $LOG_DIR/neron_core.log${NC}"
+    slow_echo "${YELLOW}  Stop   : pkill -f python3 && rm -f $PID_FILE${NC}"
     slow_echo "${BOLD}${BLUE}═══════════════════════════════════════${NC}"
     echo
 }
@@ -117,7 +117,14 @@ mkdir -p "$LOG_DIR"
 # --- Lancement ---
 slow_echo "${BOLD}${BLUE}Lancement de Néron System…${NC}"
 cd "$BASE_DIR"
-python3 "$BASE_DIR/neron_system.py" &
+# Charger les variables d'environnement
+set -a
+source "$BASE_DIR/.env"
+set +a
+
+# Lancer neron_core (process unique)
+cd "$BASE_DIR/modules/neron_core"
+python3 app.py >> "$BASE_DIR/logs/neron_core.log" 2>&1 &
 NERON_PID=$!
 echo $NERON_PID > "$PID_FILE"
 slow_echo "${GREEN}✔ Néron démarré (PID $NERON_PID)${NC}"
@@ -126,4 +133,6 @@ slow_echo "${GREEN}✔ Néron démarré (PID $NERON_PID)${NC}"
 show_endpoints
 
 # --- Logs live ---
-tail -f "$LOG_DIR/neron_system.log"
+sleep 2
+sleep 2
+tail -f "$LOG_DIR/neron_core.log"
