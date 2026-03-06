@@ -443,17 +443,46 @@ def _wdog_authorized(update) -> bool:
 async def _wdog_cmd_status(update, context):
     if not _wdog_authorized(update): return
     try:
-        sys   = get_status()
-        score = get_health_score()
+        import httpx as _httpx
+        import sqlite3 as _sqlite3
+
+        sys_   = get_status()
+        score  = get_health_score()
+
+        # Agents
         ok_llm = await _agents["llm"].check_connection() if "llm" in _agents else False
         ok_stt = await _agents["stt"].check_connection() if "stt" in _agents else False
         ok_tts = await _agents["tts"].check_connection() if "tts" in _agents else False
+
+        # Core (self)
+        ok_core = True  # si on répond, le core tourne
+
+        # Ollama
+        try:
+            async with _httpx.AsyncClient(timeout=3) as c:
+                r = await c.get("http://localhost:11434/api/tags")
+                ok_ollama = r.status_code == 200
+        except Exception:
+            ok_ollama = False
+
+        # Mémoire SQLite
+        try:
+            conn = _sqlite3.connect(DB_PATH)
+            conn.execute("SELECT COUNT(*) FROM memory")
+            conn.close()
+            ok_memory = True
+        except Exception:
+            ok_memory = False
+
         lines = ["📊 <b>Néron v2 — Watchdog</b>\n"]
-        lines.append(f"{'✅' if ok_llm else '🔴'} LLM")
-        lines.append(f"{'✅' if ok_stt else '🔴'} STT")
-        lines.append(f"{'✅' if ok_tts else '🔴'} TTS")
-        lines.append(f"\n🖥 CPU: {sys.get('cpu_pct')}% | RAM: {sys.get('ram_pct')}%")
-        lines.append(f"💾 Disque: {sys.get('disk_pct')}% | Process: {sys.get('process_ram_mb')}MB")
+        lines.append(f"{'✅' if ok_core   else '🔴'} Core")
+        lines.append(f"{'✅' if ok_ollama else '🔴'} Ollama")
+        lines.append(f"{'✅' if ok_llm    else '🔴'} LLM")
+        lines.append(f"{'✅' if ok_stt    else '🔴'} STT")
+        lines.append(f"{'✅' if ok_tts    else '🔴'} TTS")
+        lines.append(f"{'✅' if ok_memory else '🔴'} Mémoire")
+        lines.append(f"\n🖥 CPU: {sys_.get('cpu_pct')}% | RAM: {sys_.get('ram_pct')}%")
+        lines.append(f"💾 Disque: {sys_.get('disk_pct')}% | Process: {sys_.get('process_ram_mb')}MB")
         lines.append(f"\n{score['level']} — Score: {score['score']}/100")
         await update.message.reply_text("\n".join(lines), parse_mode='HTML')
     except Exception as e:
@@ -482,12 +511,49 @@ async def _wdog_cmd_anomalies(update, context):
 async def _wdog_cmd_start(update, context):
     if not _wdog_authorized(update): return
     await update.message.reply_text(
-        "🔍 <b>Néron Watchdog</b>\n\n"
-        "/status — état agents + système\n"
-        "/score — score de santé\n"
-        "/anomalies — anomalies détectées",
+        "🔍 <b>Néron Watchdog v2</b>\n\n"
+        "Commandes disponibles:\n"
+        "/status — état complet (Core, Ollama, agents)\n"
+        "/score — score de santé 7 jours\n"
+        "/anomalies — anomalies détectées\n"
+        "/restart &lt;agent&gt; — recharger un agent\n"
+        "/help — cette aide",
         parse_mode='HTML'
     )
+
+async def _wdog_cmd_help(update, context):
+    await _wdog_cmd_start(update, context)
+
+async def _wdog_cmd_restart(update, context):
+    if not _wdog_authorized(update): return
+    if not context.args:
+        await update.message.reply_text(
+        await update.message.reply_text(
+            "Usage: /restart <agent>\nAgents: llm, stt, tts, memory"
+        )
+        )
+        return
+
+    agent_name = context.args[0].lower()
+    agent = _agents.get(agent_name)
+
+    if not agent:
+        await update.message.reply_text(f"❌ Agent inconnu: {agent_name}\nDisponibles: llm, stt, tts, memory")
+        return
+
+
+    await update.message.reply_text(f"🔄 Rechargement de {agent_name}...")
+    try:
+        ok = await agent.reload() if asyncio.iscoroutinefunction(agent.reload) else agent.reload()
+        if ok:
+            log_event("recovery", service=agent_name, message=f"reload manuel via Telegram")
+            await update.message.reply_text(f"✅ {agent_name} rechargé avec succès")
+        else:
+            await update.message.reply_text(f"⚠️ {agent_name} rechargé mais connexion non confirmée")
+    except Exception as e:
+        log_event("crash", service=agent_name, message=f"reload échoué: {e}")
+        await update.message.reply_text(f"❌ Erreur lors du rechargement: {e}")
+
 
 async def start_watchdog_bot():
     global _watchdog_bot_app
@@ -496,9 +562,11 @@ async def start_watchdog_bot():
         return
     _watchdog_bot_app = TGApplication.builder().token(WATCHDOG_BOT_TOKEN).build()
     _watchdog_bot_app.add_handler(TGCommandHandler("start",     _wdog_cmd_start))
+    _watchdog_bot_app.add_handler(TGCommandHandler("help",      _wdog_cmd_help))
     _watchdog_bot_app.add_handler(TGCommandHandler("status",    _wdog_cmd_status))
     _watchdog_bot_app.add_handler(TGCommandHandler("score",     _wdog_cmd_score))
     _watchdog_bot_app.add_handler(TGCommandHandler("anomalies", _wdog_cmd_anomalies))
+    _watchdog_bot_app.add_handler(TGCommandHandler("restart",   _wdog_cmd_restart))
     await _watchdog_bot_app.initialize()
     await _watchdog_bot_app.start()
     await _watchdog_bot_app.updater.start_polling(allowed_updates=TGUpdate.ALL_TYPES)

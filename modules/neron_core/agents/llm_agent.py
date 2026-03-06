@@ -103,6 +103,14 @@ class LLMAgent(BaseAgent):
                     except Exception:
                         continue
 
+    async def reload(self) -> bool:
+        """Recharge la connexion Ollama"""
+        try:
+            return await self.check_connection()
+        except Exception as e:
+            logger.error(f"LLM reload error: {e}")
+            return False
+
     async def check_connection(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
