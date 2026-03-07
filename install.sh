@@ -14,7 +14,7 @@ NC='\033[0m'
 
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/etc/neron}"
-BRANCH="${NERON_BRANCH:-main}"
+BRANCH="${NERON_BRANCH:-feature/install}"
 
 clear
 echo -e "${BOLD}${BLUE}"
