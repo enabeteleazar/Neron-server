@@ -118,7 +118,7 @@ if [ "${1:-}" = "--telegram-only" ]; then
 fi
 
 clear
-echo "DEV:07.03.0038"
+echo "DEV:07.03.0042"
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
@@ -185,6 +185,18 @@ if ! command -v ollama >/dev/null 2>&1; then
 else
     echo -e "${GREEN}✔ Ollama OK ($(ollama --version 2>/dev/null || echo 'version inconnue'))${NC}"
 fi
+if ! systemctl is-active --quiet ollama 2>/dev/null; then
+    if systemctl list-unit-files | grep -q ollama; then
+        sudo systemctl enable ollama
+        sudo systemctl start ollama
+        echo -e "${GREEN}✔ Service Ollama démarré${NC}"
+    else
+        ollama serve &
+        echo -e "${GREEN}✔ Service Ollama démarré${NC}"
+    fi
+else
+    echo -e "${GREEN}✔ Ollama déjà actif${NC}"
+fi
 
 # --- Clone / Update ---
 echo ""
@@ -225,22 +237,6 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo -e "${YELLOW}⚠ Fichier .env créé — pensez à le configurer${NC}"
 else
     echo -e "${GREEN}✔ .env existant conservé${NC}"
-fi
-
-# --- Ollama service ---
-echo ""
-echo -e "${BLUE}[5b/7] Service Ollama...${NC}"
-if ! systemctl is-active --quiet ollama 2>/dev/null; then
-    if systemctl list-unit-files | grep -q ollama; then
-        sudo systemctl enable ollama
-        sudo systemctl start ollama
-        echo -e "${GREEN}✔ Service Ollama démarré${NC}"
-    else
-        echo -e "${YELLOW}⚠ Ollama sans service systemd — lancement manuel requis${NC}"
-        echo -e "${YELLOW}  Exécutez : ollama serve &${NC}"
-    fi
-else
-    echo -e "${GREEN}✔ Ollama déjà actif${NC}"
 fi
 
 # --- Make install ---
