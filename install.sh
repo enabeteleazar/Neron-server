@@ -1,6 +1,7 @@
 #!/bin/bash
 # install.sh - Néron AI v2.0 — Bootstrap one-liner
 # Usage: curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/main/install.sh | bash
+# DEV: v0803.0014
 
 set -euo pipefail
 
