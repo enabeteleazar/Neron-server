@@ -188,7 +188,7 @@ echo ""
 echo -e "${BLUE}[4/7] Récupération de Néron AI...${NC}"
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
-    git -C "$INSTALL_DIR" pull origin "$BRANCH"
+    git -C "$INSTALL_DIR" pull origin feature/install
 else
     sudo mkdir -p "$(dirname $INSTALL_DIR)"
     sudo rm -rf "$INSTALL_DIR"
@@ -215,7 +215,7 @@ echo -e "${GREEN}✔ Dépôt OK${NC}"
 
 # --- Configuration .env ---
 echo ""
-echo -e "${BLUE}[5/7] Configuration .env...${NC}"
+echo -e "${BLUE}[5/7] Finalisation .env...${NC}"
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
     sed -i "s|^NERON_DIR=.*|NERON_DIR=$INSTALL_DIR|" "$INSTALL_DIR/.env"
