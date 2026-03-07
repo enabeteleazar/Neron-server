@@ -1,7 +1,7 @@
 #!/bin/bash
 # install.sh - Néron AI v2.0 — Bootstrap one-liner
 # Usage: curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/main/install.sh | bash
-# DEV: v0803.0016
+# DEV: v0803.0018
 
 set -euo pipefail
 
@@ -16,6 +16,13 @@ NC='\033[0m'
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/opt/neron}"
 BRANCH="${NERON_BRANCH:-master}"
+
+# Mode telegram-only
+if [ "${1:-}" = "--telegram-only" ]; then
+    INSTALL_DIR="${NERON_DIR:-/opt/neron}"
+    setup_telegram
+    exit 0
+fi
 
 clear
 echo -e "${BOLD}${BLUE}"
