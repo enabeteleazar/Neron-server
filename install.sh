@@ -14,7 +14,7 @@ NC='\033[0m'
 
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/etc/neron}"
-BRANCH="${NERON_BRANCH:-feature/install}"
+BRANCH="${NERON_BRANCH:-master}"
 
 clear
 echo -e "${BOLD}${BLUE}"
@@ -85,7 +85,7 @@ fi
 echo -e "${BLUE}[4/7] Récupération de Néron AI...${NC}"
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
-    git -C "$INSTALL_DIR" pull origin "$BRANCH"
+    git -C "$INSTALL_DIR" pull origin "$BRANCH" || git -C "$INSTALL_DIR" pull
 else
     sudo mkdir -p "$INSTALL_DIR"
     sudo chown "$(whoami):$(whoami)" "$INSTALL_DIR"
