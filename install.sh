@@ -70,25 +70,21 @@ setup_telegram() {
         echo -e "${GREEN}  ✔ Chat ID récupéré : $CHAT_ID${NC}"
     fi
 
-    echo ""
-    read -p "  Voulez-vous aussi configurer le bot Watchdog ? [O/n] " USE_WDOG
-    if [ "$USE_WDOG" != "n" ]; then
+    # Watchdog — uniquement si activé dans .env
+    WDOG_TOKEN="$BOT_TOKEN"
+    WDOG_CHAT_ID="$CHAT_ID"
+    WATCHDOG_STATUS=$(grep "^WATCHDOG_ENABLED" "$INSTALL_DIR/.env" 2>/dev/null | cut -d= -f2)
+    if [ "$WATCHDOG_STATUS" = "true" ]; then
         echo ""
         echo -e "  Créez un second bot via ${YELLOW}@BotFather${NC} pour le monitoring"
-        read -p "  Token du bot Watchdog : " WDOG_TOKEN
+        read -p "  Token du bot monitoring : " WDOG_TOKEN
         test -n "$WDOG_TOKEN" || WDOG_TOKEN="$BOT_TOKEN"
-
-        echo -e "${YELLOW}  → Envoyez un message au bot Watchdog, puis appuyez sur Entrée${NC}"
+        echo -e "${YELLOW}  → Envoyez un message au bot monitoring, puis appuyez sur Entrée${NC}"
         read -p "  Appuyez sur Entrée..." _
-
         WDOG_CHAT_ID=$(curl -s "https://api.telegram.org/bot${WDOG_TOKEN}/getUpdates" | \
             python3 -c "import sys,json; updates=json.load(sys.stdin).get('result',[]); print(updates[-1]['message']['chat']['id'] if updates else '')" 2>/dev/null)
-
-        [ -z "$WDOG_CHAT_ID" ] && read -p "  Chat ID Watchdog manuellement : " WDOG_CHAT_ID
-        echo -e "${GREEN}  ✔ Watchdog Chat ID : $WDOG_CHAT_ID${NC}"
-    else
-        WDOG_TOKEN="$BOT_TOKEN"
-        WDOG_CHAT_ID="$CHAT_ID"
+        [ -z "$WDOG_CHAT_ID" ] && read -p "  Chat ID monitoring manuellement : " WDOG_CHAT_ID
+        echo -e "${GREEN}  ✔ Bot monitoring configuré${NC}"
     fi
 
     # Écrire dans .env
