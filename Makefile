@@ -3,6 +3,11 @@
 # ============================================
 
 BASE_DIR  := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+# Lire NERON_DIR depuis .env si disponible
+-include $(BASE_DIR)/.env
+ifdef NERON_DIR
+BASE_DIR := $(NERON_DIR)
+endif
 VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
 PIP       := $(VENV)/bin/pip
@@ -30,7 +35,7 @@ help:
 	@echo "  make backup     — sauvegarder DB + .env"
 	@echo "  make restore    — restaurer une sauvegarde"
 	@echo "  make test       — tester l'API et Ollama"
-	@echo "  make ollama     — gérer le modèle Ollama (télécharger/changer)"
+	@echo "  make ollama     — gérer le modèle Ollama"
 	@echo "  make telegram   — configurer les bots Telegram"
 	@echo "  make env        — afficher la config active"
 	@echo "  make version    — versions Néron / Python / Ollama"
@@ -219,9 +224,5 @@ ollama:
 		fi
 
 telegram:
-	@echo ""
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "  📱 Configuration Telegram"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@bash $(BASE_DIR)/install.sh --telegram-only
 
