@@ -16,7 +16,7 @@ REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/etc/neron}"
 BRANCH="${NERON_BRANCH:-master}"
 
-echo "DEV: v0803.0024"
+echo "DEV: v0803.0028"
 # --- Configuration Telegram ---
 setup_telegram() {
     echo ""
@@ -188,7 +188,7 @@ echo ""
 echo -e "${BLUE}[4/7] Récupération de Néron AI...${NC}"
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
-    git -C "$INSTALL_DIR" pull origin feature/install
+    git -C "$INSTALL_DIR" pull "$BRANCH"
 else
     sudo mkdir -p "$(dirname $INSTALL_DIR)"
     sudo rm -rf "$INSTALL_DIR"
