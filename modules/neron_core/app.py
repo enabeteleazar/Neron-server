@@ -172,18 +172,21 @@ async def lifespan(app: FastAPI):
     })
     await start_bot()
 
-    # Démarrer le watchdog
-    watchdog_setup(
+    # Démarrer le watchdog (optionnel)
+    WATCHDOG_ENABLED = os.getenv("WATCHDOG_ENABLED", "false").lower() == "true"
+    if WATCHDOG_ENABLED:
+        watchdog_setup(
         agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
         notify_fn=send_notification
     )
-    await start_watchdog()
-    await start_watchdog_bot()
+        await start_watchdog()
+        await start_watchdog_bot()
 
     yield
 
-    await stop_watchdog_bot()
-    await stop_watchdog()
+    if os.getenv("WATCHDOG_ENABLED", "false").lower() == "true":
+        await stop_watchdog_bot()
+        await stop_watchdog()
     await stop_bot()
     logger.info(json.dumps({"event": "shutdown"}))
 
