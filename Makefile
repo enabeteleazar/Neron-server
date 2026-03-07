@@ -3,11 +3,6 @@
 # ============================================
 
 BASE_DIR  := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
-# Lire NERON_DIR depuis .env si disponible
--include $(BASE_DIR)/.env
-ifdef NERON_DIR
-BASE_DIR := $(NERON_DIR)
-endif
 VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
 PIP       := $(VENV)/bin/pip
