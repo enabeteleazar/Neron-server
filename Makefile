@@ -32,6 +32,7 @@ help:
 	@echo "  make test       — tester l'API et Ollama"
 	@echo "  make model      — télécharger le modèle Ollama"
 	@echo "  make model-set  — changer le modèle Ollama"
+	@echo "  make telegram   — configurer les bots Telegram"
 	@echo "  make env        — afficher la config active"
 	@echo "  make version    — versions Néron / Python / Ollama"
 	@echo ""
