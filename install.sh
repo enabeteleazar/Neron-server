@@ -16,7 +16,6 @@ REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/etc/neron}"
 BRANCH="${NERON_BRANCH:-master}"
 
-echo "DEV: v0803.0028"
 # --- Configuration Telegram ---
 setup_telegram() {
     echo ""
@@ -115,7 +114,7 @@ if [ "${1:-}" = "--telegram-only" ]; then
 fi
 
 clear
-echo "DEV:07.03.0026"
+echo "DEV:07.03.0030"
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
