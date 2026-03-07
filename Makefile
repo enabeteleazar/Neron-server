@@ -224,3 +224,11 @@ version:
 	@echo "  Modèle   : $$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2)"
 	@echo "  Service  : $$(systemctl is-active neron 2>/dev/null || echo 'inactif')"
 	@echo ""
+
+telegram:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  📱 Configuration Telegram"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@bash $(BASE_DIR)/install.sh --telegram-only
+
