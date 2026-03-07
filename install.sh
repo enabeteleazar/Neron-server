@@ -170,3 +170,89 @@ echo -e "     ${YELLOW}make -C $INSTALL_DIR start${NC}"
 echo ""
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
+
+# --- Configuration Telegram ---
+setup_telegram() {
+    echo ""
+    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "  📱 Configuration Telegram"
+    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    read -p "  Voulez-vous utiliser Telegram ? [O/n] " USE_TG
+    [ "$USE_TG" = "n" ] && echo -e "${YELLOW}  👉 Vous pourrez configurer Telegram plus tard : make telegram${NC}" && return
+
+    echo ""
+    read -p "  Avez-vous un compte Telegram ? [O/n] " HAS_TG
+    if [ "$HAS_TG" = "n" ]; then
+        echo ""
+        echo -e "${YELLOW}  📲 Créez un compte sur https://telegram.org${NC}"
+        echo -e "${YELLOW}  Puis relancez : make telegram${NC}"
+        return
+    fi
+
+    echo ""
+    read -p "  Avez-vous déjà un token de bot ? [O/n] " HAS_TOKEN
+    if [ "$HAS_TOKEN" = "n" ]; then
+        echo ""
+        echo -e "${BOLD}  Comment créer un bot Telegram :${NC}"
+        echo ""
+        echo -e "  1. Ouvrez Telegram et cherchez ${YELLOW}@BotFather${NC}"
+        echo -e "  2. Envoyez la commande : ${YELLOW}/newbot${NC}"
+        echo -e "  3. Choisissez un nom pour votre bot"
+        echo -e "  4. Choisissez un username (doit finir par 'bot')"
+        echo -e "  5. Copiez le token fourni par BotFather"
+        echo ""
+        read -p "  Appuyez sur Entrée quand vous avez votre token..." _
+    fi
+
+    echo ""
+    read -p "  Token du bot principal (conversations) : " BOT_TOKEN
+    test -n "$BOT_TOKEN" || (echo "❌ Token vide" && return)
+
+    echo ""
+    echo -e "${YELLOW}  Récupération automatique du Chat ID...${NC}"
+    echo -e "${YELLOW}  → Envoyez un message à votre bot maintenant, puis appuyez sur Entrée${NC}"
+    read -p "  Appuyez sur Entrée après avoir envoyé un message..." _
+
+    CHAT_ID=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates" | \
+        python3 -c "import sys,json; updates=json.load(sys.stdin).get('result',[]); print(updates[-1]['message']['chat']['id'] if updates else '')" 2>/dev/null)
+
+    if [ -z "$CHAT_ID" ]; then
+        echo -e "${YELLOW}  ⚠ Impossible de récupérer le Chat ID automatiquement${NC}"
+        read -p "  Entrez votre Chat ID manuellement : " CHAT_ID
+    else
+        echo -e "${GREEN}  ✔ Chat ID récupéré : $CHAT_ID${NC}"
+    fi
+
+    echo ""
+    read -p "  Voulez-vous aussi configurer le bot Watchdog ? [O/n] " USE_WDOG
+    if [ "$USE_WDOG" != "n" ]; then
+        echo ""
+        echo -e "  Créez un second bot via ${YELLOW}@BotFather${NC} pour le monitoring"
+        read -p "  Token du bot Watchdog : " WDOG_TOKEN
+        test -n "$WDOG_TOKEN" || WDOG_TOKEN="$BOT_TOKEN"
+
+        echo -e "${YELLOW}  → Envoyez un message au bot Watchdog, puis appuyez sur Entrée${NC}"
+        read -p "  Appuyez sur Entrée..." _
+
+        WDOG_CHAT_ID=$(curl -s "https://api.telegram.org/bot${WDOG_TOKEN}/getUpdates" | \
+            python3 -c "import sys,json; updates=json.load(sys.stdin).get('result',[]); print(updates[-1]['message']['chat']['id'] if updates else '')" 2>/dev/null)
+
+        [ -z "$WDOG_CHAT_ID" ] && read -p "  Chat ID Watchdog manuellement : " WDOG_CHAT_ID
+        echo -e "${GREEN}  ✔ Watchdog Chat ID : $WDOG_CHAT_ID${NC}"
+    else
+        WDOG_TOKEN="$BOT_TOKEN"
+        WDOG_CHAT_ID="$CHAT_ID"
+    fi
+
+    # Écrire dans .env
+    sed -i "s/^TELEGRAM_BOT_TOKEN=.*/TELEGRAM_BOT_TOKEN=$BOT_TOKEN/" "$INSTALL_DIR/.env"
+    sed -i "s/^TELEGRAM_CHAT_ID=.*/TELEGRAM_CHAT_ID=$CHAT_ID/" "$INSTALL_DIR/.env"
+    sed -i "s/^WATCHDOG_BOT_TOKEN=.*/WATCHDOG_BOT_TOKEN=$WDOG_TOKEN/" "$INSTALL_DIR/.env"
+    sed -i "s/^WATCHDOG_CHAT_ID=.*/WATCHDOG_CHAT_ID=$WDOG_CHAT_ID/" "$INSTALL_DIR/.env"
+
+    echo ""
+    echo -e "${GREEN}  ✔ Telegram configuré dans .env${NC}"
+}
+
+setup_telegram
