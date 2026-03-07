@@ -99,6 +99,7 @@ setup_telegram() {
 
 # Mode telegram-only
 if [ "${1:-}" = "--telegram-only" ]; then
+    set +e
     INSTALL_DIR="${NERON_DIR:-/opt/neron}"
     RED='\033[0;31m'
     GREEN='\033[0;32m'
