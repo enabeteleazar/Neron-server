@@ -85,12 +85,19 @@ fi
 echo -e "${BLUE}[4/7] Récupération de Néron AI...${NC}"
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
-    git -C "$INSTALL_DIR" pull origin "$BRANCH" || git -C "$INSTALL_DIR" pull
+    git -C "$INSTALL_DIR" pull origin "$BRANCH"
 else
-    sudo mkdir -p "$INSTALL_DIR"
-    sudo chown "$(whoami):$(whoami)" "$INSTALL_DIR"
-    git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+    sudo mkdir -p "$(dirname $INSTALL_DIR)"
+    sudo rm -rf "$INSTALL_DIR"
+    sudo git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+    sudo chown -R "$(whoami):$(whoami)" "$INSTALL_DIR"
 fi
+# Vérifier que le clone a réussi
+if [ ! -f "$INSTALL_DIR/Makefile" ]; then
+    echo -e "${RED}❌ Échec du clone — Makefile introuvable${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✔ Makefile trouvé${NC}"
 echo -e "${GREEN}✔ Dépôt OK${NC}"
 
 # --- Configuration .env ---
