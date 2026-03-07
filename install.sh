@@ -53,15 +53,15 @@ setup_telegram() {
 
     echo ""
     read -p "  Token du bot principal (conversations) : " BOT_TOKEN
-    test -n "$BOT_TOKEN" || (echo "❌ Token vide" && return)
+    if [ -z "$BOT_TOKEN" ]; then echo "❌ Token vide" && return; fi
 
     echo ""
     echo -e "${YELLOW}  Récupération automatique du Chat ID...${NC}"
     echo -e "${YELLOW}  → Envoyez un message à votre bot maintenant, puis appuyez sur Entrée${NC}"
     read -p "  Appuyez sur Entrée après avoir envoyé un message..." _
 
-    CHAT_ID=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates" | \
-        python3 -c "import sys,json; updates=json.load(sys.stdin).get('result',[]); print(updates[-1]['message']['chat']['id'] if updates else '')" 2>/dev/null)
+    TG_RESPONSE=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates")
+    CHAT_ID=$(echo "$TG_RESPONSE" | python3 -c "import sys,json; data=json.load(sys.stdin); updates=data.get('result',[]); print(updates[-1]['message']['chat']['id'] if updates else '')" 2>/dev/null || echo "")
 
     if [ -z "$CHAT_ID" ]; then
         echo -e "${YELLOW}  ⚠ Impossible de récupérer le Chat ID automatiquement${NC}"
