@@ -1,7 +1,6 @@
 #!/bin/bash
 # install.sh - Néron AI v2.0 — Bootstrap one-liner
 # Usage: curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/main/install.sh | bash
-echo "DEV: v0803.0024"
 
 set -euo pipefail
 
@@ -116,7 +115,7 @@ if [ "${1:-}" = "--telegram-only" ]; then
 fi
 
 clear
-echo "DEV:07.03.0022"
+echo "DEV:07.03.0026"
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
@@ -207,6 +206,8 @@ fi
 # Vérifier que le clone a réussi
 if [ ! -f "$INSTALL_DIR/Makefile" ]; then
     echo -e "${RED}❌ Échec du clone — Makefile introuvable${NC}"
+    echo -e "${YELLOW}  Contenu de $INSTALL_DIR :${NC}"
+    ls -la "$INSTALL_DIR" 2>/dev/null || echo "  Dossier vide ou inexistant"
     exit 1
 fi
 echo -e "${GREEN}✔ Makefile trouvé${NC}"
