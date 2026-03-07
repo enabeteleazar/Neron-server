@@ -1,7 +1,7 @@
 #!/bin/bash
 # install.sh - Néron AI v2.0 — Bootstrap one-liner
 # Usage: curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/main/install.sh | bash
-# DEV: v0803.0014
+# DEV: v0803.0016
 
 set -euo pipefail
 
@@ -116,6 +116,21 @@ if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo -e "${YELLOW}⚠ Fichier .env créé — pensez à le configurer${NC}"
 else
     echo -e "${GREEN}✔ .env existant conservé${NC}"
+fi
+
+# --- Ollama service ---
+echo -e "${BLUE}[5b/7] Service Ollama...${NC}"
+if ! systemctl is-active --quiet ollama 2>/dev/null; then
+    if systemctl list-unit-files | grep -q ollama; then
+        sudo systemctl enable ollama
+        sudo systemctl start ollama
+        echo -e "${GREEN}✔ Service Ollama démarré${NC}"
+    else
+        echo -e "${YELLOW}⚠ Ollama sans service systemd — lancement manuel requis${NC}"
+        echo -e "${YELLOW}  Exécutez : ollama serve &${NC}"
+    fi
+else
+    echo -e "${GREEN}✔ Ollama déjà actif${NC}"
 fi
 
 # --- Make install ---
