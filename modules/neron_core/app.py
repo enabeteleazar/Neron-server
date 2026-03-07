@@ -176,9 +176,9 @@ async def lifespan(app: FastAPI):
     WATCHDOG_ENABLED = os.getenv("WATCHDOG_ENABLED", "false").lower() == "true"
     if WATCHDOG_ENABLED:
         watchdog_setup(
-        agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
-        notify_fn=send_notification
-    )
+            agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
+            notify_fn=send_notification
+        )
         await start_watchdog()
         await start_watchdog_bot()
 
