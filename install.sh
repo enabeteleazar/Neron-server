@@ -14,7 +14,11 @@ NC='\033[0m'
 
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/etc/neron}"
-BRANCH="${NERON_BRANCH:-master}"
+# Lire NERON_BRANCH depuis .env existant si disponible
+if [ -f "${NERON_DIR:-/etc/neron}/.env" ]; then
+    _BRANCH=$(grep "^NERON_BRANCH" "${NERON_DIR:-/etc/neron}/.env" 2>/dev/null | cut -d= -f2)
+fi
+BRANCH="${_BRANCH:-${NERON_BRANCH:-master}}"
 
 # --- Configuration Telegram ---
 setup_telegram() {
@@ -114,7 +118,7 @@ if [ "${1:-}" = "--telegram-only" ]; then
 fi
 
 clear
-echo "DEV:07.03.0030"
+echo "DEV:07.03.0034"
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
@@ -187,15 +191,15 @@ echo ""
 echo -e "${BLUE}[4/7] Récupération de Néron AI...${NC}"
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
-    git -C "$INSTALL_DIR" pull "$BRANCH"
+    git -C "$INSTALL_DIR" pull feature/install
 else
     sudo mkdir -p "$(dirname $INSTALL_DIR)"
     sudo rm -rf "$INSTALL_DIR"
-    echo -e "${YELLOW}  Clone: $REPO_URL → $INSTALL_DIR (branche: $BRANCH)${NC}"
-    sudo git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
+    echo -e "${YELLOW}  Clone: $REPO_URL → $INSTALL_DIR (branche: feature/install)${NC}"
+    sudo git clone --branch "feature/install" "$REPO_URL" "$INSTALL_DIR" || {
         echo -e "${RED}❌ Erreur git clone${NC}"
         echo -e "${YELLOW}  Tentative sans sudo...${NC}"
-        git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
+        git clone --branch "feature/install" "$REPO_URL" "$INSTALL_DIR" || {
             echo -e "${RED}❌ Clone impossible${NC}"
             exit 1
         }
