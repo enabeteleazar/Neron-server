@@ -210,6 +210,7 @@ echo -e "${GREEN}✔ Dépôt OK${NC}"
 echo -e "${BLUE}[5/7] Configuration .env...${NC}"
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     cp "$INSTALL_DIR/.env.example" "$INSTALL_DIR/.env"
+    sed -i "s|^NERON_DIR=.*|NERON_DIR=$INSTALL_DIR|" "$INSTALL_DIR/.env"
     echo -e "${YELLOW}⚠ Fichier .env créé — pensez à le configurer${NC}"
 else
     echo -e "${GREEN}✔ .env existant conservé${NC}"
