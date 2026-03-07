@@ -100,6 +100,9 @@ setup_telegram() {
 # Mode telegram-only
 if [ "${1:-}" = "--telegram-only" ]; then
     set +e
+    # Lire NERON_DIR depuis .env si disponible
+    ENV_FILE="${NERON_DIR:-/opt/neron}/.env"
+    [ -f "$ENV_FILE" ] && NERON_DIR=$(grep "^NERON_DIR" "$ENV_FILE" | cut -d= -f2)
     INSTALL_DIR="${NERON_DIR:-/opt/neron}"
     RED='\033[0;31m'
     GREEN='\033[0;32m'
