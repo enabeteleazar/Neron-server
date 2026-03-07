@@ -89,7 +89,15 @@ if [ -d "$INSTALL_DIR/.git" ]; then
 else
     sudo mkdir -p "$(dirname $INSTALL_DIR)"
     sudo rm -rf "$INSTALL_DIR"
-    sudo git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR"
+    echo -e "${YELLOW}  Clone: $REPO_URL → $INSTALL_DIR (branche: $BRANCH)${NC}"
+    sudo git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
+        echo -e "${RED}❌ Erreur git clone${NC}"
+        echo -e "${YELLOW}  Tentative sans sudo...${NC}"
+        git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
+            echo -e "${RED}❌ Clone impossible${NC}"
+            exit 1
+        }
+    }
     sudo chown -R "$(whoami):$(whoami)" "$INSTALL_DIR"
 fi
 # Vérifier que le clone a réussi
