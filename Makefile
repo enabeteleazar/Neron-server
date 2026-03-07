@@ -30,8 +30,7 @@ help:
 	@echo "  make backup     — sauvegarder DB + .env"
 	@echo "  make restore    — restaurer une sauvegarde"
 	@echo "  make test       — tester l'API et Ollama"
-	@echo "  make model      — télécharger le modèle Ollama"
-	@echo "  make model-set  — changer le modèle Ollama"
+	@echo "  make ollama     — gérer le modèle Ollama (télécharger/changer)"
 	@echo "  make telegram   — configurer les bots Telegram"
 	@echo "  make env        — afficher la config active"
 	@echo "  make version    — versions Néron / Python / Ollama"
@@ -162,50 +161,6 @@ test:
 	@curl -sf http://localhost:11434/api/tags > /dev/null && \
 		echo "✔ Ollama répond" || echo "❌ Ollama ne répond pas"
 
-model:
-	@echo "📥 Téléchargement du modèle Ollama..."
-	@MODEL=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2) && \
-		echo "  Modèle actuel : $$MODEL" && \
-		ollama pull $$MODEL && \
-		echo "✔ Modèle $$MODEL prêt"
-
-model-set:
-	@echo ""
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "  🧠 Changer le modèle Ollama"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo ""
-	@echo "  Modèles installés :"
-	@ollama list 2>/dev/null | tail -n +2 | awk '{print "  • "$$1}' || echo "  aucun"
-	@echo ""
-	@echo "  Modèles recommandés :"
-	@echo "  • llama3.2:1b   — léger      (~1GB)"
-	@echo "  • llama3.2:3b   — équilibré  (~2GB)"
-	@echo "  • mistral       — performant (~4GB)"
-	@echo "  • gemma3        — Google     (~5GB)"
-	@echo "  • phi3          — Microsoft  (~2GB)"
-	@echo ""
-	@CURRENT=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2) && \
-		echo "  Modèle actuel : $$CURRENT" && \
-		echo "" && \
-		read -p "  Entrez le nom du modèle : " MODEL && \
-		test -n "$$MODEL" || (echo "❌ Nom vide — annulé" && exit 1) && \
-		echo "" && \
-		echo "📥 Téléchargement de $$MODEL..." && \
-		if ollama pull $$MODEL; then \
-			echo "" && \
-			echo "✔ Téléchargement réussi" && \
-			sed -i "s/^OLLAMA_MODEL=.*/OLLAMA_MODEL=$$MODEL/" $(BASE_DIR)/.env && \
-			echo "✔ .env mis à jour : OLLAMA_MODEL=$$MODEL" && \
-			echo "" && \
-			read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
-			[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
-		else \
-			echo "" && \
-			echo "❌ Échec du téléchargement — .env non modifié" && \
-			echo "  Modèle actif inchangé : $$CURRENT"; \
-		fi
-
 env:
 	@echo ""
 	@echo "  ⚙️  Configuration active (tokens masqués)"
@@ -225,6 +180,43 @@ version:
 	@echo "  Modèle   : $$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2)"
 	@echo "  Service  : $$(systemctl is-active neron 2>/dev/null || echo 'inactif')"
 	@echo ""
+
+ollama:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  🦙 Gestion du modèle Ollama"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@echo "  Modèles installés :"
+	@ollama list 2>/dev/null | tail -n +2 | awk '{print "  • "$$1}' || echo "  aucun"
+	@echo ""
+	@echo "  Modèles recommandés :"
+	@echo "  • llama3.2:1b   — léger      (~1GB)"
+	@echo "  • llama3.2:3b   — équilibré  (~2GB)"
+	@echo "  • mistral       — performant (~4GB)"
+	@echo "  • gemma3        — Google     (~5GB)"
+	@echo "  • phi3          — Microsoft  (~2GB)"
+	@echo ""
+	@CURRENT=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2) && \
+		echo "  Modèle actuel : $$CURRENT" && \
+		echo "" && \
+		read -p "  Entrée = garder $$CURRENT, ou tapez un nouveau modèle : " MODEL && \
+		MODEL=$${MODEL:-$$CURRENT} && \
+		echo "" && \
+		echo "📥 Téléchargement de $$MODEL..." && \
+		if ollama pull $$MODEL; then \
+			echo "" && \
+			echo "✔ Téléchargement réussi" && \
+			sed -i "s/^OLLAMA_MODEL=.*/OLLAMA_MODEL=$$MODEL/" $(BASE_DIR)/.env && \
+			echo "✔ .env mis à jour : OLLAMA_MODEL=$$MODEL" && \
+			echo "" && \
+			read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
+			[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
+		else \
+			echo "" && \
+			echo "❌ Échec du téléchargement — .env non modifié" && \
+			echo "  Modèle actif inchangé : $$CURRENT"; \
+		fi
 
 telegram:
 	@echo ""
