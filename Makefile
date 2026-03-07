@@ -79,6 +79,13 @@ install:
 	@echo ""
 	@echo "✅ Installation terminée !"
 	@echo ""
+	@echo "🦙 Démarrage Ollama..."
+	@ollama serve > /dev/null 2>&1 & sleep 3
+	@echo "📥 Téléchargement du modèle par défaut..."
+	@MODEL=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2 | tr -d " ") && \
+		[ -n "$$MODEL" ] && ollama pull $$MODEL || ollama pull llama3.2:3b
+	@echo "✔ Modèle prêt"
+	@echo ""
 	@echo "  👉 Éditez votre .env : nano $(BASE_DIR)/.env"
 	@echo "  👉 Puis lancez      : make start"
 	@echo ""
