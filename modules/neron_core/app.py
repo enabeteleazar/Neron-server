@@ -170,21 +170,31 @@ async def lifespan(app: FastAPI):
         "tts": tts_agent,
         "memory": memory_agent
     })
-    await start_bot()
+    # Bot Telegram — optionnel si token configuré
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if TELEGRAM_TOKEN and TELEGRAM_TOKEN not in ("", "votre_token_ici"):
+        await start_bot()
+    else:
+        logger.warning("Telegram désactivé — TELEGRAM_BOT_TOKEN non configuré")
 
-    # Démarrer le watchdog
-    watchdog_setup(
-        agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
-        notify_fn=send_notification
-    )
-    await start_watchdog()
-    await start_watchdog_bot()
+    # Démarrer le watchdog (optionnel)
+    WATCHDOG_ENABLED = os.getenv("WATCHDOG_ENABLED", "false").lower() == "true"
+    if WATCHDOG_ENABLED:
+        watchdog_setup(
+            agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
+            notify_fn=send_notification
+        )
+        await start_watchdog()
+        await start_watchdog_bot()
 
     yield
 
-    await stop_watchdog_bot()
-    await stop_watchdog()
-    await stop_bot()
+    if os.getenv("WATCHDOG_ENABLED", "false").lower() == "true":
+        await stop_watchdog_bot()
+        await stop_watchdog()
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if TELEGRAM_TOKEN and TELEGRAM_TOKEN not in ("", "votre_token_ici"):
+        await stop_bot()
     logger.info(json.dumps({"event": "shutdown"}))
 
 

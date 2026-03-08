@@ -2,6 +2,8 @@
 Description=Néron AI Assistant v2
 After=network.target ollama.service
 Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
 Type=simple
@@ -18,8 +20,6 @@ ExecStart=__NERON_DIR__/venv/bin/python3 app.py
 # Restart automatique
 Restart=always
 RestartSec=10
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 # Logs
 StandardOutput=append:__NERON_DIR__/logs/neron_core.log
