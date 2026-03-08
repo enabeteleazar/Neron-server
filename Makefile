@@ -117,7 +117,7 @@ logs:
 
 update:
 	@echo "🔄 Mise à jour de Néron..."
-	@git -C $(BASE_DIR) pull origin main
+	@git -C $(BASE_DIR) pull origin master
 	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q
 	@sudo systemctl restart $(SERVICE)
 	@sleep 2
