@@ -118,7 +118,7 @@ if [ "${1:-}" = "--telegram-only" ]; then
 fi
 
 clear
-echo "DEV:07.03.0048"
+echo "DEV:07.03.0050"
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
