@@ -1,109 +1,99 @@
 # agents/tts_agent.py
-# Neron Core - Agent TTS (client HTTP vers neron_tts)
+# Neron Core - Agent TTS (pyttsx3 direct, sans neron_tts intermédiaire)
 
 import os
+import sys
 import time
-
-import httpx
+import logging
+import tempfile
 
 from agents.base_agent import AgentResult, get_logger
 
 logger = get_logger("tts_agent")
 
-TTS_URL = os.getenv("NERON_TTS_URL", "http://neron_tts:8003")
-TTS_TIMEOUT = float(os.getenv("TTS_TIMEOUT", "30.0"))
+TTS_MAX_CHARS = int(os.getenv("TTS_MAX_CHARS", "1000"))
+
+# Ajouter le path neron_tts pour importer engine.py
+_TTS_MODULE_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "..", "neron_tts"
+)
+if _TTS_MODULE_PATH not in sys.path:
+    sys.path.insert(0, os.path.abspath(_TTS_MODULE_PATH))
+
+_tts_engine = None
+
+
+def load_engine():
+    """Charge le moteur TTS (appelé au démarrage de core)"""
+    global _tts_engine
+    from engine import get_engine
+    engine_name = os.getenv("TTS_ENGINE", "pyttsx3")
+    logger.info(f"Chargement moteur TTS '{engine_name}'...")
+    _tts_engine = get_engine()
+    logger.info(f"TTS engine '{_tts_engine.name()}' prêt")
+    return _tts_engine
 
 
 class TTSAgent:
     def __init__(self):
-        self.url = TTS_URL
-        self.timeout = TTS_TIMEOUT
-        logger.info(f"TTSAgent init : {self.url}")
+        logger.info("TTSAgent init — pyttsx3 direct")
 
     async def synthesize(self, text: str) -> AgentResult:
         if not text or not text.strip():
             return AgentResult(
-                success=False,
-                content="",
-                source="tts_agent",
-                error="Texte vide",
-                latency_ms=0.0,
-                metadata={}
+                success=False, content="", source="tts_agent",
+                error="Texte vide", latency_ms=0.0, metadata={}
+            )
+
+        if len(text) > TTS_MAX_CHARS:
+            return AgentResult(
+                success=False, content="", source="tts_agent",
+                error=f"Texte trop long : {len(text)} > {TTS_MAX_CHARS}",
+                latency_ms=0.0, metadata={}
+            )
+
+        if _tts_engine is None:
+            return AgentResult(
+                success=False, content="", source="tts_agent",
+                error="Moteur TTS non chargé",
+                latency_ms=0.0, metadata={}
             )
 
         start = time.monotonic()
-        logger.info(f"Synthese TTS : '{text[:60]}...' ({len(text)} chars)")
-
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{self.url}/synthesize",
-                    json={"text": text}
-                )
-                response.raise_for_status()
-                audio_bytes = response.content
-
+            logger.info(f"Synthèse TTS : '{text[:60]}' ({len(text)} chars)")
+            audio_bytes = _tts_engine.synthesize(text)
             latency_ms = round((time.monotonic() - start) * 1000, 2)
-            engine = response.headers.get("X-TTS-Engine", "unknown")
 
             logger.info(f"TTS OK : {latency_ms}ms -> {len(audio_bytes)} bytes")
 
             return AgentResult(
-                success=True,
-                content="",
-                source="tts_agent",
-                error=None,
-                latency_ms=latency_ms,
+                success=True, content="", source="tts_agent",
+                error=None, latency_ms=latency_ms,
                 metadata={
                     "audio_bytes": audio_bytes,
-                    "engine": engine,
+                    "engine": _tts_engine.name(),
                     "chars": len(text)
                 }
             )
 
-        except httpx.TimeoutException:
-            latency_ms = round((time.monotonic() - start) * 1000, 2)
-            error = f"tts timeout apres {self.timeout}s"
-            logger.error(f"[tts_agent] {error}")
-            return AgentResult(
-                success=False,
-                content="",
-                source="tts_agent",
-                error=error,
-                latency_ms=latency_ms,
-                metadata={}
-            )
-
-        except httpx.HTTPStatusError as e:
-            latency_ms = round((time.monotonic() - start) * 1000, 2)
-            error = f"tts erreur HTTP {e.response.status_code}"
-            logger.error(f"[tts_agent] {error}")
-            return AgentResult(
-                success=False,
-                content="",
-                source="tts_agent",
-                error=error,
-                latency_ms=latency_ms,
-                metadata={}
-            )
-
         except Exception as e:
             latency_ms = round((time.monotonic() - start) * 1000, 2)
-            error = f"tts inaccessible : {str(e)}"
-            logger.error(f"[tts_agent] {error}")
+            logger.error(f"Erreur TTS : {e}")
             return AgentResult(
-                success=False,
-                content="",
-                source="tts_agent",
-                error=error,
-                latency_ms=latency_ms,
-                metadata={}
+                success=False, content="", source="tts_agent",
+                error=f"Erreur synthèse : {str(e)}",
+                latency_ms=latency_ms, metadata={}
             )
 
-    async def check_connection(self) -> bool:
+    async def reload(self) -> bool:
+        """Recharge le moteur TTS"""
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                r = await client.get(f"{self.url}/health")
-                return r.status_code == 200
-        except Exception:
+            load_engine()
+            return True
+        except Exception as e:
+            logger.error(f"TTS reload error: {e}")
             return False
+
+    async def check_connection(self) -> bool:
+        return _tts_engine is not None

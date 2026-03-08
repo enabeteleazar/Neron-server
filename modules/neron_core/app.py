@@ -8,15 +8,17 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
-import httpx
 from fastapi import FastAPI, File, HTTPException, UploadFile, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
-from agents.stt_agent import STTAgent
-from agents.tts_agent import TTSAgent
+from agents.stt_agent import STTAgent, load_model as stt_load_model
+from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
+from agents.memory_agent import MemoryAgent, init_db as memory_init_db
+from agents.telegram_agent import start_bot, stop_bot, set_agents, send_notification
+from agents.watchdog_agent import setup as watchdog_setup, start_watchdog, stop_watchdog, start_watchdog_bot, stop_watchdog_bot
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
@@ -24,7 +26,7 @@ from neron_time.time_provider import TimeProvider
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("neron_core")
 
-VERSION = "1.4.0"
+VERSION = "2.0.0"
 _startup_time: float = 0.0
 
 
@@ -132,6 +134,7 @@ class Metrics:
 metrics = Metrics()
 
 llm_agent: LLMAgent = None
+memory_agent: MemoryAgent = None
 web_agent: WebAgent = None
 stt_agent: STTAgent = None
 tts_agent: TTSAgent = None
@@ -141,21 +144,57 @@ time_provider: TimeProvider = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time
+    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time, memory_agent
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
     llm_agent = LLMAgent()
     web_agent = WebAgent()
+    memory_init_db()
+    memory_agent = MemoryAgent()
+    stt_load_model()
     stt_agent = STTAgent()
+    tts_load_engine()
     tts_agent = TTSAgent()
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
     logger.info(json.dumps({
         "event": "agents_ready",
-        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider"]
+        "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider", "telegram"]
     }))
+
+    # Démarrer le bot Telegram
+    set_agents({
+        "llm": llm_agent,
+        "stt": stt_agent,
+        "tts": tts_agent,
+        "memory": memory_agent
+    })
+    # Bot Telegram — optionnel si token configuré
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if TELEGRAM_TOKEN and TELEGRAM_TOKEN not in ("", "votre_token_ici"):
+        await start_bot()
+    else:
+        logger.warning("Telegram désactivé — TELEGRAM_BOT_TOKEN non configuré")
+
+    # Démarrer le watchdog (optionnel)
+    WATCHDOG_ENABLED = os.getenv("WATCHDOG_ENABLED", "false").lower() == "true"
+    if WATCHDOG_ENABLED:
+        watchdog_setup(
+            agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
+            notify_fn=send_notification
+        )
+        await start_watchdog()
+        await start_watchdog_bot()
+
     yield
+
+    if os.getenv("WATCHDOG_ENABLED", "false").lower() == "true":
+        await stop_watchdog_bot()
+        await stop_watchdog()
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    if TELEGRAM_TOKEN and TELEGRAM_TOKEN not in ("", "votre_token_ici"):
+        await stop_bot()
     logger.info(json.dumps({"event": "shutdown"}))
 
 
@@ -243,7 +282,7 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
 
     try:
         if intent_result.intent == Intent.TIME_QUERY:
-            core_response = _handle_time_query(intent_result, metadata, start)
+            core_response = _handle_time_query(intent_result, metadata, start, query)
         elif intent_result.intent == Intent.WEB_SEARCH:
             core_response = await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:
@@ -265,6 +304,40 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     }))
 
     return core_response
+
+
+
+@app.post("/input/stream")
+async def text_input_stream(input_data: TextInput, _: None = Depends(verify_api_key)):
+    """Pipeline texte avec streaming SSE"""
+    from fastapi.responses import StreamingResponse
+    import json
+
+    query = input_data.text.strip()
+
+    async def generate():
+        # Time query — pas de streaming nécessaire
+        intent_result = await router.route(query)
+        if intent_result.intent == Intent.TIME_QUERY:
+            response = _handle_time_query(intent_result, {}, 0, query).response
+            yield f"data: {json.dumps({'token': response, 'done': True})}\n\n"
+            return
+
+        # Contexte mémoire
+        memory_context = await _get_memory_context(query)
+
+        # Stream LLM
+        full_response = ""
+        async for token in llm_agent.stream(query, context_data=memory_context or None):
+            full_response += token
+            yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
+
+        yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
+
+        # Stocker en mémoire
+        await _store_memory(query, full_response, {"intent": intent_result.intent.value})
+
+    return StreamingResponse(generate(), media_type="text/event-stream")
 
 
 @app.post("/input/audio", response_model=CoreResponse)
@@ -320,8 +393,25 @@ async def audio_input(file: UploadFile = File(...)):
         metrics.record_request_end(elapsed)
 
 
-def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreResponse:
-    response = "Il est " + time_provider.human() + "."
+def _handle_time_query(intent_result, metadata: dict, start: float, query: str = "") -> CoreResponse:
+    q = query.lower()
+    heure_keys = ["heure", "time", "il est", "quelle heure"]
+    date_keys = ["date", "jour", "quel jour", "quel mois", "quelle date", "on est"]
+    
+    want_heure = any(k in q for k in heure_keys)
+    want_date = any(k in q for k in date_keys)
+    
+    n = time_provider.now()
+    from neron_time.time_provider import JOURS, MOIS
+    jour = JOURS[n.weekday()]
+    mois = MOIS[n.month - 1]
+    
+    if want_heure and not want_date:
+        response = f"Il est {n.hour:02d}h{n.minute:02d}."
+    elif want_date and not want_heure:
+        response = f"Nous sommes {jour} {n.day} {mois} {n.year}."
+    else:
+        response = f"Il est {n.hour:02d}h{n.minute:02d}, {jour} {n.day} {mois} {n.year}."
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
     return CoreResponse(
         response=response,
@@ -340,10 +430,34 @@ def _handle_time_query(intent_result, metadata: dict, start: float) -> CoreRespo
     )
 
 
+
+async def _get_memory_context(query: str) -> str:
+    """Récupère le contexte mémoire : historique récent + recherche directe SQLite"""
+    context_parts = []
+    try:
+        recent = memory_agent.retrieve(limit=3)
+        if recent:
+            history = []
+            for entry in reversed(recent):
+                history.append(f"Utilisateur: {entry['input']}")
+                history.append(f"Néron: {entry['response'][:80]}")
+            context_parts.append("Historique récent:\n" + "\n".join(history))
+        relevant = memory_agent.search(query, limit=3)
+        if relevant:
+            facts = []
+            for entry in relevant:
+                facts.append(f"- Q: {entry['input']} → R: {entry['response'][:100]}")
+            context_parts.append("Mémoire pertinente:\n" + "\n".join(facts))
+    except Exception as e:
+        logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
+    return "\n\n".join(context_parts)
+
+
 async def _handle_conversation(
     query: str, intent_result, metadata: dict, start: float
 ) -> CoreResponse:
-    result = await llm_agent.execute(query)
+    memory_context = await _get_memory_context(query)
+    result = await llm_agent.execute(query, context_data=memory_context if memory_context else None)
 
     if not result.success:
         metrics.record_error("llm_agent")
@@ -423,13 +537,8 @@ async def _handle_web_search(
 
 
 async def _store_memory(query: str, response: str, metadata: dict):
-    memory_url = os.getenv("NERON_MEMORY_URL", "http://neron_memory:8002")
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                f"{memory_url}/store",
-                json={"input": query, "response": response, "metadata": metadata}
-            )
+        memory_agent.store(query, response, metadata)
     except Exception as e:
         logger.warning(json.dumps({"event": "memory_store_failed", "error": str(e)}))
 
