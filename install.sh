@@ -118,7 +118,7 @@ if [ "${1:-}" = "--telegram-only" ]; then
 fi
 
 clear
-echo "DEV:07.03.0044"
+echo "DEV:07.03.0046"
 echo -e "${BOLD}${BLUE}"
 echo "╔════════════════════════════════════════╗"
 echo "║     🧠 Néron AI v2.0 — Installateur    ║"
@@ -172,6 +172,7 @@ sudo apt-get install -y -qq \
     espeak \
     libespeak1 \
     ffmpeg \
+    zstd \
     nano
 echo -e "${GREEN}✔ Dépendances OK${NC}"
 
