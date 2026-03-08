@@ -43,8 +43,6 @@ install:
 	@echo "📦 Installation des dépendances système..."
 	@sudo apt-get update -qq
 	@sudo apt-get install -y -qq \
-		python3.12-venv \
-		python3-pip \
 		espeak \
 		libespeak1 \
 		ffmpeg \
