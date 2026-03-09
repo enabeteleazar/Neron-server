@@ -1,13 +1,14 @@
+# agents/system_agent.py
 """
 Agent SYSTEM_STATUS - interroge neron_watchdog
 """
 import httpx
-import os
 import logging
+from config import settings
 
 logger = logging.getLogger(__name__)
 
-WATCHDOG_URL = os.getenv("NERON_WATCHDOG_URL", "http://neron_watchdog:8003")
+WATCHDOG_URL = settings.NERON_WATCHDOG_URL
 
 
 async def handle_system_status(query: str) -> str:
