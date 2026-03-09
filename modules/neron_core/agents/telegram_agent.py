@@ -1,7 +1,7 @@
 # agents/telegram_agent.py
 # Neron Core - Bot Telegram intégré (sans port séparé)
 
-import os
+from config import settings
 import json
 import logging
 import time
@@ -14,11 +14,11 @@ from agents.watchdog_agent import get_status, get_health_score, get_anomalies
 
 logger = get_logger("telegram_agent")
 
-TELEGRAM_TOKEN    = os.getenv("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID  = os.getenv("TELEGRAM_CHAT_ID", "")
-NERON_CORE_URL    = os.getenv("NERON_CORE_URL", "http://localhost:8000")
-NERON_API_KEY     = os.getenv("NERON_API_KEY", "")
-ALLOWED_CHAT_IDS  = set(os.getenv("TELEGRAM_CHAT_ID", "").split(","))
+TELEGRAM_TOKEN    = settings.TELEGRAM_BOT_TOKEN
+TELEGRAM_CHAT_ID  = settings.TELEGRAM_CHAT_ID
+NERON_CORE_URL    = settings.SERVER_HOST
+NERON_API_KEY     = settings.API_KEY
+ALLOWED_CHAT_IDS  = set(settings.TELEGRAM_CHAT_ID.split(","))
 
 # Référence globale aux agents internes (injectée depuis app.py)
 _agents = {}

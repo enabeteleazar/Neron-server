@@ -27,9 +27,7 @@
 *.swp
 *.tmp
 *.wav
-.env
-.env.global
-.env.local
+*.yaml
 Data/
 Neron/*/data
 Neron/*/model
@@ -60,3 +58,4 @@ pip-wheel-metadata/
 test.wav
 venv/
 yarn-error.log
+neron.yaml

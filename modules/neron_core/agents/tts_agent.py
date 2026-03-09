@@ -2,6 +2,7 @@
 # Neron Core - Agent TTS (pyttsx3 direct, sans neron_tts intermédiaire)
 
 import os
+from config import settings
 import sys
 import time
 import logging
@@ -11,7 +12,7 @@ from agents.base_agent import AgentResult, get_logger
 
 logger = get_logger("tts_agent")
 
-TTS_MAX_CHARS = int(os.getenv("TTS_MAX_CHARS", "1000"))
+TTS_MAX_CHARS = int(settings.TTS_MAX_CHARS)
 
 # Ajouter le path neron_tts pour importer engine.py
 _TTS_MODULE_PATH = os.path.join(
@@ -27,7 +28,7 @@ def load_engine():
     """Charge le moteur TTS (appelé au démarrage de core)"""
     global _tts_engine
     from engine import get_engine
-    engine_name = os.getenv("TTS_ENGINE", "pyttsx3")
+    engine_name = settings.TTS_ENGINE
     logger.info(f"Chargement moteur TTS '{engine_name}'...")
     _tts_engine = get_engine()
     logger.info(f"TTS engine '{_tts_engine.name()}' prêt")

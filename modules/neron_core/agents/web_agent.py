@@ -1,11 +1,11 @@
 # agents/web_agent.py
 import httpx
-import os
 from agents.base_agent import BaseAgent, AgentResult
+from config import settings
 
-SEARXNG_URL = os.getenv("SEARXNG_URL", "http://neron_searxng:8080")
-SEARXNG_TIMEOUT = float(os.getenv("SEARXNG_TIMEOUT", "10.0"))
-SEARXNG_MAX_RESULTS = int(os.getenv("SEARXNG_MAX_RESULTS", "5"))
+SEARXNG_URL         = settings.SEARXNG_URL
+SEARXNG_TIMEOUT     = settings.SEARXNG_TIMEOUT
+SEARXNG_MAX_RESULTS = settings.SEARXNG_MAX_RESULTS
 
 
 class WebAgent(BaseAgent):

@@ -2,19 +2,15 @@
 # Neron Core - Agent LLM (appel direct Ollama, sans neron_llm intermédiaire)
 
 import httpx
-import os
+from config import settings
 import json
 from agents.base_agent import BaseAgent, AgentResult
 
-OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
-LLM_TIMEOUT = float(os.getenv("LLM_TIMEOUT", "120.0"))
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+OLLAMA_HOST = settings.OLLAMA_HOST
+LLM_TIMEOUT = settings.LLM_TIMEOUT
+OLLAMA_MODEL = settings.OLLAMA_MODEL
 
-SYSTEM_PROMPT = os.getenv("NERON_SYSTEM_PROMPT", """Tu es Néron, un assistant IA personnel installé sur Homebox.
-Tu es concis, direct et utile. Tu réponds toujours en français.
-Tu as accès à la mémoire des conversations passées, à l'heure, à la météo et à Home Assistant.
-Tu n'es pas un assistant générique — tu es Néron, l'assistant personnel de ton utilisateur.
-Ne te présente jamais comme un modèle de langage ou une IA générique.""")
+SYSTEM_PROMPT = settings.SYSTEM_PROMPT
 
 
 def _build_prompt(query: str, context_data: str = None) -> str:

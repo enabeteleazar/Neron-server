@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import os
+from config import settings
 import sqlite3
 import time
 from collections import Counter, defaultdict
@@ -17,14 +18,14 @@ from agents.base_agent import get_logger
 
 logger = get_logger("watchdog_agent")
 
-CHECK_INTERVAL  = int(os.getenv("WATCHDOG_INTERVAL",   "60"))
-CPU_ALERT_PCT   = float(os.getenv("WATCHDOG_CPU_ALERT", "85"))
-RAM_ALERT_PCT   = float(os.getenv("WATCHDOG_RAM_ALERT", "85"))
-DISK_ALERT_PCT  = float(os.getenv("WATCHDOG_DISK_ALERT","90"))
+CHECK_INTERVAL  = settings.WATCHDOG_INTERVAL
+CPU_ALERT_PCT   = settings.WATCHDOG_CPU_ALERT
+RAM_ALERT_PCT   = settings.WATCHDOG_RAM_ALERT
+DISK_ALERT_PCT  = settings.WATCHDOG_DISK_ALERT
 ALERT_COOLDOWN  = 300   # secondes entre deux alertes identiques
-DB_PATH              = os.getenv("MEMORY_DB_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "memory.db"))
-WATCHDOG_BOT_TOKEN   = os.getenv("WATCHDOG_BOT_TOKEN", "")
-WATCHDOG_CHAT_ID     = os.getenv("WATCHDOG_CHAT_ID", "")
+DB_PATH              = str(settings.MEMORY_DB_PATH)
+WATCHDOG_BOT_TOKEN   = settings.WATCHDOG_BOT_TOKEN
+WATCHDOG_CHAT_ID     = settings.WATCHDOG_CHAT_ID
 
 _agents     = {}
 _notify_fn  = None
@@ -39,7 +40,7 @@ AUTO_RESTART_WINDOW    = 300  # secondes
 
 # Alertes intelligentes
 RAM_PROCESS_ALERT_MB   = 500
-CPU_TEMP_ALERT_C       = float(os.getenv("WATCHDOG_CPU_TEMP_ALERT", "75"))  # °C   # alerte si process RAM > 500MB
+CPU_TEMP_ALERT_C       = settings.WATCHDOG_CPU_TEMP_ALERT  # °C   # alerte si process RAM > 500MB
 OLLAMA_SILENT_MINUTES  = 10    # alerte si Ollama ne répond pas depuis X min
 NERON_SILENT_HOURS     = 24    # alerte si aucune conversation depuis X heures
 _last_ollama_ok: float = 0.0   # timestamp dernière réponse Ollama OK
@@ -605,7 +606,7 @@ def get_anomalies(days: int = 7) -> list:
 from telegram import Update as TGUpdate
 from telegram.ext import Application as TGApplication, CommandHandler as TGCommandHandler, ContextTypes as TGContextTypes
 
-WATCHDOG_ALLOWED = set(os.getenv("WATCHDOG_CHAT_ID", "").split(","))
+WATCHDOG_ALLOWED = set(settings.WATCHDOG_CHAT_ID.split(","))
 
 def _wdog_authorized(update) -> bool:
     if not WATCHDOG_ALLOWED or WATCHDOG_ALLOWED == {''}:
@@ -1004,7 +1005,7 @@ async def _wdog_cmd_restart(update, context):
 
 async def start_watchdog_bot():
     global _watchdog_bot_app
-    token = os.getenv("WATCHDOG_BOT_TOKEN")
+    token = settings.WATCHDOG_BOT_TOKEN
     if not token:
         logger.warning("WATCHDOG_BOT_TOKEN non défini — bot watchdog désactivé")
         return

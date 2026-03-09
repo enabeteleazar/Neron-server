@@ -3,6 +3,7 @@
 
 import sqlite3
 import json
+from config import settings
 import os
 import logging
 from contextlib import contextmanager
@@ -10,7 +11,7 @@ from typing import Optional, List, Dict
 
 logger = logging.getLogger("memory_agent")
 
-DB_PATH = os.getenv("MEMORY_DB_PATH", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "memory.db"))
+DB_PATH = str(settings.MEMORY_DB_PATH)
 
 
 @contextmanager

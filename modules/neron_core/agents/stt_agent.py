@@ -3,6 +3,7 @@
 
 import logging
 import os
+from config import settings
 import tempfile
 import time
 import wave
@@ -14,10 +15,10 @@ from agents.base_agent import AgentResult, get_logger
 
 logger = get_logger("stt_agent")
 
-WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
-WHISPER_LANGUAGE   = os.getenv("WHISPER_LANGUAGE", "fr")
-WHISPER_DOWNLOAD_ROOT = os.getenv("WHISPER_DOWNLOAD_ROOT", os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "models"))
-AUDIO_MAX_SIZE_MB  = float(os.getenv("AUDIO_MAX_SIZE_MB", "10"))
+WHISPER_MODEL_NAME = settings.WHISPER_MODEL
+WHISPER_LANGUAGE   = settings.WHISPER_LANG
+WHISPER_DOWNLOAD_ROOT = settings.WHISPER_DOWNLOAD_ROOT
+AUDIO_MAX_SIZE_MB  = float(str(settings.AUDIO_MAX_MB))
 AUDIO_MAX_SIZE_BYTES = int(AUDIO_MAX_SIZE_MB * 1024 * 1024)
 SUPPORTED_FORMATS  = {".wav", ".mp3", ".m4a", ".ogg", ".flac", ".webm"}
 
