@@ -10,20 +10,69 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [À venir]
 
 #### En cours
-- **Watchdog** — score santé + tendance hebdo intégrés dans rapport quotidien
-- **Watchdog** — mode pause automatique pendant rebuild
+- **ha_agent.py** — contrôle Home Assistant
 
 #### Planifié
-- **Watchdog** — endpoint HTTP pour consulter l'état
-- **neron_telegram** — port 8010, remplacement notifier dans tous les modules
-- **ha_agent.py** — contrôle Home Assistant (v1.4.x)
+- **ha_agent.py** — contrôle Home Assistant complet (v2.1.x)
 - **Prometheus** — agent séparé pour scraping /metrics
 - **Grafana** — dashboards et alerting
-- **Redis Event Bus** — remplacement REST interne
-- **Streaming LLM** — support streaming pour les réponses LLM
-- **Multi-utilisateurs** — support plusieurs utilisateurs
+- **Streaming LLM** — support streaming natif
+- **Multi-utilisateurs** — support plusieurs utilisateurs Telegram
 - **Interface mobile** — application native
 - **Plugins** — architecture extensible
+- **neron_hud** — remise en service interface HUD (v2.x)
+
+---
+
+## [v2.0.0] - 2026-03-09
+
+### ⚡ Migration monolithe — Architecture native sans Docker
+
+Refonte complète de l'architecture : abandon de l'orchestration Docker multi-conteneurs
+au profit d'un processus Python unique avec agents intégrés.
+
+### Ajouts
+- **Architecture native** — 1 seul processus Python, 0 Docker requis
+- **Service systemd** — `neron.service` avec restart automatique et démarrage au boot
+- **Makefile complet** — 15 commandes : `install`, `start`, `stop`, `restart`, `status`, `logs`, `update`, `clean`, `backup`, `restore`, `test`, `ollama`, `telegram`, `env`, `version`
+- **install.sh** — bootstrap one-liner `curl -fsSL .../install.sh | bash`
+  - Vérification OS Ubuntu/Debian
+  - Vérification RAM (min 2GB) et disque (min 10GB)
+  - Installation Ollama si absent
+  - Clone ou mise à jour du dépôt
+  - Création `.env` depuis `.env.example`
+  - Téléchargement modèle Ollama
+- **`make ollama`** — gestion interactive du modèle (liste installés + recommandés, pull sécurisé, mise à jour `.env`)
+- **`make telegram`** — configuration interactive bots Telegram (token, chat_id auto via getUpdates)
+- **Bot Telegram optionnel** — Néron démarre même sans token configuré
+- **Watchdog optionnel** — activé via `WATCHDOG_ENABLED=true` dans `.env`
+- **Page web** — site de présentation du projet (`index.html`)
+
+### Suppressions
+- **Docker** — suppression complète de l'orchestration Docker
+- **neron_system.py** — remplacé par `neron_core/app.py` v2
+- **start_neron.sh** — remplacé par `Makefile`
+- **modules/neron_telegram** — intégré dans `neron_core/agents/telegram_agent.py`
+- **modules/neron_watchdog** — intégré dans `neron_core/agents/watchdog_agent.py`
+- **docker-compose.yaml** — obsolète
+
+### Corrections
+- **Chemins absolus** — suppression complète de tous les `/mnt/usb-storage/Neron_AI`
+  - `memory_agent.py`, `stt_agent.py`, `watchdog_agent.py` — chemins relatifs via `__file__`
+  - `neron.service` — placeholders `__NERON_DIR__` et `__NERON_USER__` générés par `make install`
+  - `Makefile` — `BASE_DIR` dynamique via `$(shell dirname $(realpath ...))`
+  - `install.sh` — `INSTALL_DIR` configurable via `NERON_DIR`
+- **`neron_core/app.py`** — commentaire `v1.4.0` corrigé en `v2.0.0`
+- **`neron_core/app.py`** — `/input/voice` déplacée avant `if __name__`
+- **`neron_core/app.py`** — `import json` supprimé dans `text_input_stream` (doublon)
+- **`neron_core/app.py`** — `StreamingResponse` importé en haut du fichier
+- **`python3.12-venv`** → `python3-venv` générique (compatible Ubuntu 22.04+)
+- **`mkdir -p data/`** — ajouté dans `make install` (fix SQLite `unable to open database`)
+
+### Améliorations
+- **VERSION** — `1.4.0` → `2.0.0` dans `app.py`
+- **`neron.service`** — `StartLimitIntervalSec` déplacé dans `[Unit]` (fix warning systemd)
+- **`.env.example`** — mis à jour pour v2 (suppression variables Docker, ajout `WATCHDOG_ENABLED`)
 
 -----
 
