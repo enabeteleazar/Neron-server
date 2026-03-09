@@ -1,12 +1,11 @@
-# 🧠 Néron AI - Assistant IA Modulaire
+# 🧠 Néron AI - Assistant IA Local
 
-[![Version](https://img.shields.io/badge/version-1.6.0-blue.svg)](https://github.com/yourusername/neron-ai)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue.svg)](https://github.com/enabeteleazar/Neron_AI)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Docker](https://img.shields.io/badge/docker-%230db7ed.svg?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tests](https://img.shields.io/badge/tests-68%20passed-brightgreen.svg)]()
+[![Ollama](https://img.shields.io/badge/ollama-compatible-black.svg)](https://ollama.com/)
 
-Néron AI est un assistant IA modulaire et open-source construit sur une architecture microservices. Il combine reconnaissance vocale (STT), synthèse vocale (TTS), modèles de langage locaux (LLM via Ollama), recherche web locale, mémoire persistante et une interface web intuitive — le tout en **100% local, sans cloud**.
+Néron AI est un assistant IA modulaire et open-source qui combine reconnaissance vocale (STT), synthèse vocale (TTS), modèles de langage locaux (LLM via Ollama), recherche web, mémoire persistante et bots Telegram — le tout en **1 seul processus Python, 100% local, sans cloud, sans Docker**.
 
 -----
 
@@ -14,62 +13,56 @@ Néron AI est un assistant IA modulaire et open-source construit sur une archite
 
 - 🎤 **Speech-to-Text (STT)** — Transcription audio avec faster-whisper (int8, CPU-optimisé)
 - 🔊 **Text-to-Speech (TTS)** — Synthèse vocale avec pyttsx3 (adapter pattern, extensible)
-- 🤖 **LLM Local** — Génération de texte avec Ollama (llama3.2:3b par défaut)
-- 🔍 **Recherche Web Locale** — SearXNG intégré, 100% offline
-- 💾 **Mémoire Persistante** — Base de données SQLite pour l’historique des conversations
-- 🌐 **Interface Web** — Interface utilisateur avec Gradio
-- 🐳 **Architecture Microservices** — Services Docker indépendants et isolés
+- 🤖 **LLM Local** — Génération de texte avec Ollama (llama3.2 par défaut)
+- 🔍 **Recherche Web** — Agent web intégré, 100% local
+- 💾 **Mémoire Persistante** — SQLite pour l’historique des conversations
+- 🤖 **Bots Telegram** — Deux bots bidirectionnels (commandes + notifications), optionnels
+- 🐕 **Watchdog** — Supervision et restart automatique des agents, optionnel
 - 🔌 **API REST** — Endpoints texte, audio et vocal complet
 - 📊 **Observabilité** — Métriques Prometheus sur `/metrics`
-- 🔒 **Isolation Réseau** — Réseau Docker interne, surface d’attaque minimale
+- ⚙️ **Service systemd** — Démarrage automatique au boot, restart sur crash
 
 -----
 
 ## 🏗️ Architecture
 
 ```
-Internet
-    │
-    ▼
-┌──────────────────────────────────────────────────────────────┐
-│  neron_core :8000  (orchestrateur, seul point d'entrée API)  │
-│  neron_web  :7860  (interface Gradio)                        │
-└─────────────────────────┬────────────────────────────────────┘
-                          │
-               neron_internal (bridge, isolé)
-                          │
-         ┌────────────────┼─────────────────┐
-         │                │                 │
-    ┌────▼─────┐   ┌──────▼──────┐   ┌──────▼─────┐
-    │neron_stt │   │  neron_tts  │   │ neron_llm  │
-    │  :8001   │   │   :8003     │   │   :5000    │
-    │faster-   │   │   pyttsx3   │   │  wrapper   │
-    │whisper   │   │             │   │  Ollama    │
-    └──────────┘   └─────────────┘   └──────┬─────┘
-                                             │
-    ┌─────────────┐                   ┌──────▼──────┐
-    │neron_memory │                   │neron_ollama │
-    │   :8002     │                   │   :11434    │
-    │   SQLite    │                   │llama3.2:3b  │
-    └─────────────┘                   └─────────────┘
-    ┌─────────────┐
-    │neron_searxng│
-    │   :8080     │
-    │   SearXNG   │
-    └─────────────┘
+                    ┌─────────────────────────────────┐
+                    │      neron_core :8000            │
+                    │   (1 processus Python unique)    │
+                    │                                  │
+                    │  ┌──────────┐  ┌─────────────┐  │
+                    │  │ llm_agent│  │  stt_agent  │  │
+                    │  └────┬─────┘  └──────┬──────┘  │
+                    │       │               │          │
+                    │  ┌────▼─────┐  ┌──────▼──────┐  │
+                    │  │  Ollama  │  │faster-whisper│  │
+                    │  └──────────┘  └─────────────┘  │
+                    │                                  │
+                    │  ┌──────────┐  ┌─────────────┐  │
+                    │  │ tts_agent│  │memory_agent │  │
+                    │  └──────────┘  └─────────────┘  │
+                    │                                  │
+                    │  ┌───────────────┐               │
+                    │  │telegram_agent │ (optionnel)   │
+                    │  └───────────────┘               │
+                    │  ┌───────────────┐               │
+                    │  │watchdog_agent │ (optionnel)   │
+                    │  └───────────────┘               │
+                    └─────────────────────────────────┘
 ```
 
 ### Pipelines disponibles
 
 ```
 POST /input/text
-  → texte → intent router → LLM / time_provider / web → CoreResponse (JSON)
+  → intent router → LLM / time_provider / web → CoreResponse (JSON)
 
 POST /input/audio
-  → audio → STT → texte → intent router → LLM / time_provider / web → CoreResponse (JSON)
+  → STT → intent router → LLM / time_provider / web → CoreResponse (JSON)
 
 POST /input/voice
-  → audio → STT → texte → intent router → LLM / time_provider / web → TTS → audio WAV
+  → STT → intent router → LLM / time_provider / web → TTS → audio WAV
 ```
 
 ### Intent Router
@@ -77,69 +70,84 @@ POST /input/voice
 |Intent        |Déclencheur                     |Agent                      |Latence |
 |--------------|--------------------------------|---------------------------|--------|
 |`time_query`  |“heure”, “date”, “jour”         |time_provider              |~0.3ms  |
-|`web_search`  |“cherche”, “météo”, “news”      |web_agent + SearXNG        |~2s     |
+|`web_search`  |“cherche”, “météo”, “news”      |web_agent                  |~2s     |
 |`ha_action`   |“allume”, “éteins”, “thermostat”|*(home assistant, à venir)*|—       |
 |`conversation`|tout le reste                   |llm_agent                  |~86s CPU|
 
 -----
 
-## 📦 Services
+## 📦 Agents
 
-|Service          |Description                                    |Port |Technologie              |
-|-----------------|-----------------------------------------------|-----|-------------------------|
-|**neron_core**   |Orchestrateur central, intent router, pipelines|8000 |FastAPI                  |
-|**neron_stt**    |Transcription audio                            |8001 |faster-whisper 1.0.3 int8|
-|**neron_memory** |Mémoire persistante conversations              |8002 |FastAPI, SQLite          |
-|**neron_tts**    |Synthèse vocale                                |8003 |pyttsx3, adapter pattern |
-|**neron_llm**    |Wrapper HTTP Ollama                            |5000 |FastAPI, httpx           |
-|**neron_ollama** |Moteur LLM                                     |11434|Ollama                   |
-|**neron_searxng**|Recherche web locale                           |8080 |SearXNG                  |
-|**neron_web**    |Interface utilisateur                          |7860 |Gradio                   |
+|Agent             |Description                       |Optionnel|
+|------------------|----------------------------------|---------|
+|**llm_agent**     |Génération LLM via Ollama         |Non      |
+|**stt_agent**     |Transcription audio faster-whisper|Non      |
+|**tts_agent**     |Synthèse vocale pyttsx3           |Non      |
+|**memory_agent**  |Mémoire persistante SQLite        |Non      |
+|**web_agent**     |Recherche web locale              |Non      |
+|**time_provider** |Heure et date localisées          |Non      |
+|**telegram_agent**|Bots Telegram bidirectionnels     |Oui      |
+|**watchdog_agent**|Supervision et restart automatique|Oui      |
 
 -----
 
-## 🚀 Installation Rapide
+## 🚀 Installation
 
-### Prérequis
-
-- **Docker** 20.10+ et **Docker Compose** 2.0+
-- **Git**
-- **8 GB RAM** minimum (16 GB recommandé pour llama3.2:3b)
-- **20 GB d’espace disque** pour les modèles
-
-### Installation
+### One-liner (recommandé)
 
 ```bash
-# 1. Cloner le dépôt
-git clone https://github.com/enabeteleazar/Neron_AI
+curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/master/install.sh | bash
+```
+
+Le script installe et configure tout automatiquement.
+
+### Installation manuelle
+
+```bash
+# Cloner
+git clone https://github.com/enabeteleazar/Neron_AI.git
 cd Neron_AI
 
-# 2. Créer le réseau Docker externe
-docker network create Neron_Network
+# Configurer
+cp .env.example .env
+nano .env
 
-# 3. Configurer les variables d'environnement
-cp .env.example /opt/Neron_AI/.env
-nano /opt/Neron_AI/.env
+# Installer
+make install
 
-# 4. Lancer tous les services
-docker compose --env-file /opt/Neron_AI/.env up -d
+# Télécharger un modèle
+make ollama
 
-# 5. Télécharger le modèle LLM
-docker exec neron_ollama ollama pull llama3.2:3b
+# Démarrer
+make start
+```
+
+### Commandes disponibles
+
+```bash
+make start      # Démarrer Néron
+make stop       # Arrêter
+make restart    # Redémarrer
+make status     # État des services
+make logs       # Logs en temps réel
+make update     # Mise à jour (git pull + restart)
+make backup     # Sauvegarder les données
+make restore    # Restaurer une sauvegarde
+make test       # Lancer les tests
+make ollama     # Gérer le modèle LLM
+make telegram   # Configurer les bots Telegram
+make env        # Afficher la configuration active
+make version    # Version installée
+make clean      # Nettoyer les fichiers temporaires
 ```
 
 ### Vérification
 
 ```bash
-# Vérifier tous les services
-docker compose ps
-
-# Health checks manuels
-curl http://localhost:8000/health  # Core
-curl http://localhost:7860         # Interface web
-
-# Métriques Prometheus
-curl http://localhost:8000/metrics
+make status
+# ou
+curl http://localhost:8000/health
+# {"status": "healthy", "version": "2.0.0"}
 ```
 
 -----
@@ -155,7 +163,7 @@ curl http://localhost:8000/health
 ```json
 {
   "status": "healthy",
-  "version": "1.6.0"
+  "version": "2.0.0"
 }
 ```
 
@@ -178,6 +186,7 @@ neron_agent_latency_avg_ms{agent="stt_agent"}
 ```bash
 curl -X POST http://localhost:8000/input/text \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: votre_api_key" \
   -d '{"text": "Quelle heure est-il ?"}'
 ```
 
@@ -194,11 +203,12 @@ curl -X POST http://localhost:8000/input/text \
 }
 ```
 
-### POST /input/audio — Pipeline audio (STT → texte)
+### POST /input/audio — Pipeline audio (STT → LLM)
 
 ```bash
 curl -X POST http://localhost:8000/input/audio \
-  -F "file=@/chemin/vers/audio.wav"
+  -H "X-API-Key: votre_api_key" \
+  -F "file=@audio.wav"
 ```
 
 ```json
@@ -221,19 +231,20 @@ curl -X POST http://localhost:8000/input/audio \
 
 ```bash
 curl -X POST http://localhost:8000/input/voice \
-  -F "file=@/chemin/vers/audio.wav" \
+  -H "X-API-Key: votre_api_key" \
+  -F "file=@audio.wav" \
   -o reponse.wav
 ```
 
 Retourne un fichier **audio/wav** avec headers :
 
 ```
-X-Transcription: Bonjour Neron quelle heure est il
-X-Response-Text: Il est samedi 22 février 2026 à 00h30.
-X-Intent: time_query
-X-Execution-Time-Ms: 9200.5
-X-STT-Latency-Ms: 7863.0
-X-TTS-Latency-Ms: 312.4
+X-Transcription      — texte reconnu
+X-Response-Text      — réponse de Néron
+X-Intent             — intent détecté
+X-Execution-Time-Ms  — temps total
+X-STT-Latency-Ms     — latence STT
+X-TTS-Latency-Ms     — latence TTS
 ```
 
 -----
@@ -243,36 +254,31 @@ X-TTS-Latency-Ms: 312.4
 ### Variables d’environnement principales
 
 ```bash
-# Ports
-NERON_CORE_HTTP=8000
-NERON_STT_HTTP=8001
-NERON_MEMORY_HTTP=8002
-
-# URLs internes (Docker)
-NERON_STT_URL=http://neron_stt:8001
-NERON_LLM_URL=http://neron_llm:5000
-NERON_MEMORY_URL=http://neron_memory:8002
-NERON_TTS_URL=http://neron_tts:8003
-
 # LLM
-OLLAMA_MODEL=llama3.2:3b
+OLLAMA_MODEL=llama3.2:1b
 LLM_TIMEOUT=120
+OLLAMA_HOST=http://localhost:11434
 
 # STT
 WHISPER_MODEL=base
 WHISPER_LANGUAGE=fr
 AUDIO_MAX_SIZE_MB=10
-STT_TIMEOUT=60
 
 # TTS
 TTS_ENGINE=pyttsx3
 TTS_LANGUAGE=fr
 TTS_RATE=150
-TTS_MAX_CHARS=1000
 
-# Général
+# Telegram (optionnel — laisser vide pour désactiver)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# Watchdog (optionnel)
+WATCHDOG_ENABLED=false
+
+# API
+NERON_API_KEY=changez_moi
 LOG_LEVEL=INFO
-DOCKER_DATA_PATH=/opt/Neron_AI/Data
 ```
 
 ### Choisir le bon modèle LLM
@@ -281,13 +287,10 @@ DOCKER_DATA_PATH=/opt/Neron_AI/Data
 |-------------|-----------|----------------|----|
 |`llama3.2:1b`|~38s       |⚠️ faible        |2 GB|
 |`llama3.2:3b`|~86s       |✅ bonne         |4 GB|
-|`orca-mini`  |~62s       |⚠️ mélange fr/en |4 GB|
 
 ```bash
-# Changer le modèle
-docker exec neron_ollama ollama pull llama3.2:1b
-# Puis dans .env : OLLAMA_MODEL=llama3.2:1b
-docker compose up -d neron_core
+# Changer le modèle interactivement
+make ollama
 ```
 
 ### Choisir le modèle Whisper
@@ -303,15 +306,11 @@ docker compose up -d neron_core
 ## 🧪 Tests
 
 ```bash
-# Lancer tous les tests
-cd /chemin/vers/neron-ai
-pytest modules/neron_core -v
-
-# Résultat attendu
-# 68 passed in ~1.5s
+make test
+# ou
+pytest neron_core -v
+# 68+ tests passent
 ```
-
-### Couverture des tests
 
 |Fichier de test        |Tests |Couvre                            |
 |-----------------------|------|----------------------------------|
@@ -321,7 +320,7 @@ pytest modules/neron_core -v
 |`test_stt_agent.py`    |11    |STTAgent, formats, erreurs        |
 |`test_tts_agent.py`    |9     |TTSAgent, synthèse, erreurs       |
 |`test_time_provider.py`|15    |TimeProvider, formats             |
-|`test_web_agent.py`    |6     |WebAgent, SearXNG, erreurs        |
+|`test_web_agent.py`    |6     |WebAgent, erreurs                 |
 |**Total**              |**68**|                                  |
 
 -----
@@ -337,7 +336,7 @@ pytest modules/neron_core -v
 |**Pipeline vocal complet**     |**~95s**|STT + LLM + TTS    |
 
 
-> **Note :** Les performances LLM sont contraintes par le CPU. Sur GPU, llama3.2:3b descend à ~2s.
+> Sur GPU, llama3.2:3b descend à ~2s.
 
 -----
 
@@ -346,72 +345,47 @@ pytest modules/neron_core -v
 ### Logs
 
 ```bash
-# Tous les services
-docker compose logs -f
-
-# Un service spécifique
-docker compose logs -f neron_core
-docker compose logs -f neron_stt
-docker compose logs -f neron_tts
+make logs
+journalctl -u neron -f
 ```
 
-### Sauvegarde mémoire
+### Sauvegarde
 
 ```bash
-docker cp neron_memory:/data/memory.db ./backups/memory_$(date +%Y%m%d).db
+make backup
+make restore
 ```
 
 ### Mise à jour
 
 ```bash
-git pull origin main
-docker compose build --no-cache
-docker compose up -d
-```
-
-### Nettoyage
-
-```bash
-# Arrêter
-docker compose down
-
-# Arrêter et supprimer les volumes (⚠️ perte de données)
-docker compose down -v
+make update
 ```
 
 -----
 
 ## 🐛 Dépannage
 
-### Service ne démarre pas
+### Néron ne démarre pas
 
 ```bash
-docker compose logs [service]
-docker compose up -d --build [service]
+make logs
+make env   # vérifier la configuration
 ```
 
 ### LLM trop lent
 
-```bash
-# Utiliser un modèle plus léger
-OLLAMA_MODEL=llama3.2:1b
-```
+Modifier `OLLAMA_MODEL=llama3.2:1b` dans `.env` puis `make restart`.
 
 ### STT transcription incorrecte
 
-```bash
-# Vérifier la langue
-WHISPER_LANGUAGE=fr
+Vérifier `WHISPER_LANGUAGE=fr` dans `.env`. Essayer `WHISPER_MODEL=small`.
 
-# Utiliser un modèle plus précis
-WHISPER_MODEL=small
-```
-
-### Réseau introuvable
+### Ollama non accessible
 
 ```bash
-docker network create Neron_Network
-docker compose up -d
+systemctl status ollama
+ollama serve &
 ```
 
 -----
@@ -420,22 +394,25 @@ docker compose up -d
 
 - [x] Pipeline texte (v1.1.0)
 - [x] Mémoire persistante SQLite (v1.2.0)
-- [x] Intent router + WebAgent + SearXNG (v1.3.0)
+- [x] Intent router + WebAgent (v1.3.0)
 - [x] TimeProvider, métriques Prometheus (v1.4.0)
 - [x] Pipeline audio STT faster-whisper (v1.5.0)
 - [x] Pipeline vocal complet STT + TTS (v1.6.0)
-- [ ] File d’attente requêtes (Semaphore) (v1.7.0)
-- [ ] Intégration Home Assistant (v2.0.0)
-- [ ] Streaming STT via WebSocket (v2.1.0)
-- [ ] Support GPU (v2.2.0)
-- [ ] RAG — Retrieval-Augmented Generation (v3.0.0)
+- [x] Bots Telegram bidirectionnels (v1.14.0)
+- [x] Watchdog supervision auto (v1.8.0)
+- [x] **Architecture native sans Docker** (v2.0.0)
+- [ ] Intégration Home Assistant (v2.1.x)
+- [ ] Streaming LLM natif
+- [ ] Support GPU
+- [ ] RAG — Retrieval-Augmented Generation
 
 -----
 
 ## 📚 Documentation
 
-- [CHANGELOG](CHANGELOG.md)
-- [Néron LLM](modules/neron_llm/docs/README.md)
+- [QUICKSTART](QUICKSTART.md) — Démarrage rapide
+- [CHANGELOG](CHANGELOG.md) — Historique des versions
+- [CONTRIBUTING](CONTRIBUTING.md) — Guide de contribution
 
 -----
 
@@ -447,13 +424,12 @@ Ce projet est sous licence MIT.
 
 ## 🙏 Remerciements
 
-- [Ollama](https://ollama.ai/) — Moteur LLM local
+- [Ollama](https://ollama.com/) — Moteur LLM local
 - [faster-whisper](https://github.com/SYSTRAN/faster-whisper) — STT optimisé CPU
-- [SearXNG](https://searxng.github.io/searxng/) — Moteur de recherche local
 - [FastAPI](https://fastapi.tiangolo.com/) — Framework web
-- [Gradio](https://gradio.app/) — Interface utilisateur
 - [pyttsx3](https://pyttsx3.readthedocs.io/) — TTS offline
+- [python-telegram-bot](https://python-telegram-bot.org/) — Intégration Telegram
 
 -----
 
-**Fait avec ❤️ — Néron AI v1.6.0**
+**Fait avec ❤️ — Néron AI v2.0.0**

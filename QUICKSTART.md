@@ -2,151 +2,138 @@
 
 Guide de démarrage rapide pour avoir Néron AI opérationnel en **moins de 10 minutes**.
 
-## ⚡ Installation Express (5 minutes)
+-----
+
+## ⚡ Installation Express (recommandée)
+
+### One-liner
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/master/install.sh | bash
+```
+
+Le script vérifie et installe automatiquement :
+
+- OS Ubuntu/Debian compatible
+- RAM ≥ 2 GB, disque ≥ 10 GB
+- Ollama (si absent)
+- Clone du dépôt
+- Environnement Python
+- Création du `.env` depuis `.env.example`
+- Téléchargement du modèle Ollama
+
+**Puis démarrez :**
+
+```bash
+cd /etc/neron   # ou votre NERON_DIR personnalisé
+make start
+```
+
+-----
+
+## 🛠 Installation Manuelle (si besoin de personnaliser)
 
 ### Prérequis
 
-Avant de commencer, vérifiez que vous avez :
-
 ```bash
-# Vérifier Docker
-docker --version
-# Requis: Docker version 20.10+
-
-# Vérifier Docker Compose
-docker compose version
-# Requis: Docker Compose version 2.0+
+# Vérifier Python
+python3 --version
+# Requis : Python 3.11+
 
 # Vérifier l'espace disque
 df -h
-# Requis: Au moins 20 GB libres
-```
+# Requis : Au moins 10 GB libres (modèles Ollama)
 
-Si Docker n’est pas installé :
-
-```bash
-# Ubuntu/Debian
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-
-# Redémarrer ou se relogger
+# Installer Ollama si absent
+curl -fsSL https://ollama.com/install.sh | sh
 ```
 
 ### Installation en 4 Étapes
 
-#### 1️⃣ Télécharger Néron AI
+#### 1️⃣ Cloner le dépôt
 
 ```bash
-# Cloner le dépôt
-git clone https://github.com/enabeteleazar/Neron_AI
+git clone https://github.com/enabeteleazar/Neron_AI.git
 cd Neron_AI
-
-# OU télécharger la release
-wget https://github.com/enabeteleazar/Neron_AI/archive/refs/tags/v1.6.0.tar.gz
-tar -xzf v1.6.0.tar.gz
-cd Neron_AI-1.6.0
 ```
 
-#### 2️⃣ Créer le Réseau Docker
+#### 2️⃣ Configurer
 
 ```bash
-docker network create Neron_Network
-```
-
-#### 3️⃣ Configurer
-
-```bash
-# Créer le fichier de configuration
-mkdir -p /opt/Neron_AI
-cp .env.example /opt/Neron_AI/.env
-
-# Configuration minimale (optionnel - les valeurs par défaut fonctionnent)
-nano /opt/Neron_AI/.env
+cp .env.example .env
+nano .env
 ```
 
 **Configuration minimale recommandée :**
 
 ```bash
-# Ports (laisser par défaut)
-NERON_CORE_HTTP=8000
-NERON_LLM_HTTP=11434
-
-# Modèle LLM (petit et rapide)
+# Modèle LLM (petit et rapide pour commencer)
 OLLAMA_MODEL=llama3.2:1b
 
 # STT
 WHISPER_MODEL=base
 WHISPER_LANGUAGE=fr
 
-# TTS
-TTS_ENGINE=pyttsx3
-TTS_LANGUAGE=fr
+# Telegram (optionnel — laisser vide pour désactiver)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+
+# Watchdog (optionnel)
+WATCHDOG_ENABLED=false
 
 # Logs
 LOG_LEVEL=INFO
 ```
 
-#### 4️⃣ Lancer !
+#### 3️⃣ Installer les dépendances
 
 ```bash
-# Tout en une commande
-docker compose --env-file /opt/Neron_AI/.env up -d
-
-# Attendre que les services démarrent (30-60 secondes)
-docker compose logs -f
-# Appuyer sur Ctrl+C quand vous voyez "Application startup complete"
+make install
 ```
 
-### 📦 Télécharger un Modèle LLM
+#### 4️⃣ Télécharger un modèle et démarrer
 
 ```bash
-# Modèle recommandé pour débuter (1 GB)
-docker exec neron_ollama ollama pull llama3.2:1b
+# Gérer le modèle interactivement
+make ollama
 
-# OU modèle plus précis (4 GB, meilleur français)
-docker exec neron_ollama ollama pull llama3.2:3b
+# Lancer Néron
+make start
 ```
 
-**Temps de téléchargement :** 5-10 minutes selon votre connexion.
+-----
+
+## 🤖 Configuration Telegram (optionnel)
+
+```bash
+# Assistant interactif : token + chat_id auto-détecté
+make telegram
+```
+
+Néron démarre sans Telegram si les variables restent vides.
 
 -----
 
 ## ✅ Vérification
 
-### Test Rapide
+### Statut des services
 
 ```bash
-# Vérifier que tous les services sont démarrés
-docker compose ps
-
-# Vous devriez voir :
-# neron_core      - Up (healthy)
-# neron_llm       - Up (healthy)
-# neron_ollama    - Up (healthy)
-# neron_stt       - Up (healthy)
-# neron_memory    - Up (healthy)
-# neron_tts       - Up (healthy)
-# neron_searxng   - Up (healthy)
-# neron_web       - Up
+make status
+# ou
+curl http://localhost:8000/health
+# {"status": "healthy", "version": "2.0.0"}
 ```
 
 ### Test de l’API
 
 ```bash
-# Health check
-curl http://localhost:8000/health
-# {"status": "healthy", "version": "1.6.0"}
-
 # Test texte
 curl -X POST http://localhost:8000/input/text \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: votre_api_key" \
   -d '{"text": "Quelle heure est-il ?"}'
 ```
-
-### Test de l’Interface Web
-
-Ouvrir **http://localhost:7860** dans votre navigateur. Tapez un message et cliquez sur “Submit” !
 
 -----
 
@@ -157,41 +144,37 @@ Ouvrir **http://localhost:7860** dans votre navigateur. Tapez un message et cliq
 ```bash
 curl -X POST http://localhost:8000/input/text \
   -H "Content-Type: application/json" \
-  -d '{"text": "Explique-moi ce quest Docker en une phrase"}'
+  -H "X-API-Key: votre_api_key" \
+  -d '{"text": "Explique-moi ce quest Ollama en une phrase"}'
 ```
 
 ### Exemple 2 : Consulter l’Historique
 
 ```bash
-# Récupérer les 5 dernières conversations
-curl http://localhost:8002/retrieve?limit=5
+# 5 dernières conversations
+curl http://localhost:8000/memory/retrieve?limit=5
 
 # Rechercher dans l'historique
-curl "http://localhost:8002/search?query=docker&limit=10"
+curl "http://localhost:8000/memory/search?query=docker&limit=10"
 ```
 
 ### Exemple 3 : Changer de Modèle LLM
 
 ```bash
-# Lister les modèles disponibles
-docker exec neron_ollama ollama list
+# Assistant interactif
+make ollama
 
-# Télécharger un nouveau modèle
-docker exec neron_ollama ollama pull llama3.2:3b
-
-# Modifier la configuration
-nano /opt/Neron_AI/.env
-# Changer: OLLAMA_MODEL=llama3.2:3b
-
-# Redémarrer
-docker compose restart neron_core
+# Ou manuellement
+ollama pull llama3.2:3b
+# Modifier OLLAMA_MODEL dans .env
+make restart
 ```
 
 ### Exemple 4 : Transcription Audio (STT)
 
 ```bash
-# Envoyer un fichier audio → obtenir le texte transcrit
 curl -X POST http://localhost:8000/input/audio \
+  -H "X-API-Key: votre_api_key" \
   -F "file=@mon_audio.wav"
 
 # Réponse :
@@ -205,78 +188,57 @@ curl -X POST http://localhost:8000/input/audio \
 ### Exemple 5 : Pipeline Vocal Complet (STT → LLM → TTS)
 
 ```bash
-# Envoyer audio → obtenir audio en réponse
 curl -X POST http://localhost:8000/input/voice \
+  -H "X-API-Key: votre_api_key" \
   -F "file=@mon_audio.wav" \
   -o reponse.wav
 
-# Lire la réponse audio
 aplay reponse.wav
 
-# Les headers de réponse contiennent les métadonnées :
-# X-Transcription: texte reconnu
-# X-Response-Text: réponse de Néron
-# X-Intent: intent détecté
-# X-STT-Latency-Ms: latence STT
-# X-TTS-Latency-Ms: latence TTS
+# Headers de réponse disponibles :
+# X-Transcription    — texte reconnu
+# X-Response-Text    — réponse de Néron
+# X-Intent           — intent détecté
+# X-STT-Latency-Ms   — latence STT
+# X-TTS-Latency-Ms   — latence TTS
 ```
 
 -----
 
-## 🔧 Configuration Rapide
+## 🔧 Ajuster les Performances
 
-### Ajuster les Performances
-
-**Pour un système avec peu de RAM (< 8 GB) :**
+**Système avec peu de RAM (< 4 GB) :**
 
 ```bash
 # Dans .env
-OLLAMA_MODEL=llama3.2:1b    # Modèle le plus léger (~38s)
-WHISPER_MODEL=tiny          # STT minimal (~3s)
+OLLAMA_MODEL=llama3.2:1b
+WHISPER_MODEL=tiny
 ```
 
-**Pour un système standard (8-16 GB RAM) :**
+**Système standard (8-16 GB RAM) :**
 
 ```bash
 # Dans .env
-OLLAMA_MODEL=llama3.2:3b    # Meilleur français (~86s CPU)
-WHISPER_MODEL=base          # Bon compromis (~8s)
+OLLAMA_MODEL=llama3.2:3b
+WHISPER_MODEL=base
 ```
 
-### Activer les Logs Détaillés
+**Activer les logs détaillés :**
 
 ```bash
 # Dans .env
 LOG_LEVEL=DEBUG
-
-# Redémarrer
-docker compose restart
+make restart
 ```
 
 -----
 
 ## 📊 Monitoring
 
-### Health Check Dashboard
+### Health Check rapide
 
 ```bash
-cat > health_check.sh << 'EOF'
-#!/bin/bash
-echo "=== Néron AI Health Check ==="
-echo ""
-echo "Core:     $(curl -s http://localhost:8000/health | jq -r .status)"
-echo "LLM:      $(curl -s http://localhost:5000/health | jq -r .status)"
-echo "STT:      $(curl -s http://localhost:8001/health | jq -r .status)"
-echo "TTS:      $(curl -s http://localhost:8003/health | jq -r .status)"
-echo "Memory:   $(curl -s http://localhost:8002/health | jq -r .status)"
-echo ""
-echo "Conversations: $(curl -s http://localhost:8002/stats | jq -r .total_entries)"
-echo ""
-echo "Métriques: curl http://localhost:8000/metrics"
-EOF
-
-chmod +x health_check.sh
-./health_check.sh
+make status
 ```
 
 ### Métriques Prometheus
@@ -285,128 +247,121 @@ chmod +x health_check.sh
 curl http://localhost:8000/metrics
 ```
 
-### Monitoring en Temps Réel
+### Logs en temps réel
 
 ```bash
-# Logs de tous les services
-docker compose logs -f
-
-# Un service spécifique
-docker compose logs -f neron_core
-
-# Statistiques ressources
-docker stats
+make logs
+# ou un service spécifique
+journalctl -u neron -f
 ```
 
 -----
 
 ## 🐛 Problèmes Courants
 
-### Services ne démarrent pas
+### Néron ne démarre pas
 
 ```bash
-docker compose logs
-docker compose build --no-cache
-docker compose up -d
+make logs
+# Vérifier le .env
+make env
 ```
 
-### Port déjà utilisé
+### Port 8000 déjà utilisé
 
 ```bash
 sudo lsof -i :8000
-# Option 1 : tuer le processus
-sudo kill -9 [PID]
-# Option 2 : changer le port dans .env
-NERON_CORE_HTTP=8080
+# Tuer le processus ou changer NERON_CORE_HTTP dans .env
 ```
 
 ### LLM trop lent
 
 ```bash
-# Utiliser un modèle plus léger
+# Dans .env
 OLLAMA_MODEL=llama3.2:1b
+make restart
 ```
 
 ### STT transcription incorrecte
 
 ```bash
-# Vérifier la langue dans .env
+# Dans .env
 WHISPER_LANGUAGE=fr
-
-# Ou utiliser un modèle plus précis
 WHISPER_MODEL=small
+make restart
 ```
 
-### Réseau introuvable
+### Ollama non accessible
 
 ```bash
-docker network create Neron_Network
-docker compose up -d
+systemctl status ollama
+# Si arrêté :
+ollama serve &
 ```
 
 ### Out of memory
 
 ```bash
 # Modèle plus léger
-docker exec neron_ollama ollama pull llama3.2:1b
+ollama pull llama3.2:1b
 # Dans .env : OLLAMA_MODEL=llama3.2:1b
+make restart
 ```
 
 -----
 
 ## 📝 Commandes Utiles
 
-### Gestion des Services
+### Makefile
 
 ```bash
-docker compose up -d                          # Démarrer
-docker compose down                           # Arrêter
-docker compose restart neron_core             # Redémarrer un service
-docker compose logs -f neron_core             # Logs
-docker compose build --no-cache neron_stt     # Reconstruire
+make start          # Démarrer Néron
+make stop           # Arrêter
+make restart        # Redémarrer
+make status         # État des services
+make logs           # Logs en temps réel
+make update         # Mettre à jour (git pull + restart)
+make backup         # Sauvegarder les données
+make restore        # Restaurer une sauvegarde
+make test           # Lancer les tests
+make ollama         # Gérer le modèle LLM
+make telegram       # Configurer les bots Telegram
+make env            # Afficher la configuration active
+make version        # Version installée
+make clean          # Nettoyer les fichiers temporaires
 ```
 
-### Gestion des Modèles LLM
+### Gestion des modèles Ollama
 
 ```bash
-docker exec neron_ollama ollama list                    # Lister
-docker exec neron_ollama ollama pull llama3.2:3b        # Télécharger
-docker exec neron_ollama ollama rm llama3.2:1b          # Supprimer
-docker exec neron_ollama ollama run llama3.2:1b "Hello" # Tester
+ollama list                          # Lister les modèles installés
+ollama pull llama3.2:3b              # Télécharger un modèle
+ollama rm llama3.2:1b                # Supprimer un modèle
+ollama run llama3.2:1b "Bonjour"     # Tester un modèle
 ```
 
-### Gestion de la Mémoire
+### Sauvegarde et restauration
 
 ```bash
-curl http://localhost:8002/stats                    # Statistiques
-curl "http://localhost:8002/search?query=test"      # Rechercher
-curl -X DELETE http://localhost:8002/clear          # ⚠️ Tout effacer
-docker cp neron_memory:/data/memory.db ./backup_$(date +%Y%m%d).db  # Sauvegarder
-```
-
-### Nettoyage
-
-```bash
-docker compose down            # Arrêter
-docker compose down -v         # ⚠️ Arrêter + supprimer volumes
-docker image prune -a          # Nettoyer images
-docker system prune -a --volumes  # Nettoyer tout
+make backup                          # Créer une sauvegarde
+make restore                         # Restaurer la dernière sauvegarde
 ```
 
 -----
 
-## 🚀 Étapes Suivantes
-
-### Exemples Avancés
+## 🚀 Exemples Avancés
 
 **Python :**
 
 ```python
 import requests
 
+API_KEY = "votre_api_key"
+
 def ask_neron(question: str) -> str:
     response = requests.post(
         "http://localhost:8000/input/text",
+        headers={"X-API-Key": API_KEY},
         json={"text": question},
         timeout=120
     )
@@ -424,6 +379,7 @@ def voice_neron(audio_path: str, output_path: str):
     with open(audio_path, "rb") as f:
         response = requests.post(
             "http://localhost:8000/input/voice",
+            headers={"X-API-Key": API_KEY},
             files={"file": f},
             timeout=180
         )
@@ -435,14 +391,15 @@ def voice_neron(audio_path: str, output_path: str):
 voice_neron("question.wav", "reponse.wav")
 ```
 
-**cURL :**
+**Bash :**
 
 ```bash
 ask_neron() {
     curl -s -X POST http://localhost:8000/input/text \
         -H "Content-Type: application/json" \
+        -H "X-API-Key: votre_api_key" \
         -d "{\"text\": \"$1\"}" \
-        | jq -r '.response'
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['response'])"
 }
 
 ask_neron "Quelle est la capitale de la France ?"
@@ -452,20 +409,20 @@ ask_neron "Quelle est la capitale de la France ?"
 
 ## ✅ Checklist de Démarrage
 
-- [ ] Docker et Docker Compose installés
-- [ ] Réseau Docker créé (`docker network create Neron_Network`)
-- [ ] Configuration `.env` copiée et adaptée
-- [ ] Services démarrés (`docker compose up -d`)
-- [ ] Modèle LLM téléchargé
-- [ ] Health checks réussis (`./health_check.sh`)
+- [ ] Python 3.11+ disponible
+- [ ] Ollama installé et fonctionnel (`ollama --version`)
+- [ ] `.env` configuré (modèle, langue, API key)
+- [ ] `make install` exécuté sans erreur
+- [ ] Modèle Ollama téléchargé (`make ollama`)
+- [ ] Néron démarré (`make start`)
+- [ ] Health check réussi (`make status`)
 - [ ] Test `/input/text` réussi
-- [ ] Interface web accessible (http://localhost:7860)
-- [ ] Pipeline vocal `/input/voice` testé
+- [ ] Telegram configuré si souhaité (`make telegram`)
 
-**Félicitations ! 🎉 Néron AI v1.6.0 est opérationnel !**
+**Félicitations ! 🎉 Néron AI v2.0.0 est opérationnel !**
 
 -----
 
-**Temps total estimé : 10-15 minutes**
+**Temps total estimé : 5-10 minutes**
 
 Pour aller plus loin, consultez la [documentation complète](README.md) et le [CHANGELOG](CHANGELOG.md).

@@ -18,6 +18,8 @@ Ce document fournit des guidelines pour contribuer au projet. En participant, vo
 - [Suggestions de Fonctionnalités](#suggestions-de-fonctionnalités)
 - [Questions](#questions)
 
+-----
+
 ## Code de Conduite
 
 ### Notre Engagement
@@ -26,7 +28,7 @@ Nous nous engageons à faire de la participation à ce projet une expérience ex
 
 ### Nos Standards
 
-**Exemples de comportements qui contribuent à créer un environnement positif :**
+**Comportements positifs :**
 
 - Utiliser un langage accueillant et inclusif
 - Respecter les différents points de vue et expériences
@@ -34,40 +36,36 @@ Nous nous engageons à faire de la participation à ce projet une expérience ex
 - Se concentrer sur ce qui est le mieux pour la communauté
 - Faire preuve d’empathie envers les autres membres
 
-**Exemples de comportements inacceptables :**
+**Comportements inacceptables :**
 
 - Langage ou images sexualisés, attention sexuelle non sollicitée
-- Trolling, commentaires insultants ou dérogatoires, attaques personnelles ou politiques
+- Trolling, commentaires insultants, attaques personnelles ou politiques
 - Harcèlement public ou privé
 - Publication d’informations privées sans permission explicite
-- Autre conduite raisonnablement considérée comme inappropriée
+- Toute autre conduite raisonnablement considérée comme inappropriée
+
+-----
 
 ## Comment Contribuer
 
-Il existe plusieurs façons de contribuer à Néron AI :
-
 ### 🐛 Signaler des Bugs
 
-Avant de créer un rapport de bug, vérifiez la [liste des issues](https://github.com/yourusername/neron-ai/issues) pour voir si le problème a déjà été signalé.
-
-**Comment signaler un bug :**
+Avant de créer un rapport de bug, vérifiez la [liste des issues](https://github.com/enabeteleazar/Neron_AI/issues) pour voir si le problème a déjà été signalé.
 
 1. Utilisez le template d’issue “Bug Report”
 1. Fournissez un titre clair et descriptif
 1. Décrivez les étapes exactes pour reproduire le problème
-1. Fournissez des exemples de code si possible
+1. Fournissez des exemples si possible
 1. Décrivez le comportement attendu vs observé
-1. Incluez les logs et captures d’écran pertinents
-1. Spécifiez votre environnement (OS, version Docker, etc.)
+1. Incluez les logs pertinents
+1. Spécifiez votre environnement (OS, Python, version Néron AI)
 
 ### 💡 Suggérer des Fonctionnalités
-
-**Comment suggérer une fonctionnalité :**
 
 1. Utilisez le template d’issue “Feature Request”
 1. Fournissez un titre clair et descriptif
 1. Décrivez la fonctionnalité en détail
-1. Expliquez pourquoi cette fonctionnalité serait utile
+1. Expliquez pourquoi elle serait utile
 1. Proposez une implémentation si possible
 
 ### 🔧 Contribuer du Code
@@ -80,80 +78,72 @@ Avant de créer un rapport de bug, vérifiez la [liste des issues](https://githu
 1. **Push** vers votre fork
 1. **Ouvrir** une Pull Request
 
+-----
+
 ## Configuration de l’Environnement
 
 ### Prérequis
 
 - Python 3.11+
-- Docker 20.10+
-- Docker Compose 2.0+
 - Git
+- Ollama installé localement
 - Un éditeur de code (VS Code recommandé)
+
+> ⚠️ Néron AI v2.0 est **natif, sans Docker**. Aucun Docker requis pour contribuer.
 
 ### Installation pour le Développement
 
 ```bash
 # 1. Forker et cloner le dépôt
-git clone https://github.com/VOTRE_USERNAME/neron-ai.git
-cd neron-ai
+git clone https://github.com/VOTRE_USERNAME/Neron_AI.git
+cd Neron_AI
 
-# 2. Créer le réseau Docker
-docker network create Neron_Network
+# 2. Copier et configurer les variables d'environnement
+cp .env.example .env
+# Éditer .env selon votre configuration locale
 
-# 3. Copier et configurer les variables d'environnement
-cp .env.example /opt/Homebox_AI/.env
+# 3. Installer les dépendances Python
+make install
 
-# 4. Installer les dépendances Python pour le développement
-pip install -r requirements-dev.txt
+# 4. Télécharger un modèle Ollama
+make ollama
 
-# 5. Installer les pre-commit hooks
-pre-commit install
-
-# 6. Lancer les services en mode développement
-docker compose up -d
-
-# 7. Télécharger un modèle de test
-docker exec -it neron_ollama ollama pull llama3.2:1b
+# 5. Lancer Néron en mode développement
+make start
 ```
 
 ### Configuration de l’Éditeur
 
 **VS Code (recommandé) :**
 
-Installer les extensions suivantes :
-
-- Python
-- Docker
-- Pylance
-- Black Formatter
-- autoDocstring
+Extensions recommandées : Python, Pylance, Black Formatter, autoDocstring
 
 Configuration `.vscode/settings.json` :
 
 ```json
 {
   "python.linting.enabled": true,
-  "python.linting.pylintEnabled": false,
   "python.linting.flake8Enabled": true,
   "python.formatting.provider": "black",
   "editor.formatOnSave": true,
-  "python.testing.pytestEnabled": true,
-  "python.testing.unittestEnabled": false
+  "python.testing.pytestEnabled": true
 }
 ```
+
+-----
 
 ## Workflow de Développement
 
 ### 1. Créer une Branche
 
 ```bash
-# Pour une nouvelle fonctionnalité
+# Nouvelle fonctionnalité
 git checkout -b feature/nom-de-la-fonctionnalite
 
-# Pour un bugfix
+# Bugfix
 git checkout -b fix/description-du-bug
 
-# Pour de la documentation
+# Documentation
 git checkout -b docs/description
 ```
 
@@ -167,11 +157,14 @@ git checkout -b docs/description
 ### 3. Tester
 
 ```bash
-# Tests unitaires d'un module spécifique
-cd modules/neron_llm
+# Tous les tests
+make test
+
+# Tests d'un module spécifique
+cd neron_core
 pytest -v
 
-# Tests avec coverage
+# Avec coverage
 pytest --cov=. --cov-report=html
 
 # Linter
@@ -179,17 +172,13 @@ flake8 .
 
 # Formatter
 black .
-
-# Type checking
-mypy .
 ```
 
 ### 4. Commit
 
-Utilisez des messages de commit clairs et descriptifs suivant la convention [Conventional Commits](https://www.conventionalcommits.org/) :
+Utilisez la convention [Conventional Commits](https://www.conventionalcommits.org/) :
 
-```bash
-# Format
+```
 <type>(<scope>): <description>
 
 [corps optionnel]
@@ -199,13 +188,13 @@ Utilisez des messages de commit clairs et descriptifs suivant la convention [Con
 
 **Types :**
 
-- `feat`: Nouvelle fonctionnalité
-- `fix`: Correction de bug
-- `docs`: Documentation seulement
-- `style`: Formatage, points-virgules manquants, etc.
-- `refactor`: Refactoring de code
-- `test`: Ajout de tests
-- `chore`: Maintenance, configuration
+- `feat` : Nouvelle fonctionnalité
+- `fix` : Correction de bug
+- `docs` : Documentation seulement
+- `style` : Formatage, cosmétique
+- `refactor` : Refactoring sans nouvelle feature ni bugfix
+- `test` : Ajout ou correction de tests
+- `chore` : Maintenance, configuration
 
 **Exemples :**
 
@@ -219,11 +208,11 @@ git commit -m "test(memory): ajoute tests pour la recherche"
 ### 5. Push et Pull Request
 
 ```bash
-# Push vers votre fork
 git push origin feature/nom-de-la-fonctionnalite
-
-# Créer une Pull Request sur GitHub
+# Puis ouvrir une Pull Request sur GitHub
 ```
+
+-----
 
 ## Standards de Code
 
@@ -232,9 +221,8 @@ git push origin feature/nom-de-la-fonctionnalite
 **Style :**
 
 - Suivez [PEP 8](https://www.python.org/dev/peps/pep-0008/)
-- Utilisez [Black](https://black.readthedocs.io/) pour le formatage
-- Utilisez [flake8](https://flake8.pycqa.org/) pour le linting
-- Maximum 88 caractères par ligne (Black default)
+- Formatage via [Black](https://black.readthedocs.io/) (88 chars/ligne)
+- Linting via [flake8](https://flake8.pycqa.org/)
 
 **Type Hints :**
 
@@ -242,41 +230,35 @@ git push origin feature/nom-de-la-fonctionnalite
 def process_text(text: str, max_length: int = 100) -> Dict[str, Any]:
     """
     Traite le texte d'entrée.
-    
+
     Args:
         text: Texte à traiter
         max_length: Longueur maximale
-        
+
     Returns:
         Résultat du traitement
     """
     result: Dict[str, Any] = {}
-    # ... code ...
     return result
 ```
 
 **Docstrings :**
 
-- Utilisez le format Google ou NumPy
-- Documentez tous les modules, classes et fonctions publiques
-
 ```python
 def function_name(param1: str, param2: int) -> bool:
     """
     Description courte de la fonction.
-    
-    Description plus longue si nécessaire.
-    
+
     Args:
         param1: Description du premier paramètre
         param2: Description du second paramètre
-        
+
     Returns:
         Description de la valeur de retour
-        
+
     Raises:
         ValueError: Quand param2 est négatif
-        
+
     Example:
         >>> function_name("test", 5)
         True
@@ -302,80 +284,60 @@ from .config import settings
 from .models import Request
 ```
 
-### Docker
-
-**Dockerfile :**
-
-- Utilisez des images officielles de base
-- Multi-stage builds quand approprié
-- Minimisez les layers
-- Utilisez `.dockerignore`
-- Documentez les variables d’environnement
-
-**Docker Compose :**
-
-- Utilisez des noms de services explicites
-- Configurez les health checks
-- Documentez les volumes et networks
-- Utilisez des variables d’environnement
-
 ### Structure de Projet
 
 ```
-module_name/
-├── __init__.py          # Exports du module
-├── app.py               # Application principale
+neron_core/
+├── app.py               # Application principale (point d'entrée unique)
 ├── config.py            # Configuration
 ├── models.py            # Modèles Pydantic
-├── client.py            # Client externe (si applicable)
+├── agents/              # Agents intégrés
+│   ├── llm_agent.py
+│   ├── stt_agent.py
+│   ├── tts_agent.py
+│   ├── memory_agent.py
+│   ├── telegram_agent.py
+│   └── watchdog_agent.py
 ├── requirements.txt     # Dépendances
-├── Dockerfile           # Image Docker
-├── README.md            # Documentation du module
-├── tests/               # Tests
-│   ├── __init__.py
-│   ├── conftest.py
-│   ├── test_app.py
-│   └── test_models.py
-└── docs/                # Documentation détaillée
-    └── README.md
+└── tests/               # Tests
+    ├── __init__.py
+    ├── conftest.py
+    └── test_*.py
 ```
+
+-----
 
 ## Tests
 
 ### Philosophie
 
 - Tous les nouveaux codes doivent être testés
-- Objectif de coverage : **80% minimum, 90%+ idéal**
+- Coverage minimum : **80%**, cible : **90%+**
 - Tests unitaires rapides (< 1s chacun)
 - Tests d’intégration pour les workflows complets
 
 ### Écrire des Tests
-
-**Structure d’un test :**
 
 ```python
 import pytest
 
 def test_feature_name():
     """Description claire de ce qui est testé"""
-    # Arrange - Préparer les données
+    # Arrange
     input_data = "test"
-    
-    # Act - Exécuter la fonction
+
+    # Act
     result = my_function(input_data)
-    
-    # Assert - Vérifier le résultat
+
+    # Assert
     assert result == expected_output
 ```
 
 **Tests asynchrones :**
 
 ```python
-import pytest
-
 @pytest.mark.asyncio
 async def test_async_feature():
-    """Test d'une fonction async"""
     result = await async_function()
     assert result is not None
 ```
@@ -387,7 +349,6 @@ from unittest.mock import patch, AsyncMock
 
 @pytest.mark.asyncio
 async def test_with_mock():
-    """Test avec mock d'un service externe"""
     with patch('module.external_call', AsyncMock(return_value="mocked")):
         result = await my_function()
         assert result == "mocked"
@@ -396,107 +357,89 @@ async def test_with_mock():
 ### Lancer les Tests
 
 ```bash
-# Tests d'un module
-cd modules/neron_llm
+# Via Makefile
+make test
+
+# Directement
 pytest -v
-
-# Avec coverage
 pytest --cov=. --cov-report=html
-
-# Tests spécifiques
 pytest tests/test_app.py::test_health_check
 
-# Mode watch (install pytest-watch)
+# Mode watch
 ptw
 ```
 
-### Coverage
-
-```bash
-# Générer un rapport de coverage
-pytest --cov=. --cov-report=html --cov-report=term-missing
-
-# Voir le rapport
-open htmlcov/index.html
-```
+-----
 
 ## Documentation
 
 ### Quoi Documenter
 
-- **README.md** : Vue d’ensemble du module
-- **API** : Tous les endpoints avec exemples
-- **Configuration** : Variables d’environnement
-- **Exemples** : Cas d’utilisation courants
+- **README.md** : Vue d’ensemble, installation, usage
+- **API** : Tous les endpoints avec exemples de requête/réponse
+- **Configuration** : Variables d’environnement et valeurs par défaut
 - **Architecture** : Décisions de design importantes
 
 ### Format de Documentation
 
-**Module README :**
-
 ```markdown
 # Module Name
 
-Description courte
-
-## Features
-- Feature 1
-- Feature 2
+Description courte.
 
 ## Usage
-```python
+
+\`\`\`python
 example code
-```
+\`\`\`
 
 ## API
 
-### Endpoint Name
+### POST /endpoint
 
-Description
+Description.
 
 **Request:**
-
-```json
-example
-```
+\`\`\`json
+{"key": "value"}
+\`\`\`
 
 **Response:**
-
-```json
-example
-```
+\`\`\`json
+{"result": "..."}
+\`\`\`
 
 ## Configuration
 
-Variables d’environnement…
-
+| Variable | Description | Défaut |
+|----------|-------------|--------|
+| VAR_NAME | Description | value  |
 ```
+
+-----
+
 ## Pull Requests
 
 ### Checklist
 
-Avant de soumettre une PR, assurez-vous que :
-
-- [ ] Le code suit les standards du projet
-- [ ] Tous les tests passent
+- [ ] Code suit les standards du projet
+- [ ] Tous les tests passent (`make test`)
 - [ ] Coverage ≥ 80%
 - [ ] Documentation mise à jour
 - [ ] CHANGELOG.md mis à jour
 - [ ] Commits suivent le format conventionnel
-- [ ] Pas de conflits avec main
-- [ ] PR description claire et complète
+- [ ] Pas de conflits avec `master`
+- [ ] Description de la PR claire et complète
 
 ### Description de PR
-
-Utilisez le template suivant :
 
 ```markdown
 ## Description
 Décrivez vos changements en détail.
 
 ## Type de Changement
-- [ ] 🐛 Bug fix (non-breaking change)
-- [ ] ✨ New feature (non-breaking change)
+- [ ] 🐛 Bug fix
+- [ ] ✨ New feature
 - [ ] 💥 Breaking change
 - [ ] 📝 Documentation
 - [ ] 🔧 Refactoring
@@ -511,34 +454,32 @@ Décrivez comment tester vos changements.
 - [ ] Code formatté (black)
 - [ ] Linter passé (flake8)
 
-## Screenshots (si applicable)
-
 ## Related Issues
 Closes #123
 ```
 
-### Review Process
+### Process de Review
 
-1. **Automated checks** : CI/CD vérifie les tests et le linting
-1. **Code review** : Au moins un mainteneur review le code
-1. **Discussion** : Répondez aux commentaires et questions
-1. **Approbation** : Au moins une approbation requise
-1. **Merge** : Squash and merge par défaut
+1. **CI** — tests et linting automatiques
+1. **Code review** — au moins un mainteneur
+1. **Discussion** — répondez aux commentaires
+1. **Approbation** — au moins une approbation requise
+1. **Merge** — squash and merge par défaut
+
+-----
 
 ## Reporting de Bugs
 
-### Template d’Issue Bug
+### Template
 
 ```markdown
 ## Description
 Description claire et concise du bug.
 
 ## Reproduction
-Étapes pour reproduire :
-1. Go to '...'
-2. Click on '...'
-3. Scroll down to '...'
-4. See error
+1. ...
+2. ...
+3. See error
 
 ## Comportement Attendu
 Ce qui devrait se passer.
@@ -546,93 +487,72 @@ Ce qui devrait se passer.
 ## Comportement Observé
 Ce qui se passe réellement.
 
-## Screenshots
-Si applicable, ajoutez des screenshots.
-
 ## Environnement
 - OS: [e.g. Ubuntu 22.04]
-- Docker version: [e.g. 24.0.0]
 - Python version: [e.g. 3.11.5]
-- Version Néron AI: [e.g. 1.0.0]
+- Version Néron AI: [e.g. 2.0.0]
+- Ollama version: [e.g. 0.6.0]
 
 ## Logs
-```
+\`\`\`
+coller les logs ici
+\`\`\`
 
-Coller les logs pertinents
-
-```
 ## Contexte Additionnel
 Tout autre contexte utile.
 ```
 
+-----
+
 ## Suggestions de Fonctionnalités
 
-### Template d’Issue Feature
+### Template
 
 ```markdown
 ## Problème à Résoudre
 Description du problème que cette feature résoudrait.
 
 ## Solution Proposée
-Description claire de ce que vous voulez.
+Description claire de ce que vous souhaitez.
 
 ## Alternatives Considérées
-Autres solutions que vous avez envisagées.
-
-## Contexte Additionnel
-Screenshots, mockups, exemples de code.
+Autres solutions envisagées.
 
 ## Implémentation Suggérée (optionnel)
 Si vous avez une idée d'implémentation.
 ```
 
+-----
+
 ## Questions
 
-### Où Poser des Questions
+- **Issues GitHub** : bugs et features → [github.com/enabeteleazar/Neron_AI/issues](https://github.com/enabeteleazar/Neron_AI/issues)
+- **Discussions GitHub** : questions générales
 
-- **Issues GitHub** : Pour les bugs et features
-- **Discussions GitHub** : Pour les questions générales
-- **Email** : support@neron-ai.example.com
-
-### Comment Poser une Bonne Question
+**Comment poser une bonne question :**
 
 1. Recherchez d’abord dans les issues existantes
 1. Soyez clair et concis
-1. Fournissez du contexte
-1. Incluez des exemples de code si pertinent
+1. Fournissez du contexte et des logs
 1. Décrivez ce que vous avez déjà essayé
+
+-----
 
 ## Reconnaissance des Contributeurs
 
-Tous les contributeurs seront listés dans :
+Tous les contributeurs seront listés dans AUTHORS.md et les release notes.
 
-- Le fichier AUTHORS.md
-- La section “Contributors” sur GitHub
-- Les release notes
+-----
 
 ## Ressources
-
-### Documentation
-
-- [Architecture](docs/ARCHITECTURE.md)
-- [API Documentation](docs/API.md)
-- [FAQ](docs/FAQ.md)
-
-### Outils
 
 - [Python PEP 8](https://www.python.org/dev/peps/pep-0008/)
 - [Black](https://black.readthedocs.io/)
 - [Pytest](https://docs.pytest.org/)
 - [FastAPI](https://fastapi.tiangolo.com/)
-- [Docker](https://docs.docker.com/)
-
-### Communauté
-
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [License](LICENSE)
+- [Ollama](https://ollama.com/)
+- [Conventional Commits](https://www.conventionalcommits.org/)
 
 -----
 
 **Merci pour votre contribution à Néron AI ! 🎉**
-
-Votre aide est précieuse pour améliorer le projet.
