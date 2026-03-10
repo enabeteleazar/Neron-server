@@ -107,6 +107,11 @@ class Config:
     SEARXNG_TIMEOUT     = float(_get(_cfg, "searxng", "timeout",    fallback_env="SEARXNG_TIMEOUT",    default=10.0))
     SEARXNG_MAX_RESULTS = int(_get(_cfg, "searxng", "max_results",  fallback_env="SEARXNG_MAX_RESULTS", default=5))
 
+    # Home Assistant
+    HA_ENABLED = str(_get(_cfg, "home_assistant", "enabled", fallback_env="HA_ENABLED", default=False)).lower() == "true"
+    HA_URL     = _get(_cfg, "home_assistant", "url",   fallback_env="HA_URL",   default="http://homeassistant.local:8123")
+    HA_TOKEN   = _get(_cfg, "home_assistant", "token", fallback_env="HA_TOKEN", default="")
+
     # System
     NERON_WATCHDOG_URL = _get(_cfg, "system", "watchdog_url", fallback_env="NERON_WATCHDOG_URL", default="http://localhost:8003")
 
