@@ -163,6 +163,149 @@ print(updates[-1]['message']['chat']['id'] if updates else '')
     ok "Telegram configuré dans neron.yaml"
 }
 
+# --- Configuration Home Assistant ---
+setup_home_assistant() {
+    echo ""
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    slow_echo "  🏠 Intégration Home Assistant" 0.03
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    slow_echo "  Recherche de Home Assistant sur le réseau..." 0.02
+    HA_FOUND="" ; HA_IP=""
+    LOCAL_PREFIX=$(ip route | grep -E "^[0-9]" | head -1 | awk '{print $1}' | cut -d'.' -f1-3 2>/dev/null || echo "")
+
+    if [ -n "$LOCAL_PREFIX" ]; then
+        for i in $(seq 1 254); do
+            IP="${LOCAL_PREFIX}.${i}"
+            if curl -sf --connect-timeout 0.3 "http://${IP}:8123/api/" > /dev/null 2>&1; then
+                HA_FOUND="$IP" ; HA_IP="$IP" ; break
+            fi
+        done
+    fi
+
+    if [ -n "$HA_FOUND" ]; then
+        echo ""
+        ok "Home Assistant détecté sur ${BOLD}http://${HA_IP}:8123${NC}"
+        echo ""
+        read -p "  Connecter Néron à Home Assistant ? [O/n] " CONNECT_HA
+        if [ "$CONNECT_HA" = "n" ]; then
+            warn "Home Assistant ignoré — configurez plus tard : make ha-setup"
+            yaml_set "$YAML_FILE" "home_assistant" "enabled" "false"
+            return
+        fi
+        _configure_ha "http://${HA_IP}:8123"
+    else
+        echo ""
+        warn "Home Assistant non détecté sur le réseau local"
+        echo ""
+        read -p "  Voulez-vous installer Home Assistant ? [O/n] " INSTALL_HA
+        if [ "$INSTALL_HA" = "n" ]; then
+            warn "Home Assistant ignoré — configurez plus tard : make ha-setup"
+            yaml_set "$YAML_FILE" "home_assistant" "enabled" "false"
+            return
+        fi
+        _install_ha
+    fi
+}
+
+_install_ha() {
+    echo ""
+    slow_echo "  Installation de Home Assistant Supervised..." 0.02
+    warn "Cette opération peut prendre 5 à 10 minutes..."
+    echo ""
+
+    if ! command -v docker > /dev/null 2>&1; then
+        slow_echo "  Installation de Docker..." 0.02
+        curl -fsSL https://get.docker.com | sh > /dev/null 2>&1 & spinner $!
+        ok "Docker installé"
+    else
+        ok "Docker déjà présent"
+    fi
+
+    case "$(uname -m)" in
+        x86_64)  OS_AGENT_ARCH="amd64" ;;
+        aarch64) OS_AGENT_ARCH="aarch64" ;;
+        armv7l)  OS_AGENT_ARCH="armv7" ;;
+        *)       OS_AGENT_ARCH="amd64" ;;
+    esac
+
+    slow_echo "  Installation de os-agent..." 0.02
+    curl -fsSL "https://github.com/home-assistant/os-agent/releases/download/1.6.0/os-agent_1.6.0_linux_${OS_AGENT_ARCH}.deb" \
+        -o /tmp/os-agent.deb > /dev/null 2>&1 & spinner $!
+    sudo dpkg -i /tmp/os-agent.deb > /dev/null 2>&1
+    rm -f /tmp/os-agent.deb
+    ok "os-agent installé"
+
+    slow_echo "  Installation de Home Assistant Supervised..." 0.02
+    curl -fsSL "https://github.com/home-assistant/supervised-installer/releases/latest/download/homeassistant-supervised.deb" \
+        -o /tmp/ha-supervised.deb > /dev/null 2>&1 & spinner $!
+    sudo apt-get install -y /tmp/ha-supervised.deb > /dev/null 2>&1 & spinner $!
+    rm -f /tmp/ha-supervised.deb
+    ok "Home Assistant Supervised installé"
+
+    echo ""
+    slow_echo "  Attente du démarrage de Home Assistant..." 0.02
+    HA_READY=false
+    for i in $(seq 1 30); do
+        if curl -sf --connect-timeout 2 "http://localhost:8123/api/" > /dev/null 2>&1; then
+            HA_READY=true ; break
+        fi
+        sleep 10 ; printf "."
+    done
+    echo ""
+
+    if [ "$HA_READY" = true ]; then
+        ok "Home Assistant prêt sur http://localhost:8123"
+        _configure_ha "http://localhost:8123"
+    else
+        warn "Home Assistant pas encore prêt — finalisez sur http://localhost:8123"
+        warn "Puis configurez Néron : make ha-setup"
+        yaml_set "$YAML_FILE" "home_assistant" "enabled" "false"
+        yaml_set "$YAML_FILE" "home_assistant" "url" "http://localhost:8123"
+        yaml_set "$YAML_FILE" "home_assistant" "token" ""
+    fi
+}
+
+_configure_ha() {
+    local HA_URL="$1"
+    echo ""
+    slow_echo "  Pour créer un token dans Home Assistant :" 0.02
+    echo -e "  ${YELLOW}Profil → Sécurité → Jetons d'accès longue durée → Créer${NC}"
+    echo ""
+    read -p "  URL Home Assistant [$HA_URL] : " INPUT_URL
+    [ -n "$INPUT_URL" ] && HA_URL="$INPUT_URL"
+    echo ""
+    read -p "  Token d'accès longue durée : " HA_TOKEN
+
+    if [ -z "$HA_TOKEN" ]; then
+        warn "Token vide — configurez plus tard : make ha-setup"
+        yaml_set "$YAML_FILE" "home_assistant" "enabled" "false"
+        yaml_set "$YAML_FILE" "home_assistant" "url" "$HA_URL"
+        yaml_set "$YAML_FILE" "home_assistant" "token" ""
+        return
+    fi
+
+    slow_echo "  Test de connexion..." 0.02
+    HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer $HA_TOKEN" \
+        -H "Content-Type: application/json" \
+        "${HA_URL}/api/" 2>/dev/null || echo "000")
+
+    if [ "$HTTP_CODE" = "200" ]; then
+        ok "Connexion Home Assistant réussie !"
+        yaml_set "$YAML_FILE" "home_assistant" "enabled" "true"
+        yaml_set "$YAML_FILE" "home_assistant" "url" "$HA_URL"
+        yaml_set "$YAML_FILE" "home_assistant" "token" "$HA_TOKEN"
+    else
+        warn "Connexion échouée (HTTP $HTTP_CODE) — vérifiez URL et token"
+        warn "Configurez plus tard : make ha-setup"
+        yaml_set "$YAML_FILE" "home_assistant" "enabled" "false"
+        yaml_set "$YAML_FILE" "home_assistant" "url" "$HA_URL"
+        yaml_set "$YAML_FILE" "home_assistant" "token" "$HA_TOKEN"
+    fi
+}
+
 # --- Mode telegram-only ---
 if [ "${1:-}" = "--telegram-only" ]; then
     set +e
@@ -312,6 +455,9 @@ fi
 
 # --- Telegram ---
 setup_telegram
+
+# --- Home Assistant ---
+setup_home_assistant
 
 # --- Résumé ---
 echo ""
