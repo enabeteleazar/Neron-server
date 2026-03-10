@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from datetime import datetime, timezone
 import sys
 
-sys.path.insert(0, "/mnt/usb-storage/Neron_AI/modules/neron_core")
 
 
 def make_intent_result(intent, confidence="high"):

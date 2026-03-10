@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import sys
-sys.path.insert(0, "/mnt/usb-storage/Neron_AI/modules/neron_core")
 
 from agents.ha_agent import HAAgent, _parse_query, _build_response, _normalize
 

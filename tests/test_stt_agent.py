@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/mnt/usb-storage/Neron_AI/modules/neron_core")
 
 from agents.stt_agent import STTAgent
 

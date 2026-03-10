@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import MagicMock, patch
 import sys
 
-sys.path.insert(0, "/mnt/usb-storage/Neron_AI/modules/neron_core")
 
 from agents.tts_agent import TTSAgent
 
