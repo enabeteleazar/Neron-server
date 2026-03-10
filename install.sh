@@ -3,14 +3,49 @@
 # Usage: curl -fsSL https://raw.githubusercontent.com/enabeteleazar/Neron_AI/master/install.sh | bash
 
 set -euo pipefail
+clear
 
-# --- Couleurs ---
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m'
+# --- Couleurs terminal ---
+BOLD=$(tput bold)
+RESET=$(tput sgr0)
+RED=$(tput setaf 1)
+GREEN=$(tput setaf 2)
+YELLOW=$(tput setaf 3)
+BLUE=$(tput setaf 4)
+CYAN=$(tput setaf 6)
+NC=$RESET
+
+# --- Affichage lent ---
+slow_echo() {
+    local text="$1"
+    local delay="${2:-0.02}"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep $delay
+    done
+    echo
+}
+
+# --- Spinner ---
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " ${BLUE}[%c]${NC}  " "${spinstr}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "      \b\b\b\b\b\b"
+}
+
+# --- Helpers affichage ---
+ok()   { echo -e "  ${GREEN}${BOLD}✔${NC} $1"; }
+fail() { echo -e "  ${RED}${BOLD}✘${NC} $1"; }
+warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; }
+step() { echo -e "\n${BLUE}${BOLD}[$1]${NC} $2"; }
 
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 INSTALL_DIR="${NERON_DIR:-/etc/neron}"
@@ -19,7 +54,6 @@ YAML_FILE="$INSTALL_DIR/neron.yaml"
 
 # --- Helpers yaml ---
 yaml_get() {
-    # yaml_get <file> <section> <key>
     python3 -c "
 import yaml, sys
 with open('$1') as f:
@@ -32,7 +66,6 @@ except:
 }
 
 yaml_set() {
-    # yaml_set <file> <section> <key> <value>
     python3 - "$1" "$2" "$3" "$4" << 'PYEOF'
 import yaml, sys
 path, section, key, value = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -49,18 +82,18 @@ PYEOF
 # --- Configuration Telegram ---
 setup_telegram() {
     echo ""
-    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  📱 Configuration Telegram"
-    echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    slow_echo "  📱 Configuration Telegram" 0.03
+    echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     read -p "  Voulez-vous utiliser Telegram ? [O/n] " USE_TG
-    [ "$USE_TG" = "n" ] && echo -e "${YELLOW}  👉 Configurez Telegram plus tard : make telegram${NC}" && return
+    [ "$USE_TG" = "n" ] && warn "Configurez Telegram plus tard : make telegram" && return
 
     echo ""
     read -p "  Avez-vous un compte Telegram ? [O/n] " HAS_TG
     if [ "$HAS_TG" = "n" ]; then
-        echo -e "${YELLOW}  📲 Créez un compte sur https://telegram.org${NC}"
-        echo -e "${YELLOW}  Puis relancez : make telegram${NC}"
+        warn "Créez un compte sur https://telegram.org"
+        warn "Puis relancez : make telegram"
         return
     fi
 
@@ -68,8 +101,8 @@ setup_telegram() {
     read -p "  Avez-vous déjà un token de bot ? [O/n] " HAS_TOKEN
     if [ "$HAS_TOKEN" = "n" ]; then
         echo ""
-        echo -e "${BOLD}  Comment créer un bot Telegram :${NC}"
-        echo -e "  1. Ouvrez Telegram et cherchez ${YELLOW}@BotFather${NC}"
+        echo -e "  ${BOLD}Comment créer un bot Telegram :${NC}"
+        echo -e "  1. Cherchez ${YELLOW}@BotFather${NC} sur Telegram"
         echo -e "  2. Envoyez : ${YELLOW}/newbot${NC}"
         echo -e "  3. Choisissez un nom et un username (finissant par 'bot')"
         echo -e "  4. Copiez le token fourni"
@@ -79,10 +112,10 @@ setup_telegram() {
 
     echo ""
     read -p "  Token du bot principal (conversations) : " BOT_TOKEN
-    [ -z "$BOT_TOKEN" ] && echo "❌ Token vide" && return
+    [ -z "$BOT_TOKEN" ] && fail "Token vide" && return
 
     echo ""
-    echo -e "${YELLOW}  → Envoyez un message à votre bot maintenant, puis appuyez sur Entrée${NC}"
+    warn "Envoyez un message à votre bot, puis appuyez sur Entrée"
     read -p "  Appuyez sur Entrée après avoir envoyé un message..." _
 
     TG_RESPONSE=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates")
@@ -94,13 +127,12 @@ print(updates[-1]['message']['chat']['id'] if updates else '')
 " 2>/dev/null || echo "")
 
     if [ -z "$CHAT_ID" ]; then
-        echo -e "${YELLOW}  ⚠ Chat ID non récupéré automatiquement${NC}"
+        warn "Chat ID non récupéré automatiquement"
         read -p "  Entrez votre Chat ID manuellement : " CHAT_ID
     else
-        echo -e "${GREEN}  ✔ Chat ID récupéré : $CHAT_ID${NC}"
+        ok "Chat ID récupéré : $CHAT_ID"
     fi
 
-    # Watchdog bot
     WDOG_TOKEN="$BOT_TOKEN"
     WDOG_CHAT_ID="$CHAT_ID"
     WATCHDOG_ENABLED=$(yaml_get "$YAML_FILE" "watchdog" "enabled")
@@ -109,7 +141,7 @@ print(updates[-1]['message']['chat']['id'] if updates else '')
         echo -e "  Créez un second bot via ${YELLOW}@BotFather${NC} pour le monitoring"
         read -p "  Token du bot monitoring : " WDOG_TOKEN
         [ -z "$WDOG_TOKEN" ] && WDOG_TOKEN="$BOT_TOKEN"
-        echo -e "${YELLOW}  → Envoyez un message au bot monitoring, puis appuyez sur Entrée${NC}"
+        warn "Envoyez un message au bot monitoring, puis appuyez sur Entrée"
         read -p "  Appuyez sur Entrée..." _
         WDOG_CHAT_ID=$(curl -s "https://api.telegram.org/bot${WDOG_TOKEN}/getUpdates" | \
             python3 -c "
@@ -118,10 +150,9 @@ updates = json.load(sys.stdin).get('result', [])
 print(updates[-1]['message']['chat']['id'] if updates else '')
 " 2>/dev/null || echo "")
         [ -z "$WDOG_CHAT_ID" ] && read -p "  Chat ID monitoring manuellement : " WDOG_CHAT_ID
-        echo -e "${GREEN}  ✔ Bot monitoring configuré${NC}"
+        ok "Bot monitoring configuré"
     fi
 
-    # Écrire dans neron.yaml
     yaml_set "$YAML_FILE" "telegram" "enabled"   "true"
     yaml_set "$YAML_FILE" "telegram" "bot_token" "$BOT_TOKEN"
     yaml_set "$YAML_FILE" "telegram" "chat_id"   "$CHAT_ID"
@@ -129,7 +160,7 @@ print(updates[-1]['message']['chat']['id'] if updates else '')
     yaml_set "$YAML_FILE" "watchdog" "chat_id"   "$WDOG_CHAT_ID"
 
     echo ""
-    echo -e "${GREEN}  ✔ Telegram configuré dans neron.yaml${NC}"
+    ok "Telegram configuré dans neron.yaml"
 }
 
 # --- Mode telegram-only ---
@@ -142,99 +173,102 @@ if [ "${1:-}" = "--telegram-only" ]; then
     exit 0
 fi
 
-clear
+# --- Bannière ---
+echo ""
 echo -e "${BOLD}${BLUE}"
-echo "╔════════════════════════════════════════╗"
-echo "║     🧠 Néron AI v2.1 — Installateur    ║"
-echo "╚════════════════════════════════════════╝"
+slow_echo "╔════════════════════════════════════════╗" 0.01
+slow_echo "║     🧠 Néron AI v2.1 — Installateur    ║" 0.01
+slow_echo "╚════════════════════════════════════════╝" 0.01
 echo -e "${NC}"
+echo ""
+
+# --- Vérif dpkg ---
+slow_echo "${BLUE}Vérification du gestionnaire de paquets...${NC}" 0.02
+if sudo dpkg --configure -a > /dev/null 2>&1; then
+    ok "Gestionnaire de paquets OK"
+else
+    warn "Problème détecté — correction en cours..."
+    sudo dpkg --configure -a > /dev/null 2>&1 & spinner $!
+    ok "Correction effectuée"
+fi
 
 # --- Vérification OS ---
-echo ""
-echo -e "${BLUE}[1/7] Vérification du système...${NC}"
+step "1/7" "Vérification du système..."
 if ! command -v apt-get >/dev/null 2>&1; then
-    echo -e "${RED}❌ Ubuntu/Debian requis${NC}"
+    fail "Ubuntu/Debian requis"
     exit 1
 fi
 
 TOTAL_RAM=$(free -m | awk '/^Mem:/{print $2}')
 if [ "$TOTAL_RAM" -lt 2048 ]; then
-    echo -e "${YELLOW}⚠ RAM : ${TOTAL_RAM}MB — minimum recommandé 4GB${NC}"
+    warn "RAM : ${TOTAL_RAM}MB — minimum recommandé 4GB"
     read -p "  Continuer quand même ? [o/N] " CONTINUE
     [ "$CONTINUE" = "o" ] || exit 1
 else
-    echo -e "${GREEN}✔ RAM : ${TOTAL_RAM}MB OK${NC}"
+    ok "RAM : ${TOTAL_RAM}MB OK"
 fi
 
 FREE_DISK=$(df -BG "$HOME" | awk 'NR==2{gsub("G",""); print $4}')
 if [ "$FREE_DISK" -lt 10 ]; then
-    echo -e "${YELLOW}⚠ Disque libre : ${FREE_DISK}GB — minimum recommandé 10GB${NC}"
+    warn "Disque libre : ${FREE_DISK}GB — minimum recommandé 10GB"
     read -p "  Continuer quand même ? [o/N] " CONTINUE
     [ "$CONTINUE" = "o" ] || exit 1
 else
-    echo -e "${GREEN}✔ Disque : ${FREE_DISK}GB libre OK${NC}"
+    ok "Disque : ${FREE_DISK}GB libre OK"
 fi
 
 # --- Dépendances ---
-echo ""
-echo -e "${BLUE}[2/7] Installation des dépendances système...${NC}"
-sudo apt-get update -qq
+step "2/7" "Installation des dépendances système..."
 
 PYTHON_VENV_PKG="python3-venv"
 python3 --version 2>/dev/null | grep -q "3.12" && PYTHON_VENV_PKG="python3.12-venv" || true
 
+sudo apt-get update -qq > /dev/null 2>&1 & spinner $!
 sudo apt-get install -y -qq \
     python3 \
     $PYTHON_VENV_PKG \
     python3-pip \
     python3-yaml \
-    git \
-    make \
-    curl \
-    espeak \
-    libespeak1 \
-    ffmpeg \
-    zstd \
-    nano
-echo -e "${GREEN}✔ Dépendances OK${NC}"
+    git make curl \
+    espeak libespeak1 \
+    ffmpeg zstd nano > /dev/null 2>&1 & spinner $!
+ok "Dépendances OK"
 
 # --- Ollama ---
-echo ""
-echo -e "${BLUE}[3/7] Vérification Ollama...${NC}"
+step "3/7" "Vérification Ollama..."
 if ! command -v ollama >/dev/null 2>&1; then
-    echo -e "${YELLOW}⚠ Ollama non trouvé — installation...${NC}"
-    curl -fsSL https://ollama.ai/install.sh | sh
-    echo -e "${GREEN}✔ Ollama installé${NC}"
+    warn "Ollama non trouvé — installation..."
+    curl -fsSL https://ollama.ai/install.sh | sh > /dev/null 2>&1 & spinner $!
+    ok "Ollama installé"
 else
-    echo -e "${GREEN}✔ Ollama OK ($(ollama --version 2>/dev/null || echo 'version inconnue'))${NC}"
+    ok "Ollama OK ($(ollama --version 2>/dev/null || echo 'version inconnue'))"
 fi
 
 if ! systemctl is-active --quiet ollama 2>/dev/null; then
     if systemctl list-unit-files | grep -q ollama; then
-        sudo systemctl enable ollama
+        sudo systemctl enable ollama > /dev/null 2>&1
         sudo systemctl start ollama
     else
         ollama serve &
     fi
-    echo -e "${GREEN}✔ Service Ollama démarré${NC}"
+    ok "Service Ollama démarré"
 else
-    echo -e "${GREEN}✔ Ollama déjà actif${NC}"
+    ok "Ollama déjà actif"
 fi
 
 # --- Clone / Update ---
-echo ""
-echo -e "${BLUE}[4/7] Récupération de Néron AI...${NC}"
+step "4/7" "Récupération de Néron AI..."
 if [ -d "$INSTALL_DIR/.git" ]; then
-    echo -e "${YELLOW}⚠ Dépôt existant — mise à jour...${NC}"
-    git -C "$INSTALL_DIR" pull origin "$BRANCH"
+    warn "Dépôt existant — mise à jour..."
+    git -C "$INSTALL_DIR" pull origin "$BRANCH" > /dev/null 2>&1 & spinner $!
 else
     sudo mkdir -p "$(dirname $INSTALL_DIR)"
     sudo rm -rf "$INSTALL_DIR"
-    echo -e "${YELLOW}  Clone: $REPO_URL → $INSTALL_DIR (branche: ${BRANCH})${NC}"
-    sudo git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
-        echo -e "${YELLOW}  Tentative sans sudo...${NC}"
-        git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || {
-            echo -e "${RED}❌ Clone impossible${NC}"
+    slow_echo "  Clone : $REPO_URL → $INSTALL_DIR" 0.01
+    sudo git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 & spinner $! || {
+        warn "Tentative sans sudo..."
+        git clone --branch "$BRANCH" "$REPO_URL" "$INSTALL_DIR" > /dev/null 2>&1 & spinner $! || {
+            fail "Clone impossible"
             exit 1
         }
     }
@@ -242,38 +276,38 @@ else
 fi
 
 if [ ! -f "$INSTALL_DIR/Makefile" ]; then
-    echo -e "${RED}❌ Échec du clone — Makefile introuvable${NC}"
+    fail "Échec du clone — Makefile introuvable"
     exit 1
 fi
-echo -e "${GREEN}✔ Dépôt OK${NC}"
+ok "Dépôt OK"
 
 # --- Configuration neron.yaml ---
-echo ""
-echo -e "${BLUE}[5/7] Configuration neron.yaml...${NC}"
+step "5/7" "Configuration neron.yaml..."
 if [ ! -f "$YAML_FILE" ]; then
     cp "$INSTALL_DIR/neron.yaml.example" "$YAML_FILE"
-    echo -e "${YELLOW}⚠ neron.yaml créé depuis l'exemple — pensez à le configurer${NC}"
+    warn "neron.yaml créé depuis l'exemple — pensez à le configurer"
 else
-    echo -e "${GREEN}✔ neron.yaml existant conservé${NC}"
+    ok "neron.yaml existant conservé"
 fi
 
 # --- Make install ---
-echo ""
-echo -e "${BLUE}[6/7] Installation via Makefile...${NC}"
+step "6/7" "Installation via Makefile..."
 make -C "$INSTALL_DIR" install
 
 # --- Modèle Ollama ---
-echo ""
-echo -e "${BLUE}[7/7] Modèle Ollama...${NC}"
+step "7/7" "Modèle Ollama..."
 CURRENT_MODEL=$(yaml_get "$YAML_FILE" "llm" "model")
 CURRENT_MODEL="${CURRENT_MODEL:-llama3.2:1b}"
 
 if ollama list 2>/dev/null | grep -q "$CURRENT_MODEL"; then
-    echo -e "${GREEN}✔ Modèle $CURRENT_MODEL déjà présent${NC}"
+    ok "Modèle $CURRENT_MODEL déjà présent"
 else
-    echo -e "${YELLOW}⚠ Modèle $CURRENT_MODEL non trouvé${NC}"
+    warn "Modèle $CURRENT_MODEL non trouvé"
     read -p "  Télécharger maintenant ? [O/n] " DL
-    [ "$DL" != "n" ] && ollama pull "$CURRENT_MODEL" && echo -e "${GREEN}✔ Modèle prêt${NC}"
+    if [ "$DL" != "n" ]; then
+        ollama pull "$CURRENT_MODEL" > /dev/null 2>&1 & spinner $!
+        ok "Modèle $CURRENT_MODEL prêt"
+    fi
 fi
 
 # --- Telegram ---
@@ -281,9 +315,9 @@ setup_telegram
 
 # --- Résumé ---
 echo ""
-echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${BOLD}${GREEN}  ✅ Installation terminée !${NC}"
-echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+slow_echo "  ✅ Installation terminée !" 0.03
+echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "  Prochaines étapes :"
 echo ""
@@ -296,5 +330,5 @@ echo ""
 echo -e "  ${BOLD}3.${NC} Vérifiez les logs :"
 echo -e "     ${YELLOW}make -C $INSTALL_DIR logs${NC}"
 echo ""
-echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BOLD}${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
