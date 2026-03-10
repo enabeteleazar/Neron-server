@@ -1,4 +1,4 @@
-# tests/test_neron.py - Tests complets Néron v2.0 (natif, sans Docker)
+# tests/test_neron.py - Tests Néron v2.1
 
 import pytest
 import sys
@@ -8,6 +8,19 @@ import tempfile
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "modules", "neron_core"))
+
+# ━━━ CONFIG ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+def test_config_loads():
+    from config import settings
+    assert settings.OLLAMA_HOST is not None
+    assert settings.OLLAMA_MODEL is not None
+    assert settings.SYSTEM_PROMPT is not None
+
+def test_config_yaml_values():
+    from config import settings
+    assert "http" in settings.OLLAMA_HOST
+    assert len(settings.OLLAMA_MODEL) > 0
 
 # ━━━ MEMORY ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -40,6 +53,10 @@ def test_memory_retrieve_limit(memory):
 def test_memory_search_no_result(memory):
     results = memory.search("xyzabcdef123456", limit=1)
     assert isinstance(results, list)
+
+def test_memory_reload(memory):
+    ok = memory.reload()
+    assert ok is True
 
 # ━━━ LLM ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -83,6 +100,11 @@ async def test_llm_stream(llm):
         if len(tokens) > 20:
             break
     assert len(tokens) > 0
+
+@pytest.mark.asyncio
+async def test_llm_reload(llm):
+    ok = await llm.reload()
+    assert ok is True
 
 # ━━━ STT ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -130,36 +152,28 @@ async def test_stt_file_too_large(stt):
     assert not result.success
     assert "volumineux" in result.error
 
-# ━━━ TTS ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-@pytest.fixture(scope="module")
-def tts():
-    from agents.tts_agent import TTSAgent, load_engine
-    load_engine()
-    return TTSAgent()
-
 @pytest.mark.asyncio
-async def test_tts_connection(tts):
-    ok = await tts.check_connection()
-    assert ok, "pyttsx3 non chargé"
+async def test_stt_reload(stt):
+    ok = await stt.reload()
+    assert ok is True
 
-@pytest.mark.asyncio
-async def test_tts_synthesize(tts):
-    result = await tts.synthesize("Bonjour, je suis Néron.")
-    assert result.success, f"TTS failure: {result.error}"
-    assert len(result.metadata["audio_bytes"]) > 0
+# ━━━ TTS (désactivé) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-@pytest.mark.asyncio
-async def test_tts_empty_text(tts):
-    result = await tts.synthesize("")
-    assert not result.success
-    assert result.error == "Texte vide"
+@pytest.mark.skip(reason="TTS désactivé — module neron_tts absent")
+async def test_tts_connection():
+    pass
 
-@pytest.mark.asyncio
-async def test_tts_text_too_long(tts):
-    result = await tts.synthesize("x" * 1001)
-    assert not result.success
-    assert "long" in result.error
+@pytest.mark.skip(reason="TTS désactivé — module neron_tts absent")
+async def test_tts_synthesize():
+    pass
+
+@pytest.mark.skip(reason="TTS désactivé — module neron_tts absent")
+async def test_tts_empty_text():
+    pass
+
+@pytest.mark.skip(reason="TTS désactivé — module neron_tts absent")
+async def test_tts_text_too_long():
+    pass
 
 # ━━━ ROUTER ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
