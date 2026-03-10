@@ -19,6 +19,7 @@ from agents.stt_agent import STTAgent, load_model as stt_load_model
 from agents.memory_agent import MemoryAgent, init_db as memory_init_db
 from agents.telegram_agent import start_bot, stop_bot, set_agents, send_notification
 from agents.watchdog_agent import setup as watchdog_setup, start_watchdog, stop_watchdog, start_watchdog_bot, stop_watchdog_bot
+from agents.ha_agent import HAAgent
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
@@ -114,13 +115,14 @@ memory_agent: MemoryAgent = None
 web_agent: WebAgent = None
 stt_agent: STTAgent = None
 tts_agent = None  # TTS désactivé
+ha_agent = None  # Home Assistant
 router: IntentRouter = None
 time_provider: TimeProvider = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global llm_agent, web_agent, stt_agent, tts_agent, router, time_provider, _startup_time, memory_agent
+    global llm_agent, web_agent, stt_agent, tts_agent, ha_agent, router, time_provider, _startup_time, memory_agent
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
@@ -131,6 +133,7 @@ async def lifespan(app: FastAPI):
     memory_agent = MemoryAgent()
     stt_load_model()
     stt_agent = STTAgent()
+    ha_agent = HAAgent()
     # tts_load_engine()  # TTS désactivé
     # tts_agent = TTSAgent()  # TTS désactivé
     router = IntentRouter(llm_agent=llm_agent)
@@ -234,10 +237,7 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
         elif intent_result.intent == Intent.WEB_SEARCH:
             core_response = await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:
-            core_response = await _handle_conversation(
-                "Je n'ai pas encore acces a Home Assistant. " + query,
-                intent_result, metadata, start
-            )
+            core_response = await _handle_ha_action(query, intent_result, metadata, start)
         else:
             core_response = await _handle_conversation(query, intent_result, metadata, start)
     finally:
@@ -464,6 +464,33 @@ async def _handle_web_search(query: str, intent_result, metadata: dict, start: f
         metadata={**metadata, **(llm_result.metadata if llm_result.success else {})}
     )
 
+
+
+async def _handle_ha_action(query: str, intent_result, metadata: dict, start: float) -> CoreResponse:
+    """Pipeline Home Assistant : parse action → appel REST HA → réponse"""
+    result = await ha_agent.execute(query)
+    elapsed = round((time.monotonic() - start) * 1000, 2)
+
+    if result.success:
+        return CoreResponse(
+            response=result.content,
+            intent=intent_result.intent.value,
+            agent="ha_agent",
+            confidence=intent_result.confidence,
+            execution_time_ms=elapsed,
+            metadata=result.metadata
+        )
+    else:
+        # Fallback LLM si HA échoue
+        fallback = f"Je n'ai pas pu exécuter cette action : {result.error}"
+        return CoreResponse(
+            response=fallback,
+            intent=intent_result.intent.value,
+            agent="ha_agent",
+            confidence=intent_result.confidence,
+            execution_time_ms=elapsed,
+            error=result.error
+        )
 
 async def _store_memory(query: str, response: str, metadata: dict):
     try:
