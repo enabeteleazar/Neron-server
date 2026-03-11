@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 import pytest
 
-# Chemin relatif depuis ce fichier → modules/neron_core
+# Chemin relatif depuis ce fichier → core
 ROOT = Path(__file__).resolve().parent.parent
 CORE = ROOT / "modules" / "neron_core"
 if str(CORE) not in sys.path:

@@ -1,4 +1,4 @@
-# modules/neron_core/conftest.py
+# core/conftest.py
 # Execute EN PREMIER par pytest - configure le sys.path avant tout import
 
 import sys

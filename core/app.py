@@ -1,4 +1,4 @@
-# modules/neron_core/app.py
+# core/app.py
 # Neron Core v2.1.0
 
 import json

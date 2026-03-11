@@ -211,7 +211,7 @@ version:
 	@echo "  $(BOLD)$(BLUE)🧠 Néron AI — Versions$(RESET)"
 	@$(SEP)
 	@echo ""
-	@grep -m1 "^VERSION" $(BASE_DIR)/modules/neron_core/app.py 2>/dev/null | \
+	@grep -m1 "^VERSION" $(BASE_DIR)/core/app.py 2>/dev/null | \
 		cut -d'"' -f2 | awk '{print "  Version  : "$$1}' || echo "  Version  : inconnue"
 	@echo "  Python   : $$(python3 --version 2>&1 | cut -d' ' -f2)"
 	@echo "  Ollama   : $$(ollama --version 2>/dev/null || echo 'non trouvé')"

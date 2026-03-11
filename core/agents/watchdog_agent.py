@@ -753,7 +753,7 @@ async def _wdog_cmd_history(update, context):
 async def _wdog_cmd_logs(update, context):
     if not _wdog_authorized(update): return
     import os as _os
-    log_path = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), "../../../logs/neron_core.log"))
+    log_path = str(settings.LOGS_DIR / "neron_core.log")
     try:
         n = min(int(context.args[0]) if context.args else 20, 50)
         with open(log_path) as f:

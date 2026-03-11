@@ -9,7 +9,7 @@ StartLimitBurst=3
 Type=simple
 User=__NERON_USER__
 Group=__NERON_USER__
-WorkingDirectory=__NERON_DIR__/modules/neron_core
+WorkingDirectory=__NERON_DIR__/core
 
 # Charger le .env
 EnvironmentFile=__NERON_DIR__/.env
