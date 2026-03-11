@@ -14,7 +14,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-NERON_DIR = Path(os.getenv("NERON_DIR", Path(__file__).parent.parent.parent))
+NERON_DIR = Path(os.getenv("NERON_DIR", Path(__file__).parent.parent))
 YAML_PATH = NERON_DIR / "neron.yaml"
 
 

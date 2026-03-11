@@ -16,7 +16,7 @@ logger = get_logger("telegram_agent")
 
 TELEGRAM_TOKEN    = settings.TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID  = settings.TELEGRAM_CHAT_ID
-NERON_CORE_URL    = settings.SERVER_HOST
+NERON_CORE_URL = f"http://{settings.SERVER_HOST}:{settings.SERVER_PORT}"
 NERON_API_KEY     = settings.API_KEY
 ALLOWED_CHAT_IDS  = set(settings.TELEGRAM_CHAT_ID.split(","))
 
