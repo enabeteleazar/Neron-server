@@ -26,6 +26,14 @@ from neron_time.time_provider import TimeProvider
 from config import settings
 
 logging.basicConfig(level=settings.LOG_LEVEL)
+
+# FileHandler — écriture logs dans data/logs/
+_log_file = settings.LOGS_DIR / settings.LOG_NERON
+settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+_file_handler = logging.FileHandler(_log_file)
+_file_handler.setLevel(settings.LOG_LEVEL)
+_file_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+logging.getLogger().addHandler(_file_handler)
 logger = get_logger("neron_core")
 
 VERSION = "2.1.0"
