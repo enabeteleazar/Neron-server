@@ -16,27 +16,6 @@ all: help
 
 help:
 	@echo ""
-<<<<<<< HEAD
-	@echo "  🧠 Néron AI v2.0 — Commandes disponibles"
-	@echo ""
-	@echo "  make install    — installer Néron (deps, venv, systemd)"
-	@echo "  make start      — démarrer le service"
-	@echo "  make stop       — arrêter le service"
-	@echo "  make restart    — redémarrer le service"
-	@echo "  make status     — état du service"
-	@echo "  make logs       — logs en direct"
-	@echo "  make update     — git pull + restart"
-	@echo "  make clean      — nettoyer venv et logs"
-	@echo ""
-	@echo "  make backup     — sauvegarder DB + .env"
-	@echo "  make restore    — restaurer une sauvegarde"
-	@echo "  make test       — tester l'API et Ollama"
-	@echo "  make ollama     — gérer le modèle Ollama"
-	@echo "  make telegram   — configurer les bots Telegram"
-	@echo "  make env        — afficher la config active"
-	@echo "  make version    — versions Néron / Python / Ollama"
-	@echo ""
-=======
 	@echo "[Installation / Maintenance]"
 	@echo "  $(BOLD)make install$(RESET)    -- installer Neron"
 	@echo "  $(BOLD)make update$(RESET)     -- git pull + restart"
@@ -62,7 +41,6 @@ help:
 	@echo "  $(BOLD)make ollama$(RESET)     -- gerer le modele Ollama"
 	@echo "  $(BOLD)make telegram$(RESET)   -- configurer les bots Telegram"
 	@echo "  $(BOLD)make ha-agent$(RESET)   -- configurer les homeAssistant"
->>>>>>> develop
 
 install:
 	@echo "🔧 Installation de Néron AI..."

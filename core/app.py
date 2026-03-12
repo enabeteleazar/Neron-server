@@ -123,7 +123,7 @@ memory_agent: MemoryAgent = None
 web_agent: WebAgent = None
 stt_agent: STTAgent = None
 tts_agent = None  # TTS désactivé
-ha_agent = None  # Home Assistant
+ha_agent: HAAgent = None
 router: IntentRouter = None
 time_provider: TimeProvider = None
 
@@ -141,9 +141,14 @@ async def lifespan(app: FastAPI):
     memory_agent = MemoryAgent()
     stt_load_model()
     stt_agent = STTAgent()
+
+    # Home Assistant — instanciation + chargement des entités
     ha_agent = HAAgent()
+    await ha_agent.on_start()
+
     # tts_load_engine()  # TTS désactivé
     # tts_agent = TTSAgent()  # TTS désactivé
+
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
 
@@ -407,7 +412,7 @@ async def _get_memory_context(query: str) -> str:
             context_parts.append("Historique recent:\n" + "\n".join(history))
         relevant = memory_agent.search(query, limit=3)
         if relevant:
-            facts = [f"- Q: {e['input']} -> R: {e['response'][:100]}" for e in relevant]
+            facts = [f"- Q: {entry['input']} -> R: {entry['response'][:100]}" for entry in relevant]
             context_parts.append("Memoire pertinente:\n" + "\n".join(facts))
     except Exception as e:
         logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
@@ -473,7 +478,6 @@ async def _handle_web_search(query: str, intent_result, metadata: dict, start: f
     )
 
 
-
 async def _handle_ha_action(query: str, intent_result, metadata: dict, start: float) -> CoreResponse:
     """Pipeline Home Assistant : parse action → appel REST HA → réponse"""
     result = await ha_agent.execute(query)
@@ -485,20 +489,23 @@ async def _handle_ha_action(query: str, intent_result, metadata: dict, start: fl
             intent=intent_result.intent.value,
             agent="ha_agent",
             confidence=intent_result.confidence,
+            timestamp=utc_now_iso(),
             execution_time_ms=elapsed,
             metadata=result.metadata
         )
     else:
-        # Fallback LLM si HA échoue
         fallback = f"Je n'ai pas pu exécuter cette action : {result.error}"
         return CoreResponse(
             response=fallback,
             intent=intent_result.intent.value,
             agent="ha_agent",
             confidence=intent_result.confidence,
+            timestamp=utc_now_iso(),
             execution_time_ms=elapsed,
-            error=result.error
+            error=result.error,
+            metadata={}
         )
+
 
 async def _store_memory(query: str, response: str, metadata: dict):
     try:

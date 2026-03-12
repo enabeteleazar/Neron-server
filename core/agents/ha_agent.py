@@ -15,50 +15,61 @@ HA_TIMEOUT = 10.0
 TURN_ON_KEYS  = ["allume", "active", "ouvre", "demarre", "mets"]
 TURN_OFF_KEYS = ["eteins", "desactive", "ferme", "arrete", "coupe"]
 
-# Domaines HA par entité
-DOMAIN_MAP = {
-    "lumiere":     "light",
-    "lampe":       "light",
-    "plafonnier":  "light",
-    "led":         "light",
-    "volet":       "cover",
-    "store":       "cover",
-    "rideau":      "cover",
-    "thermostat":  "climate",
-    "chauffage":   "climate",
-    "climatiseur": "climate",
-    "prise":       "switch",
-    "interrupteur":"switch",
-    "ventilateur": "fan",
-    "alarme":      "alarm_control_panel",
-    "scene":       "scene",
-}
-
-# Pièces connues
-ROOM_MAP = {
-    "salon":        "salon",
-    "cuisine":      "cuisine",
-    "chambre":      "chambre",
-    "salle de bain":"salle_de_bain",
-    "bureau":       "bureau",
-    "couloir":      "couloir",
-    "garage":       "garage",
-    "jardin":       "jardin",
-    "entree":       "entree",
-    "cave":         "cave",
+# Domaines HA par mots-clés
+DOMAIN_KEYWORDS = {
+    "light":               ["lumiere", "lampe", "plafonnier", "led", "spot", "ampoule"],
+    "cover":               ["volet", "store", "rideau", "portail"],
+    "climate":             ["thermostat", "chauffage", "climatiseur", "clim"],
+    "switch":              ["prise", "interrupteur"],
+    "fan":                 ["ventilateur", "vmc"],
+    "alarm_control_panel": ["alarme"],
+    "scene":               ["scene"],
 }
 
 
 def _normalize(text: str) -> str:
-    """Supprime les accents et met en minuscules"""
+    """Supprime les accents et met en minuscules."""
     text = unicodedata.normalize("NFD", text.lower().strip())
     return "".join(c for c in text if unicodedata.category(c) != "Mn")
 
 
-def _parse_query(query: str) -> dict:
+def _detect_domain(query_norm: str) -> str | None:
+    """Détecte le domaine HA à partir des mots-clés de la query."""
+    for domain, keywords in DOMAIN_KEYWORDS.items():
+        for kw in keywords:
+            if kw in query_norm:
+                return domain
+    return None
+
+
+def _score_entity(query_norm: str, entity: dict) -> int:
     """
-    Parse la requête pour extraire action, domaine, entité, pièce.
-    Retourne un dict avec les infos extraites.
+    Score de matching entre la query et une entité HA.
+    Cherche dans entity_id ET friendly_name.
+    Retourne un score (plus c'est élevé, mieux c'est).
+    """
+    score = 0
+    entity_id = _normalize(entity.get("entity_id", ""))
+    friendly  = _normalize(entity.get("attributes", {}).get("friendly_name", ""))
+
+    for word in query_norm.split():
+        if len(word) < 3:
+            continue
+        if word in entity_id:
+            score += 2          # match dans l'ID = signal fort
+        elif word in friendly:
+            score += 1
+        # match partiel dans les segments de l'ID (ex: "salon" dans "light.salon_plafonnier")
+        if any(word in part for part in entity_id.split(".")):
+            score += 1
+
+    return score
+
+
+def _parse_query(query: str, ha_states: list) -> dict:
+    """
+    Parse la requête en matchant sur les vraies entités HA.
+    ha_states : liste retournée par get_states()
     """
     q = _normalize(query)
 
@@ -69,42 +80,51 @@ def _parse_query(query: str) -> dict:
             action = "turn_off"
             break
 
-    # Domaine HA
-    domain = "light"  # défaut
-    domain_label = "lumière"
-    for label, ha_domain in DOMAIN_MAP.items():
-        if label in q:
-            domain = ha_domain
-            domain_label = label
-            break
+    # Domaine détecté depuis la query (pour pré-filtrer)
+    detected_domain = _detect_domain(q)
 
-    # Pièce
-    room = None
-    room_label = None
-    for label, room_id in ROOM_MAP.items():
-        if label in q:
-            room = room_id
-            room_label = label
-            break
+    # Filtrer les entités par domaine si détecté
+    candidates = ha_states
+    if detected_domain:
+        filtered = [
+            e for e in ha_states
+            if e.get("entity_id", "").startswith(detected_domain + ".")
+        ]
+        # Fallback : si aucune entité dans ce domaine, on repart de tout
+        candidates = filtered if filtered else ha_states
 
-    # Entity ID — ex: light.salon, light.chambre
-    if room:
-        entity_id = f"{domain}.{room}"
+    # Scorer chaque candidat
+    scored = [
+        (entity, _score_entity(q, entity))
+        for entity in candidates
+    ]
+    scored = [(e, s) for e, s in scored if s > 0]
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    if scored:
+        best_entity = scored[0][0]
+        entity_id   = best_entity["entity_id"]
+        domain      = entity_id.split(".")[0]
+        friendly    = best_entity.get("attributes", {}).get("friendly_name", entity_id)
+        matched     = True
     else:
-        entity_id = f"{domain}.{domain_label.replace(' ', '_')}"
+        # Fallback : convention de nommage basique
+        domain    = detected_domain or "light"
+        entity_id = f"{domain}.inconnu"
+        friendly  = entity_id
+        matched   = False
 
     return {
-        "action": action,
-        "domain": domain,
+        "action":    action,
+        "domain":    domain,
         "entity_id": entity_id,
-        "domain_label": domain_label,
-        "room": room,
-        "room_label": room_label,
+        "friendly":  friendly,
+        "matched":   matched,
     }
 
 
 def _build_response(parsed: dict) -> str:
-    """Construit la réponse textuelle après exécution"""
+    """Construit la réponse textuelle après exécution."""
     action_label = "allumé" if parsed["action"] == "turn_on" else "éteint"
 
     if parsed["domain"] == "cover":
@@ -112,10 +132,8 @@ def _build_response(parsed: dict) -> str:
     elif parsed["domain"] == "climate":
         action_label = "activé" if parsed["action"] == "turn_on" else "désactivé"
 
-    entity = parsed["domain_label"]
-    room = f" du {parsed['room_label']}" if parsed["room_label"] else ""
-
-    return f"J'ai {action_label} la {entity}{room}."
+    friendly = parsed["friendly"].rstrip(".")
+    return f"J'ai {action_label} {friendly}."
 
 
 class HAAgent(BaseAgent):
@@ -125,6 +143,15 @@ class HAAgent(BaseAgent):
             "Authorization": f"Bearer {HA_TOKEN}",
             "Content-Type": "application/json",
         }
+        self._ha_states: list = []
+
+    async def on_start(self):
+        """Charge les entités HA au démarrage et les met en cache."""
+        if not HA_ENABLED or not HA_TOKEN:
+            self.logger.warning("HA désactivé ou token manquant — states non chargés")
+            return
+        self._ha_states = await self.get_states()
+        self.logger.info(f"HA states chargés : {len(self._ha_states)} entités")
 
     async def execute(self, query: str, **kwargs) -> AgentResult:
         if not HA_ENABLED:
@@ -136,8 +163,19 @@ class HAAgent(BaseAgent):
         self.logger.info(f"HA action pour : {repr(query)}")
         start = self._timer()
 
-        parsed = _parse_query(query)
+        # Rechargement lazy si cache vide (ex: démarrage sans HA disponible)
+        if not self._ha_states:
+            self.logger.warning("Cache HA vide — tentative de rechargement")
+            self._ha_states = await self.get_states()
+
+        parsed = _parse_query(query, self._ha_states)
         self.logger.info(f"Parsed : {parsed}")
+
+        if not parsed["matched"]:
+            return self._failure(
+                f"Aucune entité HA trouvée pour : '{query}'",
+                latency_ms=self._elapsed_ms(start)
+            )
 
         service_url = f"{HA_URL}/api/services/{parsed['domain']}/{parsed['action']}"
         payload = {"entity_id": parsed["entity_id"]}
@@ -178,16 +216,16 @@ class HAAgent(BaseAgent):
             content=response_text,
             metadata={
                 "entity_id": parsed["entity_id"],
-                "action": parsed["action"],
-                "domain": parsed["domain"],
-                "room": parsed["room_label"],
-                "ha_url": HA_URL,
+                "friendly":  parsed["friendly"],
+                "action":    parsed["action"],
+                "domain":    parsed["domain"],
+                "ha_url":    HA_URL,
             },
             latency_ms=latency
         )
 
     async def get_states(self) -> list:
-        """Récupère toutes les entités HA disponibles"""
+        """Récupère toutes les entités HA disponibles."""
         try:
             async with httpx.AsyncClient(timeout=HA_TIMEOUT) as client:
                 response = await client.get(
@@ -201,7 +239,7 @@ class HAAgent(BaseAgent):
             return []
 
     async def check_connection(self) -> bool:
-        """Vérifie la connexion à Home Assistant"""
+        """Vérifie la connexion à Home Assistant."""
         if not HA_ENABLED or not HA_TOKEN:
             return False
         try:
@@ -213,4 +251,4 @@ class HAAgent(BaseAgent):
                 return response.status_code == 200
         except Exception as e:
             self.logger.warning(f"HA check_connection failed : {e}")
-            return False# (coller le contenu du fichier téléchargé ha_agent.py)
+            return False

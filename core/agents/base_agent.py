@@ -35,6 +35,10 @@ class BaseAgent(ABC):
         self.name = name
         self.logger = get_logger(f"agent.{name}")
 
+    async def on_start(self):
+        """Hook de démarrage — override dans les agents si besoin."""
+        pass
+
     @abstractmethod
     async def execute(self, query: str, **kwargs) -> AgentResult:
         pass
