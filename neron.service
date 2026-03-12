@@ -2,32 +2,30 @@
 Description=Néron AI Assistant v2
 After=network.target ollama.service
 Wants=network-online.target
-StartLimitIntervalSec=60
-StartLimitBurst=3
 
 [Service]
 Type=simple
-User=__NERON_USER__
-Group=__NERON_USER__
-WorkingDirectory=__NERON_DIR__/core
+User=eleazar
+Group=eleazar
+WorkingDirectory=/mnt/usb-storage/neron/server
 
-# Charger le .env
-EnvironmentFile=__NERON_DIR__/.env
+# Charger le .env si besoin
+EnvironmentFile=/mnt/usb-storage/neron/server/.env
 
 # Lancer via le venv
-ExecStart=__NERON_DIR__/venv/bin/python3 app.py
+ExecStart=/bin/bash -c "source /mnt/usb-storage/neron/server/venv/bin/activate && exec python core/app.py"
 
 # Restart automatique
 Restart=always
 RestartSec=10
 
-# Logs
-StandardOutput=append:__NERON_DIR__/logs/neron_core.log
-StandardError=append:__NERON_DIR__/logs/neron_core.log
-
 # Timeout
 TimeoutStartSec=120
 TimeoutStopSec=30
+
+# Logs systemd (optionnel)
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

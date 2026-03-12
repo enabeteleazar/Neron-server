@@ -1,7 +1,8 @@
 # ============================================
-#  Néron AI v2.1 — Makefile (corrigé)
+#  Néron AI v2.1 — Makefile
 # ============================================
 
+#BASE_DIR  := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 BASE_DIR  := /mnt/usb-storage/neron/server
 VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
@@ -37,7 +38,8 @@ SPINNER = bash -c '\
 # Helper yaml
 YAML_GET = $(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(YAML)')); print(d.get('$(1)',{}).get('$(2)','$(3)'))" 2>/dev/null || echo "$(3)"
 
-.PHONY: install start stop restart status logs update help clean backup restore test ollama telegram env version
+.PHONY: install start stop restart status logs update help clean \
+        backup restore test ollama telegram env version
 
 all: help
 
@@ -82,14 +84,13 @@ install:
 	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q > /dev/null 2>&1 & $(SPINNER) $$!
 	@$(call OK,"Venv Python OK")
 	@mkdir -p $(LOG_DIR) $(BASE_DIR)/data
-	@chmod -R 755 $(BASE_DIR)/logs $(BASE_DIR)/data
 	@$(call OK,"Dossiers OK")
 	@test -f $(YAML) || cp $(BASE_DIR)/neron.yaml.example $(YAML)
 	@$(call OK,"neron.yaml OK")
 	@$(call STEP,"Configuration systemd...")
 	@sed -e "s|__NERON_DIR__|$(BASE_DIR)|g" \
-	     -e "s|__NERON_USER__|$(shell whoami)|g" \
-	     $(BASE_DIR)/neron.service > /tmp/neron.service
+		-e "s|__NERON_USER__|$(shell whoami)|g" \
+		$(BASE_DIR)/neron.service > /tmp/neron.service
 	@sudo cp /tmp/neron.service /etc/systemd/system/neron.service
 	@rm /tmp/neron.service
 	@sudo systemctl daemon-reload
@@ -102,10 +103,9 @@ install:
 	@echo ""
 	@echo "  $(BOLD)1.$(RESET) Configurez : $(YELLOW)nano $(YAML)$(RESET)"
 	@echo "  $(BOLD)2.$(RESET) Lancez     : $(YELLOW)make start$(RESET)"
+	@echo ""
 
 start:
-	@$(call STEP,"Arrêt éventuel de Néron sur le port 8000...")
-	@sudo fuser -k 8000/tcp 2>/dev/null || true
 	@$(call STEP,"Démarrage de Néron...")
 	@sudo systemctl start $(SERVICE)
 	@sleep 2
@@ -120,7 +120,6 @@ stop:
 
 restart:
 	@$(call STEP,"Redémarrage de Néron...")
-	@sudo fuser -k 8000/tcp 2>/dev/null || true
 	@sudo systemctl restart $(SERVICE)
 	@sleep 2
 	@sudo systemctl is-active --quiet $(SERVICE) && \
@@ -170,7 +169,7 @@ backup:
 restore:
 	@$(call STEP,"Restauration...")
 	@echo "  $(BOLD)Sauvegardes disponibles :$(RESET)"
-	@ls -lt $(BASE_DIR)/backups/ 2>/dev/null | grep "^d" | awk '{print "  "$$NF}' || \
+	@ls -lt $(BASE_DIR)/backups/ 2>/dev/null | grep "^d" | awk '{print "  "NR". "$$NF}' || \
 		$(call WARN,"Aucune sauvegarde trouvée")
 	@echo ""
 	@read -p "  Nom du dossier à restaurer : " BACKUP && \
