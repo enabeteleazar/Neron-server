@@ -16,6 +16,7 @@ all: help
 
 help:
 	@echo ""
+<<<<<<< HEAD
 	@echo "  🧠 Néron AI v2.0 — Commandes disponibles"
 	@echo ""
 	@echo "  make install    — installer Néron (deps, venv, systemd)"
@@ -35,6 +36,33 @@ help:
 	@echo "  make env        — afficher la config active"
 	@echo "  make version    — versions Néron / Python / Ollama"
 	@echo ""
+=======
+	@echo "[Installation / Maintenance]"
+	@echo "  $(BOLD)make install$(RESET)    -- installer Neron"
+	@echo "  $(BOLD)make update$(RESET)     -- git pull + restart"
+	@echo "  $(BOLD)make clean$(RESET)      -- nettoyer venv et logs"
+	@echo "  $(BOLD)make version$(RESET)    -- versions Neron / Python / Ollama"
+	@echo ""
+	@echo "[Services]"
+	@echo "  $(BOLD)make start$(RESET)      -- demarrer le service"
+	@echo "  $(BOLD)make stop$(RESET)       -- arreter le service"
+	@echo "  $(BOLD)make restart$(RESET)    -- redemarrer le service"
+	@echo "  $(BOLD)make status$(RESET)     -- etat du service"
+	@echo "  $(BOLD)make logs$(RESET)       -- logs en direct"
+	@echo ""
+	@echo "[Sauvegarde]"
+	@echo "  $(BOLD)make backup$(RESET)     -- sauvegarder DB + neron.yaml"
+	@echo "  $(BOLD)make restore$(RESET)    -- restaurer une sauvegarde"
+	@echo ""
+	@echo "[Diagnostic]"
+	@echo "  $(BOLD)make test$(RESET)       -- tester l'API et Ollama"
+	@echo "  $(BOLD)make env$(RESET)        -- afficher la config active"
+	@echo ""
+	@echo "[Integration]"
+	@echo "  $(BOLD)make ollama$(RESET)     -- gerer le modele Ollama"
+	@echo "  $(BOLD)make telegram$(RESET)   -- configurer les bots Telegram"
+	@echo "  $(BOLD)make ha-agent$(RESET)   -- configurer les homeAssistant"
+>>>>>>> develop
 
 install:
 	@echo "🔧 Installation de Néron AI..."
