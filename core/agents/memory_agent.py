@@ -38,6 +38,14 @@ def init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_timestamp ON memory(timestamp)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                event_type TEXT,
+                data TEXT
+            )
+        """)
         conn.commit()
     logger.info("Memory DB prête")
 
