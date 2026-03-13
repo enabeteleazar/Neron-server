@@ -1,40 +1,20 @@
 # ============================================
-#  Neron AI v2.1 -- Makefile
+#  Néron AI v2.0 — Makefile
 # ============================================
 
-BASE_DIR  := /mnt/usb-storage/neron/server
+BASE_DIR  := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
 PIP       := $(VENV)/bin/pip
 SERVICE   := neron
-LOG_DIR   := /mnt/usb-storage/neron/data/logs
-DATA_DIR  := /mnt/usb-storage/neron/data
-YAML      := $(BASE_DIR)/neron.yaml
+LOG_DIR   := $(BASE_DIR)/logs
 
-# --- Couleurs tput ---
-BOLD  := $(shell tput bold 2>/dev/null || echo '')
-RESET := $(shell tput sgr0 2>/dev/null || echo '')
-RED   := $(shell tput setaf 1 2>/dev/null || echo '')
-GREEN := $(shell tput setaf 2 2>/dev/null || echo '')
-YELLOW:= $(shell tput setaf 3 2>/dev/null || echo '')
-BLUE  := $(shell tput setaf 4 2>/dev/null || echo '')
-CYAN  := $(shell tput setaf 6 2>/dev/null || echo '')
+.PHONY: install start stop restart status logs update help clean
 
-# --- Helpers affichage ---
-OK    = echo "  $(GREEN)$(BOLD)OK$(RESET) $(1)"
-FAIL  = echo "  $(RED)$(BOLD)FAIL$(RESET) $(1)" && exit 1
-WARN  = echo "  $(YELLOW)WARN$(RESET)  $(1)"
-STEP  = echo "$(BLUE)$(BOLD)>>$(RESET) $(1)"
-SEP   = echo "$(CYAN)$(BOLD)----------------------------------------$(RESET)"
-
-.PHONY: install start stop restart status logs update help clean backup restore test ollama telegram env version
-
+# --- Défaut ---
 all: help
 
 help:
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Neron AI v2.1 -- Commandes$(RESET)"
-	@$(SEP)
 	@echo ""
 	@echo "[Installation / Maintenance]"
 	@echo "  $(BOLD)make install$(RESET)    -- installer Neron"
@@ -63,196 +43,223 @@ help:
 	@echo "  $(BOLD)make ha-agent$(RESET)   -- configurer les homeAssistant"
 
 install:
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Installation de Neron AI$(RESET)"
-	@$(SEP)
-	@$(call STEP,"Dependances systeme...")
-	@sudo apt-get update -qq > /dev/null 2>&1
-	@sudo apt-get install -y -qq espeak libespeak1 ffmpeg git curl tree nano make python3-yaml > /dev/null 2>&1
-	@$(call OK,"Dependances systeme OK")
-	@$(call STEP,"Creation du venv Python...")
+	@echo "🔧 Installation de Néron AI..."
+	@echo ""
+	@# Dépendances système
+	@echo "📦 Installation des dépendances système..."
+	@sudo apt-get update -qq
+	@sudo apt-get install -y -qq \
+		espeak \
+		libespeak1 \
+		ffmpeg \
+		git \
+		curl \
+		tree \
+		nano \
+		make
+	@echo "✔ Dépendances système OK"
+	@# Venv
+	@echo "🐍 Création du venv Python..."
 	@test -d $(VENV) || python3 -m venv $(VENV)
-	@$(PIP) install --upgrade pip -q > /dev/null 2>&1
-	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q > /dev/null 2>&1
-	@$(call OK,"Venv Python OK")
-	@mkdir -p $(LOG_DIR) $(DATA_DIR)/models
-	@$(call OK,"Dossiers OK")
-	@test -f $(YAML) || cp $(BASE_DIR)/neron.yaml.example $(YAML)
-	@$(call OK,"neron.yaml OK")
-	@$(call STEP,"Configuration systemd...")
+	@$(PIP) install --upgrade pip -q
+	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q
+	@echo "✔ Venv OK"
+	@# Logs
+	@mkdir -p $(LOG_DIR)
+	@echo "✔ Dossier logs OK"
+	@# .env
+	@test -f $(BASE_DIR)/.env || cp $(BASE_DIR)/.env.example $(BASE_DIR)/.env
+	@echo "✔ .env OK"
+	@# Systemd
+	@echo "⚙️  Configuration systemd..."
 	@sed -e "s|__NERON_DIR__|$(BASE_DIR)|g" \
-	     -e "s|__NERON_USER__|$(shell whoami)|g" \
-	     $(BASE_DIR)/neron.service > /tmp/neron.service
+		-e "s|__NERON_USER__|$(shell whoami)|g" \
+		$(BASE_DIR)/neron.service > /tmp/neron.service
 	@sudo cp /tmp/neron.service /etc/systemd/system/neron.service
 	@rm /tmp/neron.service
 	@sudo systemctl daemon-reload
-	@sudo systemctl enable $(SERVICE) > /dev/null 2>&1
-	@$(call OK,"Service systemd active")
+	@sudo systemctl enable $(SERVICE)
+	@echo "✔ Service systemd activé"
 	@echo ""
-	@$(SEP)
-	@echo "  $(GREEN)$(BOLD)Installation terminee !$(RESET)"
-	@$(SEP)
-	@echo "  $(BOLD)1.$(RESET) Configurez : $(YELLOW)nano $(YAML)$(RESET)"
-	@echo "  $(BOLD)2.$(RESET) Lancez     : $(YELLOW)make start$(RESET)"
+	@echo "✅ Installation terminée !"
+	@echo ""
+	@echo "🦙 Démarrage Ollama..."
+	@ollama serve > /dev/null 2>&1 & sleep 3
+	@echo "📥 Téléchargement du modèle par défaut..."
+	@MODEL=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2 | tr -d " ") && \
+		[ -n "$$MODEL" ] && ollama pull $$MODEL || ollama pull llama3.2:3b
+	@echo "✔ Modèle prêt"
+	@echo ""
+	@echo "  👉 Éditez votre .env : nano $(BASE_DIR)/.env"
+	@echo "  👉 Puis lancez      : make start"
+	@echo ""
 
 start:
-	@$(call STEP,"Arret eventuel sur le port 8000...")
-	@sudo fuser -k 8000/tcp 2>/dev/null || true
-	@$(call STEP,"Demarrage de Neron...")
+	@echo "▶  Démarrage de Néron..."
 	@sudo systemctl start $(SERVICE)
 	@sleep 2
-	@if sudo systemctl is-active --quiet $(SERVICE); then \
-		echo "  OK Neron demarre"; \
-	else \
-		echo "  FAIL Echec -- make logs pour plus d infos"; exit 1; \
-	fi
+	@sudo systemctl is-active --quiet $(SERVICE) && \
+		echo "✔ Néron démarré" || \
+		(echo "❌ Échec — make logs pour plus d'infos" && exit 1)
 
 stop:
-	@$(call STEP,"Arret de Neron...")
+	@echo "⏹  Arrêt de Néron..."
 	@sudo systemctl stop $(SERVICE)
-	@$(call OK,"Neron arrete")
+	@echo "✔ Néron arrêté"
 
 restart:
-	@$(call STEP,"Redemarrage de Neron...")
-	@sudo fuser -k 8000/tcp 2>/dev/null || true
+	@echo "🔄 Redémarrage de Néron..."
 	@sudo systemctl restart $(SERVICE)
 	@sleep 2
-	@if sudo systemctl is-active --quiet $(SERVICE); then \
-		echo "  OK Neron redemarre"; \
-	else \
-		echo "  FAIL Echec -- make logs pour plus d infos"; exit 1; \
-	fi
+	@sudo systemctl is-active --quiet $(SERVICE) && \
+		echo "✔ Néron redémarré" || \
+		(echo "❌ Échec — make logs pour plus d'infos" && exit 1)
 
 status:
-	@echo ""
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Statut du service$(RESET)"
-	@$(SEP)
 	@sudo systemctl status $(SERVICE) --no-pager
 
 logs:
-	@echo "  $(CYAN)Logs en direct -- Ctrl+C pour quitter$(RESET)"
-	@echo ""
 	@sudo journalctl -u $(SERVICE) -f
 
 update:
-	@$(call STEP,"Mise a jour de Neron...")
-	@git -C $(BASE_DIR) pull origin master > /dev/null 2>&1
-	@$(call OK,"Code mis a jour")
-	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q > /dev/null 2>&1
-	@$(call OK,"Dependances mises a jour")
+	@echo "🔄 Mise à jour de Néron..."
+	@git -C $(BASE_DIR) pull origin master
+	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q
 	@sudo systemctl restart $(SERVICE)
 	@sleep 2
-	@if sudo systemctl is-active --quiet $(SERVICE); then \
-		echo "  OK Neron redemarre"; \
-	else \
-		echo "  WARN Echec au redemarrage"; \
-	fi
+	@sudo systemctl is-active --quiet $(SERVICE) && \
+		echo "✔ Néron mis à jour et redémarré" || \
+		echo "❌ Échec au redémarrage"
 
 clean:
-	@$(call STEP,"Nettoyage...")
-	@read -p "  Supprimer le venv et les logs ? [o/N] " confirm && \
+	@echo "🧹 Nettoyage..."
+	@read -p "Supprimer le venv et les logs ? [o/N] " confirm && \
 		[ "$$confirm" = "o" ] || exit 0
 	@rm -rf $(VENV)
 	@rm -f $(LOG_DIR)/*.log
-	@$(call OK,"Nettoyage termine")
+	@echo "✔ Nettoyage terminé"
+
 
 backup:
-	@$(call STEP,"Sauvegarde de Neron...")
+	@echo "💾 Sauvegarde de Néron..."
 	@BACKUP_DIR=$(BASE_DIR)/backups/$$(date +%Y%m%d_%H%M%S) && \
 		mkdir -p $$BACKUP_DIR && \
-		cp $(YAML) $$BACKUP_DIR/neron.yaml && \
-		cp $(DATA_DIR)/memory.db $$BACKUP_DIR/memory.db 2>/dev/null || true && \
-		echo "  OK Sauvegarde creee : $$BACKUP_DIR"
+		cp $(BASE_DIR)/.env $$BACKUP_DIR/.env && \
+		cp $(BASE_DIR)/data/memory.db $$BACKUP_DIR/memory.db 2>/dev/null || true && \
+		echo "✔ Sauvegarde créée : $$BACKUP_DIR"
 
 restore:
-	@$(call STEP,"Restauration...")
-	@echo "  $(BOLD)Sauvegardes disponibles :$(RESET)"
-	@ls -lt $(BASE_DIR)/backups/ 2>/dev/null | grep "^d" | awk '{print "  "$$NF}' || \
-		echo "  WARN Aucune sauvegarde trouvee"
+	@echo "📂 Sauvegardes disponibles :"
+	@ls -lt $(BASE_DIR)/backups/ 2>/dev/null | grep "^d" | awk '{print NR". "$$NF}' || echo "  Aucune sauvegarde trouvée"
 	@echo ""
-	@read -p "  Nom du dossier a restaurer : " BACKUP && \
-		test -d $(BASE_DIR)/backups/$$BACKUP && \
-		cp $(BASE_DIR)/backups/$$BACKUP/neron.yaml $(YAML) && \
-		cp $(BASE_DIR)/backups/$$BACKUP/memory.db $(DATA_DIR)/memory.db 2>/dev/null || true && \
-		echo "  OK Restauration terminee -- make restart pour appliquer"
+	@read -p "Nom du dossier à restaurer : " BACKUP && \
+		test -d $(BASE_DIR)/backups/$$BACKUP || (echo "❌ Introuvable" && exit 1) && \
+		cp $(BASE_DIR)/backups/$$BACKUP/.env $(BASE_DIR)/.env && \
+		cp $(BASE_DIR)/backups/$$BACKUP/memory.db $(BASE_DIR)/data/memory.db 2>/dev/null || true && \
+		echo "✔ Restauration terminée — make restart pour appliquer"
 
 test:
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Test de l API Neron$(RESET)"
-	@$(SEP)
-	@echo ""
-	@if curl -sf http://localhost:8000/health > /dev/null; then \
-		echo "  OK Core API repond (port 8000)"; \
-	else \
-		echo "  WARN Core API ne repond pas"; \
-	fi
-	@if curl -sf http://localhost:11434/api/tags > /dev/null; then \
-		echo "  OK Ollama repond"; \
-	else \
-		echo "  WARN Ollama ne repond pas"; \
-	fi
-	@echo ""
+	@echo "🧪 Test de l'API Néron..."
+	@curl -sf http://localhost:8000/health > /dev/null && \
+		echo "✔ Core API répond" || echo "❌ Core API ne répond pas"
+	@curl -sf http://localhost:11434/api/tags > /dev/null && \
+		echo "✔ Ollama répond" || echo "❌ Ollama ne répond pas"
 
 env:
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Configuration active$(RESET) $(YELLOW)(tokens masques)$(RESET)"
-	@$(SEP)
 	@echo ""
-	@$(PYTHON) -c "\
-import yaml; \
-d = yaml.safe_load(open('$(YAML)')); \
-sections = ['neron','server','llm','stt','tts','memory','watchdog']; \
-[print('  [' + s + ']') or \
- [print('    ' + k + ': ' + ('****' if any(x in k for x in ['token','key','secret']) else str(v))) \
-  for k,v in d.get(s,{}).items()] \
- for s in sections if s in d]" 2>/dev/null
+	@echo "  ⚙️  Configuration active (tokens masqués)"
+	@echo ""
+	@echo ""
+	@grep -E "^(OLLAMA|NERON_CORE_HTTP|WHISPER|STT_|LOG_|WATCHDOG_|CONTEXT_|TZ|OLLAMA_MODEL)" $(BASE_DIR)/.env | \
+		grep -v "TOKEN\|token" | sed 's/^/  /'
 	@echo ""
 
 version:
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Neron AI -- Versions$(RESET)"
-	@$(SEP)
 	@echo ""
-	@grep -m1 "^VERSION" $(BASE_DIR)/core/app.py 2>/dev/null | \
+	@echo "  🧠 Néron AI"
+	@grep -m1 "^VERSION" $(BASE_DIR)/modules/neron_core/app.py 2>/dev/null | \
 		cut -d'"' -f2 | awk '{print "  Version  : "$$1}' || echo "  Version  : inconnue"
 	@echo "  Python   : $$(python3 --version 2>&1 | cut -d' ' -f2)"
-	@echo "  Ollama   : $$(ollama --version 2>/dev/null || echo non-trouve)"
-	@MODEL=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(YAML)')); print(d.get('llm',{}).get('model','?'))" 2>/dev/null || echo '?') && \
-		echo "  Modele   : $$MODEL"
-	@echo "  Service  : $$(systemctl is-active neron 2>/dev/null || echo inactif)"
+	@echo "  Ollama   : $$(ollama --version 2>/dev/null || echo 'non trouvé')"
+	@echo "  Modèle   : $$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2)"
+	@echo "  Service  : $$(systemctl is-active neron 2>/dev/null || echo 'inactif')"
 	@echo ""
 
 ollama:
-	@$(SEP)
-	@echo "  $(BOLD)$(BLUE)Gestion du modele Ollama$(RESET)"
-	@$(SEP)
 	@echo ""
-	@echo "  $(BOLD)Modeles installes :$(RESET)"
-	@ollama list 2>/dev/null | tail -n +2 | awk '{print "  * "$$1}' || echo "  WARN aucun modele installe"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  🦙 Gestion du modèle Ollama"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 	@echo ""
-	@echo "  $(BOLD)Modeles recommandes :$(RESET)"
-	@echo "  * llama3.2:1b   -- leger      (~1GB)"
-	@echo "  * llama3.2:3b   -- equilibre  (~2GB)"
-	@echo "  * mistral       -- performant (~4GB)"
-	@echo "  * gemma3        -- Google     (~5GB)"
-	@echo "  * phi3          -- Microsoft  (~2GB)"
+	@echo "  Modèles installés :"
+	@ollama list 2>/dev/null | tail -n +2 | awk '{print "  • "$$1}' || echo "  aucun"
 	@echo ""
-	@CURRENT=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(YAML)')); print(d.get('llm',{}).get('model','llama3.2:1b'))" 2>/dev/null || echo 'llama3.2:1b') && \
-		echo "  Modele actuel : $$CURRENT" && \
+	@echo "  Modèles recommandés :"
+	@echo "  • llama3.2:1b   — léger      (~1GB)"
+	@echo "  • llama3.2:3b   — équilibré  (~2GB)"
+	@echo "  • mistral       — performant (~4GB)"
+	@echo "  • gemma3        — Google     (~5GB)"
+	@echo "  • phi3          — Microsoft  (~2GB)"
+	@echo ""
+	@CURRENT=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2) && \
+		echo "  Modèle actuel : $$CURRENT" && \
 		echo "" && \
-		read -p "  Entree = garder $$CURRENT, ou tapez un nouveau modele : " MODEL && \
+		read -p "  Entrée = garder $$CURRENT, ou tapez un nouveau modèle : " MODEL && \
 		MODEL=$${MODEL:-$$CURRENT} && \
 		echo "" && \
+		echo "📥 Téléchargement de $$MODEL..." && \
 		if ollama pull $$MODEL; then \
-			$(PYTHON) -c "import yaml; path='$(YAML)'; d=yaml.safe_load(open(path)); d.setdefault('llm',{})['model']='$$MODEL'; yaml.dump(d,open(path,'w'),allow_unicode=True,default_flow_style=False)"; \
-			echo "  OK neron.yaml mis a jour : llm.model=$$MODEL" && \
 			echo "" && \
-			read -p "  Redemarrer Neron maintenant ? [O/n] " RESTART && \
-			[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  WARN make restart quand vous etes pret"; \
+			echo "✔ Téléchargement réussi" && \
+			sed -i "s/^OLLAMA_MODEL=.*/OLLAMA_MODEL=$$MODEL/" $(BASE_DIR)/.env && \
+			echo "✔ .env mis à jour : OLLAMA_MODEL=$$MODEL" && \
+			echo "" && \
+			read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
+			[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
 		else \
-			echo "  FAIL Echec du telechargement"; exit 1; \
+			echo "" && \
+			echo "❌ Échec du téléchargement — .env non modifié" && \
+			echo "  Modèle actif inchangé : $$CURRENT"; \
 		fi
 
 telegram:
 	@bash $(BASE_DIR)/install.sh --telegram-only
+
+ha-agent:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  🏠 Configuration Home Assistant"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@CURRENT_URL=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(BASE_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('url','http://homeassistant.local:8123'))") && \
+	CURRENT_ENABLED=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(BASE_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('enabled',False))") && \
+	echo "  État actuel  : $$CURRENT_ENABLED" && \
+	echo "  URL actuelle : $$CURRENT_URL" && \
+	echo "" && \
+	read -p "  URL Home Assistant [$$CURRENT_URL] : " HA_URL && \
+	HA_URL=$${HA_URL:-$$CURRENT_URL} && \
+	echo "" && \
+	echo "  👉 Générez un token dans HA :" && \
+	echo "     Profil → Sécurité → Tokens d'accès longue durée" && \
+	echo "" && \
+	read -p "  Token (laisser vide pour garder l'actuel) : " HA_TOKEN && \
+	if [ -z "$$HA_TOKEN" ]; then \
+		HA_TOKEN=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(BASE_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('token',''))"); \
+	fi && \
+	echo "" && \
+	echo "🔍 Test de connexion vers $$HA_URL..." && \
+	HTTP_CODE=$$(curl -s -o /dev/null -w "%{http_code}" \
+		-H "Authorization: Bearer $$HA_TOKEN" \
+		$$HA_URL/api/) && \
+	if [ "$$HTTP_CODE" = "200" ]; then \
+		echo "✔ Connexion réussie (HTTP $$HTTP_CODE)" && \
+		$(PYTHON) $(BASE_DIR)/scripts/ha_setup.py "$(BASE_DIR)/neron.yaml" "$$HA_URL" "$$HA_TOKEN" && \
+		echo "" && \
+		read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
+		[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
+	else \
+		echo "❌ Connexion échouée (HTTP $$HTTP_CODE)" && \
+		echo "  Vérifiez l'URL et le token — neron.yaml non modifié" && \
+		exit 1; \
+	fi
+	@echo ""

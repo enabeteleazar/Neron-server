@@ -16,20 +16,16 @@ logger = get_logger("telegram_agent")
 
 TELEGRAM_TOKEN    = settings.TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID  = settings.TELEGRAM_CHAT_ID
-NERON_CORE_URL = f"http://{settings.SERVER_HOST}:{settings.SERVER_PORT}"
+NERON_CORE_URL    = f"http://{settings.SERVER_HOST}:{settings.SERVER_PORT}"
 NERON_API_KEY     = settings.API_KEY
 ALLOWED_CHAT_IDS  = set(settings.TELEGRAM_CHAT_ID.split(","))
 
-# Référence globale aux agents internes (injectée depuis app.py)
 _agents = {}
 
 def set_agents(agents: dict):
-    """Injecte les références aux agents internes"""
     global _agents
     _agents = agents
 
-
-# ─── SÉCURITÉ ─────────────────────────────────────────────
 
 def is_authorized(update: Update) -> bool:
     if not ALLOWED_CHAT_IDS or ALLOWED_CHAT_IDS == {''}:
@@ -39,9 +35,6 @@ def is_authorized(update: Update) -> bool:
 async def unauthorized(update: Update):
     await update.message.reply_text("⛔ Accès non autorisé")
     logger.warning(f"Accès refusé: chat_id={update.message.chat_id}")
-
-
-# ─── COMMANDES ────────────────────────────────────────────
 
 
 async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -60,13 +53,25 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Erreur: {str(e)}")
 
 
-# ─── MESSAGES ─────────────────────────────────────────────
-
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Messages texte → streaming via /input/stream de core"""
+async def cmd_ha_reload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update): return await unauthorized(update)
 
-    # Mettre à jour le timestamp de dernière conversation
+    ha = _agents.get("ha")
+    if not ha:
+        await update.message.reply_text("❌ Agent Home Assistant non disponible")
+        return
+
+    await update.message.reply_text("🔄 Rechargement des entités Home Assistant...")
+    try:
+        count = await ha.reload()
+        await update.message.reply_text(f"✅ Home Assistant rechargé — {count} entités")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur lors du rechargement : {str(e)}")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+
     try:
         from agents.watchdog_agent import _last_conversation as _wdog_lc
         import agents.watchdog_agent as _wdog_mod
@@ -116,12 +121,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await sent.edit_text(f"❌ Erreur: {str(e)}")
 
 
-# ─── DÉMARRAGE ────────────────────────────────────────────
-
 _telegram_app: Application = None
 
 async def start_bot():
-    """Démarre le bot Telegram (appelé depuis lifespan de app.py)"""
     global _telegram_app
 
     if not TELEGRAM_TOKEN:
@@ -130,6 +132,7 @@ async def start_bot():
 
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
     _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
+    _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()
@@ -138,7 +141,6 @@ async def start_bot():
     logger.info("Bot Telegram démarré")
 
 async def stop_bot():
-    """Arrête le bot proprement"""
     global _telegram_app
     if _telegram_app:
         await _telegram_app.updater.stop()
@@ -147,7 +149,6 @@ async def stop_bot():
         logger.info("Bot Telegram arrêté")
 
 async def send_notification(message: str, level: str = "info"):
-    """Envoie une notification Telegram"""
     if not _telegram_app or not TELEGRAM_CHAT_ID:
         return
     icons = {"info": "ℹ️", "warning": "⚠️", "alert": "🔴"}
