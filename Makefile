@@ -160,7 +160,7 @@ restore:
 
 test:
 	@echo "🧪 Test de l'API Néron..."
-	@curl -sf http://localhost:$(shell grep NERON_CORE_HTTP $(BASE_DIR)/.env | cut -d= -f2)/health > /dev/null && \
+	@curl -sf http://localhost:8000/health > /dev/null && \
 		echo "✔ Core API répond" || echo "❌ Core API ne répond pas"
 	@curl -sf http://localhost:11434/api/tags > /dev/null && \
 		echo "✔ Ollama répond" || echo "❌ Ollama ne répond pas"

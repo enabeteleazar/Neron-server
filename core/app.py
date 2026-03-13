@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
 from agents.stt_agent import STTAgent, load_model as stt_load_model
-# from agents.tts_agent import TTSAgent, load_engine as tts_load_engine  # TTS désactivé
 from agents.memory_agent import MemoryAgent, init_db as memory_init_db
 from agents.telegram_agent import start_bot, stop_bot, set_agents, send_notification
 from agents.watchdog_agent import setup as watchdog_setup, start_watchdog, stop_watchdog, start_watchdog_bot, stop_watchdog_bot
@@ -27,7 +26,6 @@ from config import settings
 
 logging.basicConfig(level=settings.LOG_LEVEL)
 
-# FileHandler — écriture logs dans data/logs/
 _log_file = settings.LOGS_DIR / settings.LOG_NERON
 settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
 _file_handler = logging.FileHandler(_log_file)
@@ -122,7 +120,7 @@ llm_agent: LLMAgent = None
 memory_agent: MemoryAgent = None
 web_agent: WebAgent = None
 stt_agent: STTAgent = None
-tts_agent = None  # TTS désactivé
+tts_agent = None
 ha_agent: HAAgent = None
 router: IntentRouter = None
 time_provider: TimeProvider = None
@@ -142,19 +140,21 @@ async def lifespan(app: FastAPI):
     stt_load_model()
     stt_agent = STTAgent()
 
-    # Home Assistant — instanciation + chargement des entités
     ha_agent = HAAgent()
     await ha_agent.on_start()
-
-    # tts_load_engine()  # TTS désactivé
-    # tts_agent = TTSAgent()  # TTS désactivé
 
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
 
     logger.info(json.dumps({"event": "agents_ready"}))
 
-    set_agents({"llm": llm_agent, "stt": stt_agent, "tts": tts_agent, "memory": memory_agent})
+    set_agents({
+        "llm":    llm_agent,
+        "stt":    stt_agent,
+        "tts":    tts_agent,
+        "memory": memory_agent,
+        "ha":     ha_agent,
+    })
 
     if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN not in ("", "votre_token_ici"):
         await start_bot()
@@ -171,6 +171,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    await ha_agent.on_stop()
     if settings.WATCHDOG_ENABLED:
         await stop_watchdog_bot()
         await stop_watchdog()
@@ -229,6 +230,19 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
         raise HTTPException(status_code=401, detail="API Key manquante")
     if api_key != settings.API_KEY:
         raise HTTPException(status_code=403, detail="API Key invalide")
+
+
+@app.post("/ha/reload")
+async def ha_reload(_: None = Depends(verify_api_key)):
+    """Recharge manuellement les entités Home Assistant."""
+    if not ha_agent:
+        raise HTTPException(503, "Agent HA non disponible")
+    count = await ha_agent.reload()
+    return {
+        "status": "ok",
+        "entities": count,
+        "timestamp": utc_now_iso()
+    }
 
 
 @app.post("/input/text", response_model=CoreResponse)
@@ -479,7 +493,6 @@ async def _handle_web_search(query: str, intent_result, metadata: dict, start: f
 
 
 async def _handle_ha_action(query: str, intent_result, metadata: dict, start: float) -> CoreResponse:
-    """Pipeline Home Assistant : parse action → appel REST HA → réponse"""
     result = await ha_agent.execute(query)
     elapsed = round((time.monotonic() - start) * 1000, 2)
 
