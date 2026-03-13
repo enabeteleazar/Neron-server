@@ -225,3 +225,41 @@ ollama:
 telegram:
 	@bash $(BASE_DIR)/install.sh --telegram-only
 
+ha-agent:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  🏠 Configuration Home Assistant"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@CURRENT_URL=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(BASE_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('url','http://homeassistant.local:8123'))") && \
+	CURRENT_ENABLED=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(BASE_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('enabled',False))") && \
+	echo "  État actuel  : $$CURRENT_ENABLED" && \
+	echo "  URL actuelle : $$CURRENT_URL" && \
+	echo "" && \
+	read -p "  URL Home Assistant [$$CURRENT_URL] : " HA_URL && \
+	HA_URL=$${HA_URL:-$$CURRENT_URL} && \
+	echo "" && \
+	echo "  👉 Générez un token dans HA :" && \
+	echo "     Profil → Sécurité → Tokens d'accès longue durée" && \
+	echo "" && \
+	read -p "  Token (laisser vide pour garder l'actuel) : " HA_TOKEN && \
+	if [ -z "$$HA_TOKEN" ]; then \
+		HA_TOKEN=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(BASE_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('token',''))"); \
+	fi && \
+	echo "" && \
+	echo "🔍 Test de connexion vers $$HA_URL..." && \
+	HTTP_CODE=$$(curl -s -o /dev/null -w "%{http_code}" \
+		-H "Authorization: Bearer $$HA_TOKEN" \
+		$$HA_URL/api/) && \
+	if [ "$$HTTP_CODE" = "200" ]; then \
+		echo "✔ Connexion réussie (HTTP $$HTTP_CODE)" && \
+		$(PYTHON) $(BASE_DIR)/scripts/ha_setup.py "$(BASE_DIR)/neron.yaml" "$$HA_URL" "$$HA_TOKEN" && \
+		echo "" && \
+		read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
+		[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
+	else \
+		echo "❌ Connexion échouée (HTTP $$HTTP_CODE)" && \
+		echo "  Vérifiez l'URL et le token — neron.yaml non modifié" && \
+		exit 1; \
+	fi
+	@echo ""
