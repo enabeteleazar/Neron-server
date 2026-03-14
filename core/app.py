@@ -11,6 +11,7 @@ from typing import Optional
 from fastapi import FastAPI, File, HTTPException, UploadFile, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
@@ -187,6 +188,13 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class TextInput(BaseModel):
     text: str
