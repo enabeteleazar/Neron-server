@@ -27,6 +27,7 @@ help:
 	@echo "  make start      -- demarrer le service"
 	@echo "  make stop       -- arreter le service"
 	@echo "  make restart    -- redemarrer le service"
+	@echo "  make client     -- servir l'interface web (port 8080)"
 	@echo "  make status     -- etat du service"
 	@echo "  make logs       -- logs en direct"
 	@echo ""
@@ -259,3 +260,20 @@ ha-agent:
 		exit 1; \
 	fi
 	@echo ""
+
+client:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  🌐 Interface Web Néron"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+	@if [ ! -f $(BASE_DIR)/../client/config.js ]; then \
+		echo "⚠️  config.js manquant — création depuis l'exemple..."; \
+		cp $(BASE_DIR)/../client/config.example.js $(BASE_DIR)/../client/config.js; \
+		echo "✔ Éditez $(BASE_DIR)/../client/config.js avec votre IP et API key"; \
+		echo ""; \
+	fi
+	@echo "  URL : http://$(shell hostname -I | awk '{print $$1}'):8080"
+	@echo "  Ctrl+C pour arrêter"
+	@echo ""
+	@cd $(BASE_DIR)/../client && $(PYTHON) -m http.server 8080
