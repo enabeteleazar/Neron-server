@@ -1,15 +1,16 @@
-# ============================================
+@LLMFIT=$(BASE_DIR)/scripts/llmfit/l# ============================================
 #  Néron AI v2.0 — Makefile
 # ============================================
 
-BASE_DIR  := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+#BASE_DIR  := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
+BASE_DIR  := /mnt/usb-storage/neron/server
 VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
 PIP       := $(VENV)/bin/pip
 SERVICE   := neron
 LOG_DIR   := $(BASE_DIR)/logs
 
-.PHONY: install start stop restart status logs update help clean
+.PHONY: install start stop restart status logs update help clean ha-agent
 
 # --- Défaut ---
 all: help
@@ -17,35 +18,34 @@ all: help
 help:
 	@echo ""
 	@echo "[Installation / Maintenance]"
-	@echo "  $(BOLD)make install$(RESET)    -- installer Neron"
-	@echo "  $(BOLD)make update$(RESET)     -- git pull + restart"
-	@echo "  $(BOLD)make clean$(RESET)      -- nettoyer venv et logs"
-	@echo "  $(BOLD)make version$(RESET)    -- versions Neron / Python / Ollama"
+	@echo "  make install    -- installer Neron"
+	@echo "  make update     -- git pull + restart"
+	@echo "  make clean      -- nettoyer venv et logs"
+	@echo "  make version    -- versions Neron / Python / Ollama"
 	@echo ""
 	@echo "[Services]"
-	@echo "  $(BOLD)make start$(RESET)      -- demarrer le service"
-	@echo "  $(BOLD)make stop$(RESET)       -- arreter le service"
-	@echo "  $(BOLD)make restart$(RESET)    -- redemarrer le service"
-	@echo "  $(BOLD)make status$(RESET)     -- etat du service"
-	@echo "  $(BOLD)make logs$(RESET)       -- logs en direct"
+	@echo "  make start      -- demarrer le service"
+	@echo "  make stop       -- arreter le service"
+	@echo "  make restart    -- redemarrer le service"
+	@echo "  make status     -- etat du service"
+	@echo "  make logs       -- logs en direct"
 	@echo ""
 	@echo "[Sauvegarde]"
-	@echo "  $(BOLD)make backup$(RESET)     -- sauvegarder DB + neron.yaml"
-	@echo "  $(BOLD)make restore$(RESET)    -- restaurer une sauvegarde"
+	@echo "  make backup     -- sauvegarder DB + neron.yaml"
+	@echo "  make restore    -- restaurer une sauvegarde"
 	@echo ""
 	@echo "[Diagnostic]"
-	@echo "  $(BOLD)make test$(RESET)       -- tester l'API et Ollama"
-	@echo "  $(BOLD)make env$(RESET)        -- afficher la config active"
+	@echo "  make test       -- tester l'API et Ollama"
+	@echo "  make env        -- afficher la config active"
 	@echo ""
 	@echo "[Integration]"
-	@echo "  $(BOLD)make ollama$(RESET)     -- gerer le modele Ollama"
-	@echo "  $(BOLD)make telegram$(RESET)   -- configurer les bots Telegram"
-	@echo "  $(BOLD)make ha-agent$(RESET)   -- configurer les homeAssistant"
+	@echo "  make ollama     -- gerer le modele Ollama"
+	@echo "  make telegram   -- configurer les bots Telegram"
+	@echo "  make ha-agent   -- configurer Home Assistant"
 
 install:
 	@echo "🔧 Installation de Néron AI..."
 	@echo ""
-	@# Dépendances système
 	@echo "📦 Installation des dépendances système..."
 	@sudo apt-get update -qq
 	@sudo apt-get install -y -qq \
@@ -58,19 +58,15 @@ install:
 		nano \
 		make
 	@echo "✔ Dépendances système OK"
-	@# Venv
 	@echo "🐍 Création du venv Python..."
 	@test -d $(VENV) || python3 -m venv $(VENV)
 	@$(PIP) install --upgrade pip -q
 	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q
 	@echo "✔ Venv OK"
-	@# Logs
 	@mkdir -p $(LOG_DIR)
 	@echo "✔ Dossier logs OK"
-	@# .env
 	@test -f $(BASE_DIR)/.env || cp $(BASE_DIR)/.env.example $(BASE_DIR)/.env
 	@echo "✔ .env OK"
-	@# Systemd
 	@echo "⚙️  Configuration systemd..."
 	@sed -e "s|__NERON_DIR__|$(BASE_DIR)|g" \
 		-e "s|__NERON_USER__|$(shell whoami)|g" \
@@ -139,7 +135,6 @@ clean:
 	@rm -f $(LOG_DIR)/*.log
 	@echo "✔ Nettoyage terminé"
 
-
 backup:
 	@echo "💾 Sauvegarde de Néron..."
 	@BACKUP_DIR=$(BASE_DIR)/backups/$$(date +%Y%m%d_%H%M%S) && \
@@ -169,7 +164,6 @@ env:
 	@echo ""
 	@echo "  ⚙️  Configuration active (tokens masqués)"
 	@echo ""
-	@echo ""
 	@grep -E "^(OLLAMA|NERON_CORE_HTTP|WHISPER|STT_|LOG_|WATCHDOG_|CONTEXT_|TZ|OLLAMA_MODEL)" $(BASE_DIR)/.env | \
 		grep -v "TOKEN\|token" | sed 's/^/  /'
 	@echo ""
@@ -194,31 +188,33 @@ ollama:
 	@echo "  Modèles installés :"
 	@ollama list 2>/dev/null | tail -n +2 | awk '{print "  • "$$1}' || echo "  aucun"
 	@echo ""
-	@echo "  Modèles recommandés :"
-	@echo "  • llama3.2:1b   — léger      (~1GB)"
-	@echo "  • llama3.2:3b   — équilibré  (~2GB)"
-	@echo "  • mistral       — performant (~4GB)"
-	@echo "  • gemma3        — Google     (~5GB)"
-	@echo "  • phi3          — Microsoft  (~2GB)"
+	@echo "🔍 Analyse du hardware en cours..."
 	@echo ""
-	@CURRENT=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2) && \
+	@$(PYTHON) $(BASE_DIR)/scripts/ollama_recommend.py || true
+	@echo ""
+	@CURRENT=$$($(PYTHON) -c "import yaml; print(yaml.safe_load(open('$(BASE_DIR)/neron.yaml'))['llm']['model'])" 2>/dev/null || echo "llama3.2:3b") && \
 		echo "  Modèle actuel : $$CURRENT" && \
 		echo "" && \
-		read -p "  Entrée = garder $$CURRENT, ou tapez un nouveau modèle : " MODEL && \
+		read -p "  Entrée = garder $$CURRENT, ou tapez un modèle Ollama : " MODEL && \
 		MODEL=$${MODEL:-$$CURRENT} && \
 		echo "" && \
 		echo "📥 Téléchargement de $$MODEL..." && \
 		if ollama pull $$MODEL; then \
 			echo "" && \
 			echo "✔ Téléchargement réussi" && \
-			sed -i "s/^OLLAMA_MODEL=.*/OLLAMA_MODEL=$$MODEL/" $(BASE_DIR)/.env && \
-			echo "✔ .env mis à jour : OLLAMA_MODEL=$$MODEL" && \
+			$(PYTHON) -c " \
+import yaml; \
+f='$(BASE_DIR)/neron.yaml'; \
+d=yaml.safe_load(open(f)); \
+d['llm']['model']='$$MODEL'; \
+yaml.dump(d, open(f,'w'), allow_unicode=True, default_flow_style=False); \
+print('✔ neron.yaml mis à jour : llm.model=$$MODEL')" && \
 			echo "" && \
 			read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
 			[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
 		else \
 			echo "" && \
-			echo "❌ Échec du téléchargement — .env non modifié" && \
+			echo "❌ Échec du téléchargement — neron.yaml non modifié" && \
 			echo "  Modèle actif inchangé : $$CURRENT"; \
 		fi
 
