@@ -1,12 +1,10 @@
 # agents/tts_agent.py
-# Neron Core - Agent TTS (pyttsx3 direct, sans neron_tts intermédiaire)
+# Neron Core - Agent TTS (espeak + ffmpeg MP3)
 
 import os
 from config import settings
 import sys
 import time
-import logging
-import tempfile
 
 from agents.base_agent import AgentResult, get_logger
 
@@ -14,9 +12,8 @@ logger = get_logger("tts_agent")
 
 TTS_MAX_CHARS = int(settings.TTS_MAX_CHARS)
 
-# Ajouter le path neron_tts pour importer engine.py
 _TTS_MODULE_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "..", "neron_tts"
+    os.path.dirname(__file__), "..", "neron_tts"
 )
 if _TTS_MODULE_PATH not in sys.path:
     sys.path.insert(0, os.path.abspath(_TTS_MODULE_PATH))
@@ -25,7 +22,6 @@ _tts_engine = None
 
 
 def load_engine():
-    """Charge le moteur TTS (appelé au démarrage de core)"""
     global _tts_engine
     from engine import get_engine
     engine_name = settings.TTS_ENGINE
@@ -37,7 +33,7 @@ def load_engine():
 
 class TTSAgent:
     def __init__(self):
-        logger.info("TTSAgent init — pyttsx3 direct")
+        logger.info("TTSAgent init — espeak+ffmpeg")
 
     async def synthesize(self, text: str) -> AgentResult:
         if not text or not text.strip():
@@ -63,18 +59,25 @@ class TTSAgent:
         start = time.monotonic()
         try:
             logger.info(f"Synthèse TTS : '{text[:60]}' ({len(text)} chars)")
-            audio_bytes = _tts_engine.synthesize(text)
-            latency_ms = round((time.monotonic() - start) * 1000, 2)
 
-            logger.info(f"TTS OK : {latency_ms}ms -> {len(audio_bytes)} bytes")
+            result = _tts_engine.synthesize(text, format="mp3")
+            if isinstance(result, tuple):
+                audio_bytes, mimetype = result
+            else:
+                audio_bytes = result
+                mimetype = "audio/wav"
+
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            logger.info(f"TTS OK : {latency_ms}ms -> {len(audio_bytes)} bytes ({mimetype})")
 
             return AgentResult(
                 success=True, content="", source="tts_agent",
                 error=None, latency_ms=latency_ms,
                 metadata={
                     "audio_bytes": audio_bytes,
-                    "engine": _tts_engine.name(),
-                    "chars": len(text)
+                    "mimetype":    mimetype,
+                    "engine":      _tts_engine.name(),
+                    "chars":       len(text)
                 }
             )
 
@@ -88,7 +91,6 @@ class TTSAgent:
             )
 
     async def reload(self) -> bool:
-        """Recharge le moteur TTS"""
         try:
             load_engine()
             return True

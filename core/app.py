@@ -382,7 +382,7 @@ async def voice_input(file: UploadFile = File(...)):
         execution_time_ms = round((time.monotonic() - start) * 1000, 2)
         return FastAPIResponse(
             content=tts_result.metadata["audio_bytes"],
-            media_type="audio/wav",
+            media_type=tts_result.metadata.get("mimetype", "audio/wav"),
             headers={
                 "X-Transcription": transcription[:200].encode("ascii", "replace").decode("ascii"),
                 "X-Response-Text": core_response.response[:200].encode("ascii", "replace").decode("ascii"),
