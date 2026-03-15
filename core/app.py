@@ -384,8 +384,8 @@ async def voice_input(file: UploadFile = File(...)):
             content=tts_result.metadata["audio_bytes"],
             media_type="audio/wav",
             headers={
-                "X-Transcription": transcription[:200],
-                "X-Response-Text": core_response.response[:200],
+                "X-Transcription": transcription[:200].encode("ascii", "replace").decode("ascii"),
+                "X-Response-Text": core_response.response[:200].encode("ascii", "replace").decode("ascii"),
                 "X-Intent": core_response.intent,
                 "X-Execution-Time-Ms": str(execution_time_ms),
             }
