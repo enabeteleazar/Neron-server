@@ -16,6 +16,7 @@ from pydantic import BaseModel
 from agents.llm_agent import LLMAgent
 from agents.web_agent import WebAgent
 from agents.stt_agent import STTAgent, load_model as stt_load_model
+from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
 from agents.memory_agent import MemoryAgent, init_db as memory_init_db
 from agents.telegram_agent import start_bot, stop_bot, set_agents, send_notification
 from agents.watchdog_agent import setup as watchdog_setup, start_watchdog, stop_watchdog, start_watchdog_bot, stop_watchdog_bot
@@ -140,6 +141,8 @@ async def lifespan(app: FastAPI):
     memory_agent = MemoryAgent()
     stt_load_model()
     stt_agent = STTAgent()
+    tts_load_engine()
+    tts_agent = TTSAgent()
 
     ha_agent = HAAgent()
     await ha_agent.on_start()

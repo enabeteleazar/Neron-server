@@ -16,7 +16,7 @@ TTS_MAX_CHARS = int(settings.TTS_MAX_CHARS)
 
 # Ajouter le path neron_tts pour importer engine.py
 _TTS_MODULE_PATH = os.path.join(
-    os.path.dirname(__file__), "..", "..", "neron_tts"
+    os.path.dirname(__file__), "..", "..", "..", "neron_tts"
 )
 if _TTS_MODULE_PATH not in sys.path:
     sys.path.insert(0, os.path.abspath(_TTS_MODULE_PATH))

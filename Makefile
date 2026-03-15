@@ -262,18 +262,32 @@ ha-agent:
 	@echo ""
 
 client:
-	@echo ""
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo "  🌐 Interface Web Néron"
-	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-	@echo ""
-	@if [ ! -f $(BASE_DIR)/../client/config.js ]; then \
-		echo "⚠️  config.js manquant — création depuis l'exemple..."; \
-		cp $(BASE_DIR)/../client/config.example.js $(BASE_DIR)/../client/config.js; \
-		echo "✔ Éditez $(BASE_DIR)/../client/config.js avec votre IP et API key"; \
-		echo ""; \
-	fi
 	@echo "  URL : http://$(shell hostname -I | awk '{print $$1}'):8080"
-	@echo "  Ctrl+C pour arrêter"
-	@echo ""
-	@cd $(BASE_DIR)/../client && $(PYTHON) -m http.server 8080
+	@$(MAKE) client-start
+
+client-start:
+	@echo "▶  Démarrage du client Néron..."
+	@sudo systemctl start neron-client
+	@sleep 1
+	@sudo systemctl is-active --quiet neron-client && \
+		echo "✔ Client démarré — http://$(shell hostname -I | awk '{print $$1}'):8080" || \
+		(echo "❌ Échec — make client-logs pour plus d'infos" && exit 1)
+
+client-stop:
+	@echo "⏹  Arrêt du client Néron..."
+	@sudo systemctl stop neron-client
+	@echo "✔ Client arrêté"
+
+client-restart:
+	@echo "🔄 Redémarrage du client Néron..."
+	@sudo systemctl restart neron-client
+	@sleep 1
+	@sudo systemctl is-active --quiet neron-client && \
+		echo "✔ Client redémarré" || \
+		(echo "❌ Échec — make client-logs pour plus d'infos" && exit 1)
+
+client-logs:
+	@sudo journalctl -u neron-client -f
+
+client-status:
+	@sudo systemctl status neron-client --no-pager
