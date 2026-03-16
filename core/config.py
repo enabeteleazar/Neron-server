@@ -57,7 +57,7 @@ class Config:
 
     # Serveur
     SERVER_HOST    = _get(_cfg, "server", "host",     fallback_env="SERVER_HOST",     default="0.0.0.0")
-    SERVER_PORT    = int(_get(_cfg, "server", "port", fallback_env="NERON_CORE_HTTP", default=8000))
+    SERVER_PORT    = int(_get(_cfg, "server", "port", fallback_env="NERON_CORE_HTTP", default=8010))
 
     # LLM
     OLLAMA_MODEL    = _get(_cfg, "llm", "model",         fallback_env="OLLAMA_MODEL",    default="llama3.2:1b")

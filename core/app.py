@@ -1,5 +1,5 @@
 # core/app.py
-# Neron Core v2.1.0
+# Neron Core v2.1.0 - Version Telegram safe start
 
 import json
 import logging
@@ -26,8 +26,8 @@ from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
 from config import settings
 
+# ----------------- Logging -----------------
 logging.basicConfig(level=settings.LOG_LEVEL)
-
 _log_file = settings.LOGS_DIR / settings.LOG_NERON
 settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
 _file_handler = logging.FileHandler(_log_file)
@@ -39,11 +39,10 @@ logger = get_logger("neron_core")
 VERSION = "2.1.0"
 _startup_time: float = 0.0
 
-
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
-
+# ----------------- Metrics -----------------
 class Metrics:
     def __init__(self):
         self._intent_counts: dict = {}
@@ -127,7 +126,7 @@ ha_agent: HAAgent = None
 router: IntentRouter = None
 time_provider: TimeProvider = None
 
-
+# ----------------- Lifespan -----------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent, router, time_provider, _startup_time, memory_agent
@@ -135,6 +134,7 @@ async def lifespan(app: FastAPI):
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
 
+    # --- Init agents ---
     llm_agent = LLMAgent()
     web_agent = WebAgent()
     memory_init_db()
@@ -143,15 +143,13 @@ async def lifespan(app: FastAPI):
     stt_agent = STTAgent()
     tts_load_engine()
     tts_agent = TTSAgent()
-
     ha_agent = HAAgent()
     await ha_agent.on_start()
-
     router = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
-
     logger.info(json.dumps({"event": "agents_ready"}))
 
+    # --- Set agents for Telegram/Watchdog ---
     set_agents({
         "llm":    llm_agent,
         "stt":    stt_agent,
@@ -160,12 +158,20 @@ async def lifespan(app: FastAPI):
         "ha":     ha_agent,
     })
 
-    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN not in ("", "votre_token_ici"):
-        await start_bot()
-    else:
-        logger.warning("Telegram desactive -- TELEGRAM_BOT_TOKEN non configure")
+    # --- Telegram ---
+    telegram_enabled = getattr(settings, "TELEGRAM_ENABLED", False)
+    telegram_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
 
-    if settings.WATCHDOG_ENABLED:
+    if telegram_enabled and telegram_token not in ("", "votre_token_ici", None):
+        try:
+            await start_bot()
+        except Exception as e:
+            logger.warning(f"Impossible de démarrer Telegram : {str(e)}")
+    else:
+        logger.info("Telegram désactivé ou token non configuré, démarrage ignoré")
+
+    # --- Watchdog ---
+    if getattr(settings, "WATCHDOG_ENABLED", False):
         watchdog_setup(
             agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
             notify_fn=send_notification
@@ -176,14 +182,21 @@ async def lifespan(app: FastAPI):
     yield
 
     await ha_agent.on_stop()
-    if settings.WATCHDOG_ENABLED:
+
+    if getattr(settings, "WATCHDOG_ENABLED", False):
         await stop_watchdog_bot()
         await stop_watchdog()
-    if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_BOT_TOKEN not in ("", "votre_token_ici"):
-        await stop_bot()
+
+    # --- Telegram stop ---
+    if telegram_enabled and telegram_token not in ("", "votre_token_ici", None):
+        try:
+            await stop_bot()
+        except Exception as e:
+            logger.warning(f"Impossible d'arrêter Telegram : {str(e)}")
+
     logger.info(json.dumps({"event": "shutdown"}))
 
-
+# ----------------- FastAPI app -----------------
 app = FastAPI(
     title="Neron Core",
     description="Orchestrateur central - v" + VERSION,
@@ -199,9 +212,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ----------------- Routes / Models -----------------
 class TextInput(BaseModel):
     text: str
-
 
 class CoreResponse(BaseModel):
     response: str
@@ -215,6 +228,17 @@ class CoreResponse(BaseModel):
     transcription: Optional[str] = None
     metadata: dict = {}
 
+@app.get("/")
+def root():
+    return {"service": "Neron Core", "version": VERSION, "status": "active"}
+
+@app.get("/health")
+def health():
+    return {"status": "healthy", "version": VERSION}
+
+@app.get("/metrics", response_class=PlainTextResponse)
+def prometheus_metrics():
+    return PlainTextResponse(metrics.export(), media_type="text/plain")
 
 @app.get("/")
 def root():
