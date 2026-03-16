@@ -42,7 +42,9 @@ def init_db():
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                event_type TEXT,
+                type TEXT,
+                service TEXT,
+                message TEXT,
                 data TEXT
             )
         """)
