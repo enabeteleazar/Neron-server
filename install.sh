@@ -48,9 +48,13 @@ warn() { echo -e "  ${YELLOW}⚠${NC}  $1"; }
 step() { echo -e "\n${BLUE}${BOLD}[$1]${NC} $2"; }
 
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
-INSTALL_DIR="${NERON_DIR:-/etc/neron}"
+NERON_BASE="${NERON_BASE:-/etc/neron}"
+INSTALL_DIR="$NERON_BASE/server"
+CLIENT_DIR="$NERON_BASE/client"
+DATA_DIR="$NERON_BASE/data"
 BRANCH="${NERON_BRANCH:-master}"
 YAML_FILE="$INSTALL_DIR/neron.yaml"
+LOG_DIR="$DATA_DIR/logs"
 
 # --- Helpers yaml ---
 yaml_get() {
@@ -309,8 +313,12 @@ _configure_ha() {
 # --- Mode telegram-only ---
 if [ "${1:-}" = "--telegram-only" ]; then
     set +e
-    INSTALL_DIR="${NERON_DIR:-/etc/neron}"
+    NERON_BASE="${NERON_BASE:-/etc/neron}"
+INSTALL_DIR="$NERON_BASE/server"
+CLIENT_DIR="$NERON_BASE/client"
+DATA_DIR="$NERON_BASE/data"
     YAML_FILE="$INSTALL_DIR/neron.yaml"
+LOG_DIR="$DATA_DIR/logs"
     setup_telegram
     sudo systemctl restart neron 2>/dev/null || true
     exit 0
@@ -336,7 +344,7 @@ else
 fi
 
 # --- Vérification OS ---
-step "1/7" "Vérification du système..."
+step "1/8" "Vérification du système..."
 if ! command -v apt-get >/dev/null 2>&1; then
     fail "Ubuntu/Debian requis"
     exit 1
@@ -361,7 +369,7 @@ else
 fi
 
 # --- Dépendances ---
-step "2/7" "Installation des dépendances système..."
+step "2/8" "Installation des dépendances système..."
 
 PYTHON_VENV_PKG="python3-venv"
 python3 --version 2>/dev/null | grep -q "3.12" && PYTHON_VENV_PKG="python3.12-venv" || true
@@ -378,7 +386,7 @@ sudo apt-get install -y -qq \
 ok "Dépendances OK"
 
 # --- Ollama ---
-step "3/7" "Vérification Ollama..."
+step "3/8" "Vérification Ollama..."
 if ! command -v ollama >/dev/null 2>&1; then
     warn "Ollama non trouvé — installation..."
     curl -fsSL https://ollama.ai/install.sh | sh > /dev/null 2>&1 & spinner $!
@@ -399,8 +407,13 @@ else
     ok "Ollama déjà actif"
 fi
 
+# --- Création structure dossiers ---
+sudo mkdir -p "$NERON_BASE/server" "$NERON_BASE/client" "$NERON_BASE/data/logs"
+sudo chown -R "$(whoami):$(whoami)" "$NERON_BASE"
+ok "Structure /etc/neron/{server,client,data} créée"
+
 # --- Clone / Update ---
-step "4/7" "Récupération de Néron AI..."
+step "4/8" "Récupération de Néron AI..."
 if [ -d "$INSTALL_DIR/.git" ]; then
     warn "Dépôt existant — mise à jour..."
     git -C "$INSTALL_DIR" pull origin "$BRANCH" > /dev/null 2>&1 & spinner $!
@@ -425,7 +438,7 @@ fi
 ok "Dépôt OK"
 
 # --- Configuration neron.yaml ---
-step "5/7" "Configuration neron.yaml..."
+step "5/8" "Configuration neron.yaml..."
 if [ ! -f "$YAML_FILE" ]; then
     cp "$INSTALL_DIR/neron.yaml.example" "$YAML_FILE"
     warn "neron.yaml créé depuis l'exemple — pensez à le configurer"
@@ -434,11 +447,61 @@ else
 fi
 
 # --- Make install ---
-step "6/7" "Installation via Makefile..."
+step "6/8" "Installation via Makefile..."
 make -C "$INSTALL_DIR" install
 
+
+# --- Client Web ---
+step "7/8" "Installation du client web Néron..."
+if [ -d "$CLIENT_DIR/.git" ]; then
+    warn "Client existant — mise à jour..."
+    git -C "$CLIENT_DIR" pull origin "$BRANCH" > /dev/null 2>&1 & spinner $!
+    ok "Client mis à jour"
+else
+    slow_echo "  Clone client : Neron_UI → $CLIENT_DIR" 0.01
+    git clone --branch "${CLIENT_BRANCH:-develop}" "https://github.com/enabeteleazar/Neron_UI.git" "$CLIENT_DIR" > /dev/null 2>&1 & spinner $! || {
+        warn "Clone client échoué — client ignoré"
+        CLIENT_DIR=""
+    }
+fi
+
+if [ -n "$CLIENT_DIR" ] && [ -d "$CLIENT_DIR" ]; then
+    # Créer config.js depuis l'exemple
+    if [ ! -f "$CLIENT_DIR/config.js" ] && [ -f "$CLIENT_DIR/config.example.js" ]; then
+        cp "$CLIENT_DIR/config.example.js" "$CLIENT_DIR/config.js"
+        warn "config.js créé depuis l'exemple — configurez API_URL et API_KEY"
+    fi
+
+    # Installer le service systemd neron-client
+    sudo tee /etc/systemd/system/neron-client.service > /dev/null << SVCEOF
+[Unit]
+Description=Néron AI Client — Interface Web
+After=network.target neron.service
+Wants=neron.service
+
+[Service]
+Type=simple
+User=$(whoami)
+WorkingDirectory=$CLIENT_DIR
+ExecStart=/usr/bin/python3 -m http.server 8080
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+    sudo systemctl daemon-reload
+    sudo systemctl enable neron-client > /dev/null 2>&1
+    sudo systemctl start neron-client
+    ok "Client web démarré — http://$(hostname -I | awk '{print $1}'):8080"
+else
+    warn "Client non installé — configurez manuellement plus tard"
+fi
+
 # --- Modèle Ollama ---
-step "7/7" "Modèle Ollama..."
+step "8/8" "Modèle Ollama..."
 CURRENT_MODEL=$(yaml_get "$YAML_FILE" "llm" "model")
 CURRENT_MODEL="${CURRENT_MODEL:-llama3.2:1b}"
 
