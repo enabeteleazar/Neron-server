@@ -459,7 +459,7 @@ if [ -d "$CLIENT_DIR/.git" ]; then
     ok "Client mis à jour"
 else
     slow_echo "  Clone client : Neron_UI → $CLIENT_DIR" 0.01
-    git clone --branch "$BRANCH" "https://github.com/enabeteleazar/Neron_UI.git" "$CLIENT_DIR" > /dev/null 2>&1 & spinner $! || {
+    git clone --branch "${CLIENT_BRANCH:-develop}" "https://github.com/enabeteleazar/Neron_UI.git" "$CLIENT_DIR" > /dev/null 2>&1 & spinner $! || {
         warn "Clone client échoué — client ignoré"
         CLIENT_DIR=""
     }

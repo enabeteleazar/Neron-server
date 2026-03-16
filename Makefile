@@ -76,11 +76,10 @@ install:
 	@echo ""
 	@echo "✅ Installation terminée !"
 	@echo ""
-	@echo "🦙 Démarrage Ollama..."
-	@echo "✔ Modèle prêt"
+	@echo "  👉 Configurez : nano $(BASE_DIR)/neron.yaml"
+	@echo "  👉 Démarrez   : make start"
 	@echo ""
-	@echo "  👉 Éditez votre .env : nano $(BASE_DIR)/.env"
-	@echo "  👉 Puis lancez      : make start"
+	@echo ""
 	@echo ""
 
 start:
