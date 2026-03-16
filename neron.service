@@ -5,27 +5,22 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=eleazar
-Group=eleazar
-WorkingDirectory=/mnt/usb-storage/neron/server
+User=__NERON_USER__
+Group=__NERON_USER__
+WorkingDirectory=__NERON_DIR__
 
-# Charger le .env si besoin
-EnvironmentFile=/mnt/usb-storage/neron/server/.env
+ExecStart=/bin/bash -c "source __NERON_DIR__/venv/bin/activate && exec python core/app.py"
 
-# Lancer via le venv
-ExecStart=/bin/bash -c "source /mnt/usb-storage/neron/server/venv/bin/activate && exec python core/app.py"
-
-# Restart automatique
 Restart=always
 RestartSec=10
 
-# Timeout
 TimeoutStartSec=120
 TimeoutStopSec=30
 
-# Logs systemd (optionnel)
-StandardOutput=journal
-StandardError=journal
+StandardOutput=append:__NERON_DIR__/../data/logs/neron_core.log
+StandardError=append:__NERON_DIR__/../data/logs/neron_core.log
+
+Environment=PYTHONPATH=__NERON_DIR__/..
 
 [Install]
 WantedBy=multi-user.target

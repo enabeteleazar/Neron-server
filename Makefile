@@ -64,8 +64,6 @@ install:
 	@echo "✔ Venv OK"
 	@mkdir -p $(LOG_DIR)
 	@echo "✔ Dossier logs OK"
-	@test -f $(BASE_DIR)/.env || cp $(BASE_DIR)/.env.example $(BASE_DIR)/.env
-	@echo "✔ .env OK"
 	@echo "⚙️  Configuration systemd..."
 	@sed -e "s|__NERON_DIR__|$(BASE_DIR)|g" \
 		-e "s|__NERON_USER__|$(shell whoami)|g" \
@@ -79,10 +77,6 @@ install:
 	@echo "✅ Installation terminée !"
 	@echo ""
 	@echo "🦙 Démarrage Ollama..."
-	@ollama serve > /dev/null 2>&1 & sleep 3
-	@echo "📥 Téléchargement du modèle par défaut..."
-	@MODEL=$$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2 | tr -d " ") && \
-		[ -n "$$MODEL" ] && ollama pull $$MODEL || ollama pull llama3.2:3b
 	@echo "✔ Modèle prêt"
 	@echo ""
 	@echo "  👉 Éditez votre .env : nano $(BASE_DIR)/.env"
