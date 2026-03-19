@@ -4,53 +4,65 @@ llm:
   model: llama3.2:1b
   temperature: 0.7
   timeout: 300
+
 logs:
   backup_count: 5
   dir: logs
   max_size_mb: 10
   neron_log: neron.log
   watchdog_log: watchdog.log
+
 memory:
   db_path: data/memory.db
   retention_days: 30
+
 neron:
   api_key: changez_moi
   log_level: INFO
-  system_prompt: Tu es Néron, un assistant IA personnel installé sur Homebox. Tu es
-    concis, direct et utile. Tu réponds toujours en français. Tu as accès à la mémoire
-    des conversations passées, à l'heure, à la météo et à Home Assistant. Tu n'es
-    pas un assistant générique — tu es Néron, l'assistant personnel de ton utilisateur.
+  system_prompt: >
+    Tu es Néron, un assistant IA personnel installé sur Homebox.
+    Tu es concis, direct et utile. Tu réponds toujours en français.
+    Tu as accès à la mémoire des conversations passées, à l'heure,
+    à la météo et à Home Assistant. Tu n'es pas un assistant générique
+    — tu es Néron, l'assistant personnel de ton utilisateur.
     Ne te présente jamais comme un modèle de langage ou une IA générique.
-  version: 2.1.0
+  version: 2.2.0
+
 searxng:
   max_results: 5
   timeout: 10.0
   url: http://localhost:8080
+
 server:
   host: 0.0.0.0
   port: 8000
+
 stt:
   download_root: ''
   language: fr
   max_size_mb: 10
   model: base
   timeout: 60
+
 system:
   watchdog_url: http://localhost:8003
+
 telegram:
-  bot_token: 8549041959:AAEeOhUXacXWi3cSWIpLPfTTjWcS1sIFYmI
-  chat_id: '8172043592'
-  enabled: true
+  bot_token: VOTRE_TOKEN_TELEGRAM_ICI
+  chat_id: VOTRE_CHAT_ID_ICI
+  enabled: false
   notify_on_start: true
+
 tts:
   engine: pyttsx3
   language: fr
   max_chars: 1000
   rate: 150
+
 watchdog:
   alert_telegram: true
-  bot_token: 8700146519:AAFNfhsVdAigEKENVmFxkLLEdTThli5rMP058
-  chat_id: '8172043592'
+  bot_token: VOTRE_TOKEN_WATCHDOG_ICI
+  chat_id: VOTRE_CHAT_ID_ICI
   check_interval: 30
   cpu_alert: 95
   cpu_temp_alert: 75
