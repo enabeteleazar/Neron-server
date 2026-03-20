@@ -194,13 +194,7 @@ ollama:
 		if ollama pull $$MODEL; then \
 			echo "" && \
 			echo "✔ Téléchargement réussi" && \
-			$(PYTHON) -c " \
-import yaml; \
-f='$(BASE_DIR)/neron.yaml'; \
-d=yaml.safe_load(open(f)); \
-d['llm']['model']='$$MODEL'; \
-yaml.dump(d, open(f,'w'), allow_unicode=True, default_flow_style=False); \
-print('✔ neron.yaml mis à jour : llm.model=$$MODEL')" && \
+			$(PYTHON) -c "import yaml; f='$(BASE_DIR)/neron.yaml'; d=yaml.safe_load(open(f)); d['llm']['model']='$$MODEL'; yaml.dump(d, open(f,'w'), allow_unicode=True, default_flow_style=False); print('✔ neron.yaml mis à jour : llm.model=$$MODEL')" && \
 			echo "" && \
 			read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART && \
 			[ "$$RESTART" != "n" ] && $(MAKE) -C $(BASE_DIR) restart || echo "  👉 make restart quand vous êtes prêt"; \
