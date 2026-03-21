@@ -1,9 +1,4 @@
 # orchestrator/intent_router.py
-#
-# Intégration module personality v7 :
-# - Nouvel intent PERSONALITY_FEEDBACK pour intercepter les feedbacks comportementaux
-#   ("sois bref", "mode focus", "tu sembles fatigué"…) avant qu'ils n'atteignent le LLM
-# - Les mots-clés sont synchronisés avec l'INTENT_MATRIX du module personality
 
 import unicodedata
 from enum import Enum
@@ -18,14 +13,13 @@ class Intent(str, Enum):
     WEB_SEARCH          = "web_search"
     HA_ACTION           = "ha_action"
     TIME_QUERY          = "time_query"
-    PERSONALITY_FEEDBACK = "personality_feedback"   # ← nouveau
-
+    PERSONALITY_FEEDBACK = "personality_feedback"
+    CODE		= "code"
 
 @dataclass
 class IntentResult:
     intent:     Intent
     confidence: str
-
 
 # ---------------------------------------------------------------------------
 # Mots-clés de feedback comportemental
@@ -56,6 +50,15 @@ _PERSONALITY_KEYWORDS = [
     "mode focus", "concentration", "sois sérieux",
 ]
 
+_CODE_KEYWORDS = [
+    "génère", "crée", "écris", "code", "script", "module",
+    "classe", "fonction", "genere", "cree", "ecris",
+    "améliore", "optimise", "corrige", "refactorise",
+    "ameliore", "analyse", "inspecte", "qualité", "qualite",
+    "lis le fichier", "montre le code", "affiche le fichier",
+    "self review", "auto review", "revue de code",
+    "passe en revue", "rollback", "restaure le fichier",
+]
 
 def _normalize(text: str) -> str:
     """Normalise : minuscules + suppression des accents."""
@@ -71,8 +74,7 @@ class IntentRouter:
         q_raw  = query.lower().strip()
         q_norm = _normalize(query)
 
-        # ── 1. Feedback comportemental (priorité haute) ───────────────────
-        # Vérifié en premier : un "sois bref" ne doit pas partir au LLM
+        # ──  Feedback comportemental (priorité haute) ───────────────────
         for kw in _PERSONALITY_KEYWORDS:
             kw_norm = _normalize(kw)
             if kw_norm in q_norm:
@@ -82,25 +84,34 @@ class IntentRouter:
                     confidence="high"
                 )
 
-        # ── 2. Heure / date ───────────────────────────────────────────────
+        # ──  Code / développement ─────────────────────────────────────────
+        for kw in _CODE_KEYWORDS:
+            if _normalize(kw) in q_norm:
+                logger.info(f"[ROUTER] intent=code — déclencheur: {kw!r}")
+                return IntentResult(
+                    intent=Intent.CODE,
+                    confidence="high"
+                )
+
+        # ──  Heure / date ───────────────────────────────────────────────
         if any(w in q_norm for w in [
             "heure", "quelle heure", "il est quelle heure",
             "date", "quel jour", "on est le", "quel mois"
         ]):
             return IntentResult(intent=Intent.TIME_QUERY, confidence="high")
 
-        # ── 3. Recherche web ──────────────────────────────────────────────
+        # ──  Recherche web ──────────────────────────────────────────────
         if any(w in q_norm for w in [
             "cherche", "recherche", "google", "web",
             "actualite", "news", "meteo"
         ]):
             return IntentResult(intent=Intent.WEB_SEARCH, confidence="high")
 
-        # ── 4. Home Assistant ─────────────────────────────────────────────
+        # ──  Home Assistant ─────────────────────────────────────────────
         if any(w in q_norm for w in [
             "allume", "eteins", "thermostat", "lumiere", "volet", "home assistant"
         ]):
             return IntentResult(intent=Intent.HA_ACTION, confidence="high")
 
-        # ── 5. Conversation générale ──────────────────────────────────────
+        # ──  Conversation générale ──────────────────────────────────────
         return IntentResult(intent=Intent.CONVERSATION, confidence="medium")

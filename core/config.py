@@ -112,6 +112,9 @@ class Config:
     HA_URL     = _get(_cfg, "home_assistant", "url",   fallback_env="HA_URL",   default="http://homeassistant.local:8123")
     HA_TOKEN   = _get(_cfg, "home_assistant", "token", fallback_env="HA_TOKEN", default="")
 
+    # Code Agent
+    CODE_AGENT_MODEL = _get(_cfg, "code_agent", "model", default=None) or _get(_cfg, "llm", "model", default="llama3.2:1b")
+
     # System
     NERON_WATCHDOG_URL = _get(_cfg, "system", "watchdog_url", fallback_env="NERON_WATCHDOG_URL", default="http://localhost:8003")
 

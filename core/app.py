@@ -1,14 +1,5 @@
 # core/app.py
 # Neron Core v2.2.0
-#
-# Intégration module personality v7 :
-# - Intent PERSONALITY_FEEDBACK routé vers _handle_personality_feedback()
-#   → appelle update_from_feedback(), retourne les changements appliqués
-# - Route GET  /personality/state  → état complet de la persona active
-# - Route GET  /personality/history → historique des changements d'état
-# - Route POST /personality/reset   → remet mood + energy_level aux valeurs par défaut
-# - _handle_conversation() et stream injectent automatiquement le system prompt
-#   via _get_system_prompt() dans llm_agent (aucun changement ici nécessaire)
 
 import json
 import logging
@@ -30,6 +21,7 @@ from agents.stt_agent import STTAgent, load_model as stt_load_model
 from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
 from agents.memory_agent import MemoryAgent, init_db as memory_init_db
 from agents.telegram_agent import start_bot, stop_bot, set_agents, send_notification
+from agents.code_agent import CodeAgent
 from agents.watchdog_agent import (
     setup as watchdog_setup, start_watchdog, stop_watchdog,
     start_watchdog_bot, stop_watchdog_bot
@@ -157,15 +149,15 @@ class Metrics:
 
 metrics = Metrics()
 
-llm_agent:    LLMAgent    = None
-memory_agent: MemoryAgent = None
-web_agent:    WebAgent    = None
-stt_agent:    STTAgent    = None
-tts_agent                 = None
-ha_agent:     HAAgent     = None
+llm_agent:    LLMAgent     = None
+memory_agent: MemoryAgent  = None
+web_agent:    WebAgent     = None
+stt_agent:    STTAgent     = None
+tts_agent                  = None
+ha_agent:     HAAgent      = None
 router:       IntentRouter = None
 time_provider: TimeProvider = None
-
+code_agent:   CodeAgent    = None
 
 # ----------------- Lifespan -----------------
 @asynccontextmanager
@@ -185,6 +177,8 @@ async def lifespan(app: FastAPI):
     tts_load_engine()
     tts_agent = TTSAgent()
     ha_agent  = HAAgent()
+    global code_agent
+    code_agent = CodeAgent()
     await ha_agent.on_start()
     router        = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
@@ -213,6 +207,7 @@ async def lifespan(app: FastAPI):
         "tts":    tts_agent,
         "memory": memory_agent,
         "ha":     ha_agent,
+	"code":	  code_agent,
     })
 
     telegram_enabled = getattr(settings, "TELEGRAM_ENABLED", False)
@@ -424,6 +419,10 @@ async def text_input(
             )
         elif intent_result.intent == Intent.HA_ACTION:
             core_response = await _handle_ha_action(
+                query, intent_result, metadata, start
+            )
+        elif intent_result.intent == Intent.CODE:
+            core_response = await _handle_code(
                 query, intent_result, metadata, start
             )
         else:
@@ -672,20 +671,12 @@ def _handle_time_query(
 async def _get_memory_context(query: str) -> str:
     context_parts = []
     try:
-        recent = memory_agent.retrieve(limit=3)
+        recent = memory_agent.retrieve(limit=1)
         if recent:
-            history = []
-            for entry in reversed(recent):
-                history.append(f"Utilisateur: {entry['input']}")
-                history.append(f"Neron: {entry['response'][:80]}")
-            context_parts.append("Historique recent:\n" + "\n".join(history))
-        relevant = memory_agent.search(query, limit=3)
-        if relevant:
-            facts = [
-                f"- Q: {entry['input']} -> R: {entry['response'][:100]}"
-                for entry in relevant
-            ]
-            context_parts.append("Memoire pertinente:\n" + "\n".join(facts))
+            entry = recent[0]
+            context_parts.append(
+                f"Échange précédent:\nUtilisateur: {entry['input']}\nNeron: {entry['response'][:120]}"
+            )
     except Exception as e:
         logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
     return "\n\n".join(context_parts)
@@ -793,6 +784,40 @@ async def _handle_ha_action(
         execution_time_ms=elapsed,
         error=result.error,
         metadata={},
+    )
+
+async def _handle_code(
+    query: str, intent_result, metadata: dict, start: float
+) -> CoreResponse:
+    import re
+    path_match = re.search(r"(\S+\.py)", query)
+    path = path_match.group(1) if path_match else ""
+
+    result = await code_agent.execute(query, path=path)
+    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
+
+    if not result.success:
+        metrics.record_error("code_agent")
+        return CoreResponse(
+            response=f"Je n'ai pas pu exécuter cette action : {result.error}",
+            intent="code",
+            agent="code_agent",
+            confidence=intent_result.confidence,
+            timestamp=utc_now_iso(),
+            execution_time_ms=execution_time_ms,
+            error=result.error,
+            metadata={},
+        )
+
+    metrics.record_latency("code_agent", result.latency_ms or 0)
+    return CoreResponse(
+        response=result.content,
+        intent="code",
+        agent="code_agent",
+        confidence=intent_result.confidence,
+        timestamp=utc_now_iso(),
+        execution_time_ms=execution_time_ms,
+        metadata=result.metadata,
     )
 
 
