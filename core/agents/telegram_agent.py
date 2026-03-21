@@ -83,40 +83,62 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.chat.send_action("typing")
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
 
-    accumulated = ""
-    last_edit = ""
-    last_update = time.time()
+    # Détecter requête code → input/text, sinon → input/stream
+    import unicodedata
+    def _norm(t):
+        n = unicodedata.normalize("NFD", t.lower())
+        return "".join(c for c in n if unicodedata.category(c) != "Mn")
+    q = _norm(user_message)
+    is_code = any(w in q for w in [
+        "genere", "cree", "ecris", "ameliore", "optimise",
+        "corrige", "analyse", "refactorise", "script", "module",
+        "self review", "rollback", "restaure"
+    ])
 
     try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            async with client.stream(
-                "POST",
-                f"{NERON_CORE_URL}/input/stream",
-                json={"text": user_message},
-                headers={"X-API-Key": NERON_API_KEY}
-            ) as resp:
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        data = json.loads(line[6:])
-                    except Exception:
-                        continue
-                    token = data.get("token", "")
-                    done  = data.get("done", False)
-                    accumulated += token
-                    now = time.time()
-                    if (now - last_update > 2.0 or done) and accumulated != last_edit:
+        if is_code:
+            async with httpx.AsyncClient(timeout=600.0) as client:
+                resp = await client.post(
+                    f"{NERON_CORE_URL}/input/text",
+                    json={"text": user_message},
+                    headers={"X-API-Key": NERON_API_KEY}
+                )
+                data = resp.json()
+                accumulated = data.get("response", "❌ Pas de réponse")
+                await sent.edit_text(accumulated[:4096], parse_mode=None)
+        else:
+            accumulated = ""
+            last_edit = ""
+            last_update = time.time()
+            async with httpx.AsyncClient(timeout=300.0) as client:
+                async with client.stream(
+                    "POST",
+                    f"{NERON_CORE_URL}/input/stream",
+                    json={"text": user_message},
+                    headers={"X-API-Key": NERON_API_KEY}
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
                         try:
-                            await sent.edit_text(accumulated or "⏳")
-                            last_edit = accumulated
-                            last_update = now
+                            data = json.loads(line[6:])
                         except Exception:
-                            pass
-                    if done:
-                        break
-        if not accumulated:
-            await sent.edit_text("❌ Pas de réponse")
+                            continue
+                        token = data.get("token", "")
+                        done  = data.get("done", False)
+                        accumulated += token
+                        now = time.time()
+                        if (now - last_update > 2.0 or done) and accumulated != last_edit:
+                            try:
+                                await sent.edit_text(accumulated or "⏳")
+                                last_edit = accumulated
+                                last_update = now
+                            except Exception:
+                                pass
+                        if done:
+                            break
+            if not accumulated:
+                await sent.edit_text("❌ Pas de réponse")
     except Exception as e:
         await sent.edit_text(f"❌ Erreur: {str(e)}")
 
