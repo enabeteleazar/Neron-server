@@ -95,8 +95,12 @@ class IntentRouter:
 
         # ──  Heure / date ───────────────────────────────────────────────
         if any(w in q_norm for w in [
-            "heure", "quelle heure", "il est quelle heure",
-            "date", "quel jour", "on est le", "quel mois"
+            "quelle heure", "il est quelle heure", "il est quelle heure",
+            "quelle heure est il", "donne moi l heure",
+            "quel jour sommes", "on est quel jour",
+            "quel mois sommes", "quelle date sommes",
+            "donne moi la date", "c est quoi la date",
+            "on est le combien"
         ]):
             return IntentResult(intent=Intent.TIME_QUERY, confidence="high")
 

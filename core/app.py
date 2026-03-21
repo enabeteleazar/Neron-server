@@ -639,7 +639,7 @@ def _handle_time_query(
 ) -> CoreResponse:
     q          = query.lower()
     heure_keys = ["heure", "time", "il est", "quelle heure"]
-    date_keys  = ["date", "jour", "quel jour", "quel mois", "quelle date", "on est"]
+    date_keys  = ["quelle date sommes", "on est quel jour", "quel jour sommes", "quel mois sommes", "donne moi la date", "c est quoi la date", "on est le combien"]
     want_heure = any(k in q for k in heure_keys)
     want_date  = any(k in q for k in date_keys)
     n          = time_provider.now()
@@ -792,6 +792,14 @@ async def _handle_code(
     import re
     path_match = re.search(r"(\S+\.py)", query)
     path = path_match.group(1) if path_match else ""
+
+    # Générer un nom si pas de fichier explicite
+    if not path:
+        import unicodedata
+        words = re.findall(r"[a-z0-9]+" , query.lower())
+        stop = {"un","une","le","la","les","de","du","des","qui","pour","que","moi","me","genere","cree","ecris","script","fichier","module","python","code","affiche","bonjour","donne"}
+        name_words = [w for w in words if w not in stop][:3]
+        path = "_".join(name_words) + ".py" if name_words else "script.py"
 
     result = await code_agent.execute(query, path=path)
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
