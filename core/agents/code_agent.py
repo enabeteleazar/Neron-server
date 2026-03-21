@@ -220,6 +220,12 @@ class CodeAgent(BaseAgent):
         if not code:
             return self._failure("LLM n'a pas retourné de code", latency_ms=self._elapsed_ms(start))
 
+        # Nettoyer les balises markdown que certains modèles ajoutent
+        import re as _re
+        code = _re.sub(r"^```python\s*", "", code.strip())
+        code = _re.sub(r"^```\s*", "", code.strip())
+        code = _re.sub(r"```$", "", code.strip()).strip()
+
         result_meta = {"action": "generate", "code_length": len(code)}
 
         if path:
