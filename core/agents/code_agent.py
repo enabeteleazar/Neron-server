@@ -26,6 +26,7 @@ LLM_TIMEOUT  = settings.LLM_TIMEOUT
 
 # Répertoire racine de Néron — toute écriture hors de là est bloquée
 _NERON_ROOT  = Path(__file__).parent.parent.resolve()
+_WORKSPACE   = Path("/mnt/usb-storage/neron/workspace")
 _BACKUP_DIR  = _NERON_ROOT / "data" / "code_backups"
 _SANDBOX_TIMEOUT = 10  # secondes
 
@@ -63,8 +64,15 @@ un rapport JSON avec exactement ce format (rien d'autre) :
 
 # ── Utilitaires internes ───────────────────────────────────────────────────────
 
-def _safe_path(raw: str) -> Path:
-    """Valide qu'un chemin reste dans _NERON_ROOT. Lève ValueError sinon."""
+def _safe_path(raw: str, generated: bool = False) -> Path:
+    """Valide et retourne le chemin.
+    - Si generated=True : écrit dans _WORKSPACE
+    - Sinon : doit rester dans _NERON_ROOT
+    """
+    if generated:
+        target = (_WORKSPACE / Path(raw).name).resolve()
+        _WORKSPACE.mkdir(parents=True, exist_ok=True)
+        return target
     target = (_NERON_ROOT / raw).resolve()
     if not str(target).startswith(str(_NERON_ROOT)):
         raise ValueError(f"Chemin non autorisé (hors workspace) : {raw!r}")
@@ -428,7 +436,7 @@ class CodeAgent(BaseAgent):
     def _write_code(self, path: str, code: str) -> dict:
         """Valide, sauvegarde et écrit du code. Rollback auto si erreur."""
         try:
-            safe = _safe_path(path)
+            safe = _safe_path(path, generated=True)
         except ValueError as e:
             return {"ok": False, "error": str(e)}
 
