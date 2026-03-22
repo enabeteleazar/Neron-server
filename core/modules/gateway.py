@@ -1,39 +1,7 @@
-"""
-neron/gateway.py
-================
-Gateway WebSocket — Plan de contrôle central inspiré d'OpenClaw.
-Port par défaut : ws://0.0.0.0:18789
-
-Architecture :
-  Clients (NEXUS front, CLI, WebChat)
-         │
-         ▼
-   ┌──────────────┐
-   │   Gateway    │  ← ce fichier
-   │  WebSocket   │
-   └──────┬───────┘
-          │
-    ┌─────┴──────┐
-    │            │
-  Agent        Sessions
-  Router       Store
-    │
-  Ollama / Claude (LLM)
-
-Protocole de frames (JSON) :
-  { "method": "chat.send",   "id": "uuid", "params": {...} }
-  { "method": "agent.run",   "id": "uuid", "params": {...} }
-  { "method": "skill.call",  "id": "uuid", "params": {...} }
-  { "method": "session.new", "id": "uuid", "params": {...} }
-  { "method": "session.list","id": "uuid", "params": {} }
-  { "method": "ping",        "id": "uuid", "params": {} }
-
-Réponses :
-  { "id": "uuid", "result": {...} }
-  { "id": "uuid", "error":  {"code": int, "message": str} }
-  { "event": "agent.token", "data": {"token": str, "session_id": str} }
-  { "event": "agent.done",  "data": {"session_id": str, "usage": {...}} }
-"""
+# neron/gateway.py
+# Gateway WebSocket — Plan de contrôle central inspiré d'OpenClaw.
+# Port par défaut : ws://0.0.0.0:18789
+# interface avec l'exterieur (API, webhooks, etc)
 
 from __future__ import annotations
 

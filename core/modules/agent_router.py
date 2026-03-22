@@ -1,54 +1,6 @@
-"""
-neron/agent.py
-==============
-Agent Router — LLM loop inspiré d'OpenClaw Pi Agent (RPC mode).
-
-Supporte :
-  • Ollama  (API compatible OpenAI : http://HOST:PORT/api/chat)
-  • Claude  (Anthropic API via httpx)
-  • Streaming token-par-token dans les deux cas
-  • Tool-use (dispatch table) — extensible
-  • Stop reasons : end_turn | tool_use | max_tokens | stop_sequence
-
-Flow par message :
-  ┌─────────────┐
-  │  user msg   │
-  └──────┬──────┘
-         │
-  ┌──────▼──────────────────────────┐
-  │  Assemblage contexte            │
-  │  (session history + system      │
-  │   prompt + skills injectées)    │
-  └──────┬──────────────────────────┘
-         │
-  ┌──────▼──────────────────────────┐
-  │  LLM call (streaming)           │
-  │  Ollama  /api/chat  (stream=T)  │
-  │  Claude  /v1/messages (stream)  │
-  └──────┬──────────────────────────┘
-         │
-  ┌──────▼──────────────────────────┐
-  │  stop_reason == tool_use ?      │
-  │    → dispatch tool              │
-  │    → boucle (max 8 tours)       │
-  │  sinon → fin, persist session   │
-  └─────────────────────────────────┘
-"""
-
-from __future__ import annotations
-
-import asyncio
-import json
-import logging
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
-
-import httpx
-
-from modules.sessions import SessionStore, Session
-from modules.skills import SkillRegistry
-
-logger = logging.getLogger("neron.agent")
+# neron/agent.py
+# Agent Router — LLM loop inspiré d'OpenClaw Pi Agent (RPC mode).
+# Routage des requêtes entre agents
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration LLM

@@ -1,38 +1,6 @@
-"""
-neron/skills.py
-===============
-Skills — système de plugins inspiré d'OpenClaw Skills Platform.
-
-Concept clé (repris d'OpenClaw) :
-  "Skill discovery vs. skill injection est un détail important :
-   le runtime sélectionne uniquement la/les skill(s) pertinente(s)
-   au tour actuel pour éviter de faire exploser le prompt."
-
-Structure d'une Skill :
-  ~/.neron/workspace/skills/<nom>/SKILL.md   ← instructions injectées
-  ~/.neron/workspace/skills/<nom>/skill.json ← métadonnées + triggers
-
-Format skill.json :
-  {
-    "name": "weather",
-    "description": "Donne la météo actuelle.",
-    "version": "1.0.0",
-    "triggers": ["météo", "weather", "temps qu'il fait", "température"],
-    "inject_always": false,
-    "tools": ["get_weather"]  // tools Python à enregistrer
-  }
-
-Format SKILL.md :
-  # Weather Skill
-  Tu as accès à l'outil get_weather(city: str).
-  Utilise-le quand l'utilisateur demande la météo.
-
-Injection sélective :
-  L'AgentRouter appelle skills.build_system_injection(intent)
-  qui retourne le contenu SKILL.md des skills dont un trigger
-  matche l'intent courant. Les skills inject_always=true sont
-  toujours incluses.
-"""
+# neron/skills.py
+# Skills — système de plugins inspiré d'OpenClaw Skills Platform.
+# Ensemble de fonctionnalités utilisables par les agents.
 
 from __future__ import annotations
 

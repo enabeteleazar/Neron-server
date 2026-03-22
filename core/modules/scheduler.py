@@ -1,19 +1,11 @@
 # core/scheduler.py
 # Néron — Planificateur de tâches autonomes
-#
-# Tâches configurables via neron.yaml :
-#   scheduler:
-#     enabled: true
-#     self_review_hour: 3        # heure auto-review (défaut 3h du matin)
-#     memory_cleanup_days: 30    # rétention mémoire
-#     daily_report_hour: 8       # rapport quotidien Telegram
 
 import asyncio
 import logging
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-
 from config import settings
 
 logger = logging.getLogger("scheduler")
@@ -29,6 +21,10 @@ def setup(agents: dict, notify_fn):
     _agents    = agents
     _notify_fn = notify_fn
 
+
+# ==========================
+# Tâches existantes
+# ==========================
 
 async def _task_self_review():
     """Auto-review nocturne — Néron analyse son code et liste les corrections."""
@@ -48,7 +44,6 @@ async def _task_self_review():
         lines = [f"🔍 <b>Auto-review nocturne — {now}</b>\n"]
         lines.append(f"📊 Score moyen : {avg}/100 ({len(reports)} fichiers)\n")
 
-        # Lister les fichiers avec issues
         files_with_issues = [
             r for r in reports
             if r.get("issues") and not r.get("error")
@@ -61,14 +56,13 @@ async def _task_self_review():
                 fname  = r.get("file", "?").split("/")[-1]
                 issues = r.get("issues", [])
                 lines.append(f"📄 <b>{fname}</b> ({score}/100)")
-                for issue in issues[:3]:  # max 3 issues par fichier
+                for issue in issues[:3]:
                     lines.append(f"  • {issue}")
                 lines.append("")
         else:
             lines.append("✅ Aucune correction nécessaire")
 
         msg = "\n".join(lines)
-        # Telegram limite à 4096 chars
         if len(msg) > 4000:
             msg = msg[:4000] + "\n... (tronqué)"
 
@@ -124,7 +118,7 @@ async def _task_workspace_cleanup():
     workspace = Path("/mnt/usb-storage/neron/workspace")
     if not workspace.exists():
         return
-    cutoff = datetime.now().timestamp() - (7 * 86400)  # 7 jours
+    cutoff = datetime.now().timestamp() - (7 * 86400)
     cleaned = 0
     for f in workspace.glob("*.py"):
         if f.stat().st_mtime < cutoff:
@@ -134,6 +128,32 @@ async def _task_workspace_cleanup():
         logger.info(f"Workspace : {cleaned} fichiers anciens supprimés")
 
 
+# ==========================
+# Nouvelle tâche : générateur README
+# ==========================
+async def _task_generate_readme():
+    """Lance le script generateur.py pour mettre à jour le README."""
+    import subprocess
+    script_path = "/mnt/usb-storage/neron/workspace/generateur.py"
+    logger.info("Scheduler: lancement du générateur README")
+    try:
+        result = subprocess.run(
+            ["python3", script_path],
+            capture_output=True,
+            text=True
+        )
+        if result.returncode == 0:
+            logger.info("Générateur README terminé avec succès")
+            logger.debug(result.stdout)
+        else:
+            logger.error(f"Erreur générateur README : {result.stderr}")
+    except Exception as e:
+        logger.error(f"Exception lors de l'exécution du générateur : {e}")
+
+
+# ==========================
+# Démarrage du scheduler
+# ==========================
 def start():
     """Démarre le scheduler avec toutes les tâches configurées."""
     global _scheduler
@@ -145,12 +165,13 @@ def start():
         logger.info("Scheduler désactivé dans neron.yaml")
         return
 
-    self_review_hour   = int(cfg.get("self_review_hour",   3))
-    daily_report_hour  = int(cfg.get("daily_report_hour",  8))
+    self_review_hour    = int(cfg.get("self_review_hour", 3))
+    daily_report_hour   = int(cfg.get("daily_report_hour", 8))
+    generate_hour       = int(cfg.get("generate_readme_hour", 2))
 
     _scheduler = AsyncIOScheduler(timezone="Europe/Paris")
 
-    # Auto-review nocturne (défaut : 3h du matin)
+    # Auto-review nocturne
     _scheduler.add_job(
         _task_self_review,
         CronTrigger(hour=self_review_hour, minute=0),
@@ -159,7 +180,7 @@ def start():
         replace_existing=True,
     )
 
-    # Rapport quotidien (défaut : 8h)
+    # Rapport quotidien
     _scheduler.add_job(
         _task_daily_report,
         CronTrigger(hour=daily_report_hour, minute=0),
@@ -168,7 +189,7 @@ def start():
         replace_existing=True,
     )
 
-    # Nettoyage mémoire (tous les lundis à 4h)
+    # Nettoyage mémoire
     _scheduler.add_job(
         _task_memory_cleanup,
         CronTrigger(day_of_week="mon", hour=4, minute=0),
@@ -177,7 +198,7 @@ def start():
         replace_existing=True,
     )
 
-    # Nettoyage workspace (tous les dimanches à 4h)
+    # Nettoyage workspace
     _scheduler.add_job(
         _task_workspace_cleanup,
         CronTrigger(day_of_week="sun", hour=4, minute=0),
@@ -186,11 +207,22 @@ def start():
         replace_existing=True,
     )
 
+    # Génération automatique README
+    _scheduler.add_job(
+        _task_generate_readme,
+        CronTrigger(hour=generate_hour, minute=0),
+        id="generate_readme",
+        name="Génération README automatique",
+        replace_existing=True,
+    )
+    logger.info(f"Tâche générateur README planifiée à {generate_hour}h")
+
     _scheduler.start()
     logger.info(
         f"Scheduler démarré — "
         f"auto-review {self_review_hour}h | "
-        f"rapport {daily_report_hour}h"
+        f"rapport {daily_report_hour}h | "
+        f"générateur README {generate_hour}h"
     )
 
 

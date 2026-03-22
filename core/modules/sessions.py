@@ -1,19 +1,6 @@
-"""
-neron/sessions.py
-=================
-Gestion des sessions — persistance JSONL, overflow, pruning.
-Inspiré d'OpenClaw : append-on-write, replay-on-read.
-
-Chaque session = un fichier ~/.neron/sessions/<id>.jsonl
-Format ligne :
-  {"role": "user",      "content": "...", "ts": 1234567890}
-  {"role": "assistant", "content": "...", "ts": 1234567890}
-  {"role": "tool",      "tool_use_id": "...", "content": "...", "ts": ...}
-
-Overflow :
-  Si l'historique dépasse max_tokens (estimé), on compacte
-  les vieux tours en un résumé via le LLM (ou truncation simple si pas de LLM dispo).
-"""
+# neron/sessions.py
+# Gestion des sessions — persistance JSONL, overflow, pruning.
+# Inspiré d'OpenClaw : append-on-write, replay-on-read.
 
 from __future__ import annotations
 
