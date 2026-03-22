@@ -1,6 +1,3 @@
-# core/scheduler.py
-# Néron — Planificateur de tâches autonomes
-
 import asyncio
 import logging
 from datetime import datetime
@@ -18,6 +15,12 @@ _notify_fn = None
 def setup(agents: dict, notify_fn):
     """Initialise le scheduler avec les agents et la fonction de notification."""
     global _agents, _notify_fn
+
+    if not isinstance(agents, dict):
+        raise ValueError("setup() : 'agents' doit être un dict")
+    if notify_fn is None:
+        logger.warning("setup() : notify_fn est None — les notifications seront silencieuses")
+
     _agents    = agents
     _notify_fn = notify_fn
 
@@ -35,7 +38,7 @@ async def _task_self_review():
         return
 
     try:
-        result = await code_agent.execute("passe en revue tout le code de Néron", action="self_review")
+        result   = await code_agent.execute("passe en revue tout le code de Néron", action="self_review")
         metadata = result.metadata or {}
         reports  = metadata.get("reports", [])
         avg      = metadata.get("avg_score", "?")
@@ -69,6 +72,7 @@ async def _task_self_review():
         if _notify_fn:
             await _notify_fn(msg, "info")
         logger.info(f"Auto-review terminée — {len(files_with_issues)} fichiers avec issues")
+
     except Exception as e:
         logger.error(f"Erreur auto-review : {e}")
 
@@ -81,7 +85,7 @@ async def _task_memory_cleanup():
         return
     try:
         retention = getattr(settings, "MEMORY_RETENTION", 30)
-        deleted = memory_agent.cleanup(days=retention)
+        deleted   = memory_agent.cleanup(days=retention)
         logger.info(f"Mémoire nettoyée : {deleted} entrées supprimées")
     except Exception as e:
         logger.error(f"Erreur nettoyage mémoire : {e}")
@@ -90,21 +94,24 @@ async def _task_memory_cleanup():
 async def _task_daily_report():
     """Rapport quotidien envoyé sur Telegram."""
     logger.info("Scheduler: rapport quotidien")
+    # FIX: utilisation de _notify_fn (variable globale) au lieu de notify_fn (indéfinie)
     if not _notify_fn:
         return
     try:
         from agents.watchdog_agent import get_status, get_health_score
-        sys_   = get_status()
-        score  = get_health_score()
-        now    = datetime.now().strftime("%d/%m/%Y %H:%M")
+        # FIX: renommé sys_ en sys_status pour éviter la collision avec le module 'sys'
+        #      et corriger la NameError sur sys_ vs sys
+        sys_status = get_status()
+        score      = get_health_score()
+        now        = datetime.now().strftime("%d/%m/%Y %H:%M")
 
         msg = (
             f"📊 <b>Rapport quotidien Néron</b>\n"
             f"🕐 {now}\n\n"
             f"{score['level']} Score santé : {score['score']}/100\n"
-            f"🖥 CPU : {sys_.get('cpu_pct')}% | RAM : {sys_.get('ram_pct')}%\n"
-            f"💾 Disque : {sys_.get('disk_pct')}%\n"
-            f"⚙️ Process : {sys_.get('process_ram_mb')}MB"
+            f"🖥 CPU : {sys_status.get('cpu_pct')}% | RAM : {sys_status.get('ram_pct')}%\n"
+            f"💾 Disque : {sys_status.get('disk_pct')}%\n"
+            f"⚙️ Process : {sys_status.get('process_ram_mb')}MB"
         )
         await _notify_fn(msg, "info")
     except Exception as e:
@@ -113,40 +120,53 @@ async def _task_daily_report():
 
 async def _task_workspace_cleanup():
     """Nettoie les vieux fichiers du workspace généré."""
-    import os
-    from pathlib import Path
-    workspace = Path("/mnt/usb-storage/neron/workspace")
-    if not workspace.exists():
-        return
-    cutoff = datetime.now().timestamp() - (7 * 86400)
-    cleaned = 0
-    for f in workspace.glob("*.py"):
-        if f.stat().st_mtime < cutoff:
-            f.unlink()
-            cleaned += 1
-    if cleaned:
-        logger.info(f"Workspace : {cleaned} fichiers anciens supprimés")
+    # FIX: ajout d'un try/except — cette tâche n'en avait pas
+    try:
+        from pathlib import Path
+        workspace = Path(getattr(settings, "WORKSPACE_PATH", "/mnt/usb-storage/neron/workspace"))
+        if not workspace.exists():
+            return
+        cutoff  = datetime.now().timestamp() - (7 * 86400)
+        cleaned = 0
+        for f in workspace.glob("*.py"):
+            if f.stat().st_mtime < cutoff:
+                f.unlink()
+                cleaned += 1
+        if cleaned:
+            logger.info(f"Workspace : {cleaned} fichiers anciens supprimés")
+    except Exception as e:
+        logger.error(f"Erreur nettoyage workspace : {e}")
 
 
 # ==========================
 # Nouvelle tâche : générateur README
 # ==========================
+
 async def _task_generate_readme():
     """Lance le script generateur.py pour mettre à jour le README."""
-    import subprocess
-    script_path = "/mnt/usb-storage/neron/workspace/generateur.py"
+    # FIX: chemin externalisé depuis settings (avec fallback sur l'ancienne valeur)
+    script_path = getattr(
+        settings,
+        "GENERATOR_SCRIPT_PATH",
+        "/mnt/usb-storage/neron/workspace/generateur.py"
+    )
     logger.info("Scheduler: lancement du générateur README")
     try:
-        result = subprocess.run(
-            ["python3", script_path],
-            capture_output=True,
-            text=True
+        # FIX: subprocess.run() bloquant remplacé par asyncio.create_subprocess_exec()
+        #      pour ne pas bloquer la boucle d'événements
+        proc = await asyncio.create_subprocess_exec(
+            "python3", script_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        if result.returncode == 0:
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode == 0:
             logger.info("Générateur README terminé avec succès")
-            logger.debug(result.stdout)
+            if stdout:
+                logger.debug(stdout.decode())
         else:
-            logger.error(f"Erreur générateur README : {result.stderr}")
+            logger.error(f"Erreur générateur README : {stderr.decode()}")
     except Exception as e:
         logger.error(f"Exception lors de l'exécution du générateur : {e}")
 
@@ -154,20 +174,25 @@ async def _task_generate_readme():
 # ==========================
 # Démarrage du scheduler
 # ==========================
+
 def start():
     """Démarre le scheduler avec toutes les tâches configurées."""
     global _scheduler
 
-    cfg = getattr(settings, '_cfg', {}).get("scheduler", {})
+    # FIX: vérification que setup() a bien été appelé avant start()
+    if not _agents:
+        logger.warning("Scheduler: start() appelé sans agents — avez-vous appelé setup() ?")
+
+    cfg     = getattr(settings, '_cfg', {}).get("scheduler", {})
     enabled = str(cfg.get("enabled", True)).lower() == "true"
 
     if not enabled:
         logger.info("Scheduler désactivé dans neron.yaml")
         return
 
-    self_review_hour    = int(cfg.get("self_review_hour", 3))
-    daily_report_hour   = int(cfg.get("daily_report_hour", 8))
-    generate_hour       = int(cfg.get("generate_readme_hour", 2))
+    self_review_hour  = int(cfg.get("self_review_hour", 3))
+    daily_report_hour = int(cfg.get("daily_report_hour", 8))
+    generate_hour     = int(cfg.get("generate_readme_hour", 2))
 
     _scheduler = AsyncIOScheduler(timezone="Europe/Paris")
 
