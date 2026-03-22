@@ -1,5 +1,6 @@
 # agents/watchdog_agent.py
 # Neron Core - Watchdog natif v2 avec détecteur d'anomalies
+# Supervision du système
 
 import asyncio
 import json

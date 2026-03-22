@@ -1,5 +1,6 @@
 # agents/stt_agent.py
 # Neron Core - Agent STT (faster-whisper direct, sans neron_stt intermédiaire)
+# Reconnaissance Vocale
 
 import logging
 import os

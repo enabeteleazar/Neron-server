@@ -1,5 +1,6 @@
 # agents/code_agent.py
 # Néron Core — Agent Développeur Autonome
+# analyse et audit du code
 
 import asyncio
 import hashlib

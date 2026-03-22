@@ -1,5 +1,6 @@
 # agents/telegram_agent.py
 # Neron Core - Bot Telegram intégré (sans port séparé)
+# Envoi/Réception via Télégram
 
 from config import settings
 import json

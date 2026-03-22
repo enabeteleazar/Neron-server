@@ -1,10 +1,6 @@
 # agents/llm_agent.py
 # Neron Core - Agent LLM
-#
-# Intégration module personality v7 :
-# - build_system_prompt() remplace le SYSTEM_PROMPT statique du neron.yaml
-# - Le system_prompt est injecté dans chaque requête Ollama via le champ "system"
-# - Fallback transparent sur l'ancien SYSTEM_PROMPT si le module est indisponible
+# Interface avec le moteur LLM + Gestion des Personnalité
 
 import httpx
 import json
