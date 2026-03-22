@@ -7,12 +7,45 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any
 
 
+import sys
+import os
+
+class ColorFormatter(logging.Formatter):
+    COLORS = {
+        'DEBUG':    '[36m',
+        'INFO':     '[32m',
+        'WARNING':  '[33m',
+        'ERROR':    '[31m',
+        'CRITICAL': '[35m',
+    }
+    RESET = '[0m'
+    DIM   = '[2m'
+
+    def __init__(self, *args, use_color=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.use_color = use_color
+
+    def format(self, record):
+        msg = record.getMessage()
+        ts  = self.formatTime(record, self.datefmt)
+        if self.use_color:
+            color = self.COLORS.get(record.levelname, self.RESET)
+            return (
+                f"{self.DIM}{ts}{self.RESET} "
+                f"{self.DIM}{record.name}{self.RESET} "
+                f"{color}{record.levelname:<8}{self.RESET} "
+                f"{color}{msg}{self.RESET}"
+            )
+        return f"{ts} {record.name} {record.levelname:<8} {msg}"
+
+
 def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     if not logger.handlers:
-        handler = logging.StreamHandler()
-        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-        handler.setFormatter(formatter)
+        # Couleur seulement si stdout est un vrai terminal
+        use_color = os.environ.get("FORCE_COLOR", "") == "1" or (hasattr(sys.stdout, "isatty") and sys.stdout.isatty())
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(ColorFormatter(datefmt="%H:%M:%S", use_color=use_color))
         logger.addHandler(handler)
         logger.propagate = False
     return logger

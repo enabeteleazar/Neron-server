@@ -157,6 +157,42 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Erreur : {result['error']}")
 
 
+async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    if not context.args:
+        await update.message.reply_text(
+            "Usage: /fix <fichier.py>\nEx: /fix agents/system_agent.py"
+        )
+        return
+
+    filepath = context.args[0]
+    await update.message.reply_text(f"🔧 Amélioration de {filepath} en cours...")
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.post(
+                f"{NERON_CORE_URL}/input/text",
+                json={"text": f"améliore {filepath}"},
+                headers={"X-API-Key": NERON_API_KEY}
+            )
+            data = resp.json()
+            response = data.get("response", "❌ Pas de réponse")
+            await update.message.reply_text(
+                response[:4096],
+                parse_mode=None
+            )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur : {str(e)}")
+
+
+async def cmd_review(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    await update.message.reply_text("🔍 Auto-review en cours... (peut prendre plusieurs minutes)")
+    from modules.scheduler import _task_self_review
+    await _task_self_review()
+
+
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update): return await unauthorized(update)
     sys_   = get_status()
@@ -245,6 +281,8 @@ async def start_bot():
     _telegram_app.add_handler(CommandHandler("call",      cmd_call))
     _telegram_app.add_handler(CommandHandler("run",       cmd_run))
     _telegram_app.add_handler(CommandHandler("status",    cmd_status))
+    _telegram_app.add_handler(CommandHandler("review",    cmd_review))
+    _telegram_app.add_handler(CommandHandler("fix",       cmd_fix))
     _telegram_app.add_handler(CommandHandler("workspace", cmd_workspace))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

@@ -31,7 +31,7 @@ def setup(agents: dict, notify_fn):
 
 
 async def _task_self_review():
-    """Auto-review nocturne — Néron analyse et améliore son propre code."""
+    """Auto-review nocturne — Néron analyse son code et liste les corrections."""
     logger.info("Scheduler: démarrage auto-review nocturne")
     code_agent = _agents.get("code")
     if not code_agent:
@@ -40,10 +40,41 @@ async def _task_self_review():
 
     try:
         result = await code_agent.execute("passe en revue tout le code de Néron", action="self_review")
-        msg = f"🔍 <b>Auto-review nocturne terminée</b>\n{result.content[:500]}"
+        metadata = result.metadata or {}
+        reports  = metadata.get("reports", [])
+        avg      = metadata.get("avg_score", "?")
+        now      = datetime.now().strftime("%d/%m/%Y")
+
+        lines = [f"🔍 <b>Auto-review nocturne — {now}</b>\n"]
+        lines.append(f"📊 Score moyen : {avg}/100 ({len(reports)} fichiers)\n")
+
+        # Lister les fichiers avec issues
+        files_with_issues = [
+            r for r in reports
+            if r.get("issues") and not r.get("error")
+        ]
+
+        if files_with_issues:
+            lines.append("⚠️ <b>Corrections à effectuer :</b>\n")
+            for r in sorted(files_with_issues, key=lambda x: x.get("quality_score") or 100):
+                score  = r.get("quality_score", "?")
+                fname  = r.get("file", "?").split("/")[-1]
+                issues = r.get("issues", [])
+                lines.append(f"📄 <b>{fname}</b> ({score}/100)")
+                for issue in issues[:3]:  # max 3 issues par fichier
+                    lines.append(f"  • {issue}")
+                lines.append("")
+        else:
+            lines.append("✅ Aucune correction nécessaire")
+
+        msg = "\n".join(lines)
+        # Telegram limite à 4096 chars
+        if len(msg) > 4000:
+            msg = msg[:4000] + "\n... (tronqué)"
+
         if _notify_fn:
             await _notify_fn(msg, "info")
-        logger.info(f"Auto-review terminée : {result.content[:100]}")
+        logger.info(f"Auto-review terminée — {len(files_with_issues)} fichiers avec issues")
     except Exception as e:
         logger.error(f"Erreur auto-review : {e}")
 
