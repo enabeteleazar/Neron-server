@@ -157,6 +157,24 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Erreur : {result['error']}")
 
 
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    sys_   = get_status()
+    score  = get_health_score()
+    from modules.scheduler import get_jobs
+    jobs   = get_jobs()
+    next_jobs = "\n".join(f"  • {j['name']} → {j['next_run'][:16]}" for j in jobs)
+    await update.message.reply_text(
+        f"📊 <b>Néron — Status</b>\n\n"
+        f"{score['level']} Score : {score['score']}/100\n"
+        f"🖥 CPU : {sys_.get('cpu_pct')}% | RAM : {sys_.get('ram_pct')}%\n"
+        f"💾 Disque : {sys_.get('disk_pct')}%\n"
+        f"⚙️ Process : {sys_.get('process_ram_mb')}MB\n\n"
+        f"⏰ <b>Prochaines tâches</b>\n{next_jobs}",
+        parse_mode="HTML"
+    )
+
+
 async def cmd_workspace(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update): return await unauthorized(update)
     import os
@@ -226,6 +244,7 @@ async def start_bot():
     _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
     _telegram_app.add_handler(CommandHandler("call",      cmd_call))
     _telegram_app.add_handler(CommandHandler("run",       cmd_run))
+    _telegram_app.add_handler(CommandHandler("status",    cmd_status))
     _telegram_app.add_handler(CommandHandler("workspace", cmd_workspace))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
