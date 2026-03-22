@@ -115,6 +115,13 @@ class Config:
     # Code Agent
     CODE_AGENT_MODEL = _get(_cfg, "code_agent", "model", default=None) or _get(_cfg, "llm", "model", default="llama3.2:1b")
 
+    # Twilio
+    TWILIO_ENABLED     = str(_get(_cfg, "twilio", "enabled",     default=False)).lower() == "true"
+    TWILIO_ACCOUNT_SID = _get(_cfg, "twilio", "account_sid",     default="")
+    TWILIO_AUTH_TOKEN  = _get(_cfg, "twilio", "auth_token",      default="")
+    TWILIO_FROM        = _get(_cfg, "twilio", "from_number",     default="")
+    TWILIO_TO          = _get(_cfg, "twilio", "to_number",       default="")
+
     # System
     NERON_WATCHDOG_URL = _get(_cfg, "system", "watchdog_url", fallback_env="NERON_WATCHDOG_URL", default="http://localhost:8003")
 

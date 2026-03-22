@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 
 from agents.base_agent import get_logger
 from agents.watchdog_agent import get_status, get_health_score, get_anomalies
+from tools.twilio_tool import call as twilio_call
 
 logger = get_logger("telegram_agent")
 
@@ -145,6 +146,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 _telegram_app: Application = None
 
+async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    message = " ".join(context.args) if context.args else "Appel de Néron. Aucun message spécifié."
+    await update.message.reply_text(f"📞 Appel en cours...")
+    result = twilio_call(message)
+    if result["ok"]:
+        await update.message.reply_text(f"✅ Appel lancé — SID: {result['sid']}")
+    else:
+        await update.message.reply_text(f"❌ Erreur : {result['error']}")
+
+
 async def start_bot():
     global _telegram_app
 
@@ -155,6 +167,7 @@ async def start_bot():
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
     _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
     _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
+    _telegram_app.add_handler(CommandHandler("call",      cmd_call))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()
