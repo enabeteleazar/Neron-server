@@ -1,6 +1,7 @@
 # core/app.py
 # Neron Core v2.2.0
 
+import asyncio
 import json
 import logging
 import os
@@ -31,6 +32,14 @@ from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
 from config import settings
+from gateway import NeronGateway, GatewayConfig
+from agent_router import AgentRouter, LLMConfig, ToolRegistry
+from sessions import SessionStore
+from skills import SkillRegistry
+from gateway import NeronGateway, GatewayConfig
+from agent_router import AgentRouter, LLMConfig, ToolRegistry
+from sessions import SessionStore
+from skills import SkillRegistry
 
 # ----------------- Logging -----------------
 logging.basicConfig(level=settings.LOG_LEVEL)
@@ -200,6 +209,41 @@ async def lifespan(app: FastAPI):
         logger.warning("Module personality non disponible — system prompt statique actif")
 
     logger.info(json.dumps({"event": "agents_ready"}))
+
+    # ── Gateway WebSocket ──
+    global _gateway_task
+    try:
+        llm_cfg = LLMConfig(
+            provider="ollama",
+            model=settings.OLLAMA_MODEL,
+            base_url=settings.OLLAMA_HOST,
+            max_tokens=settings.LLM_MAX_TOKENS,
+            temperature=settings.LLM_TEMPERATURE,
+        )
+        _sessions  = SessionStore()
+        _skills    = SkillRegistry()
+        _tools     = ToolRegistry().default_tools()
+        _agent_router = AgentRouter(
+            sessions=_sessions,
+            skills=_skills,
+            llm_config=llm_cfg,
+            tools=_tools,
+        )
+        gw_config = GatewayConfig(
+            host=settings.SERVER_HOST,
+            port=18789,
+            token=settings.API_KEY or None,
+        )
+        _gw = NeronGateway(
+            config=gw_config,
+            agent_router=_agent_router,
+            session_store=_sessions,
+            skill_registry=_skills,
+        )
+        _gateway_task = asyncio.create_task(_gw.start())
+        logger.info("Gateway WebSocket démarré sur ws://0.0.0.0:18789")
+    except Exception as e:
+        logger.warning(f"Gateway WebSocket non démarré : {e}")
 
     set_agents({
         "llm":    llm_agent,
