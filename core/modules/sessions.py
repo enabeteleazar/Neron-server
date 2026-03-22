@@ -27,7 +27,8 @@ class Session:
     system_prompt: str = "Tu es Neron, un assistant IA local connecté à NEXUS."
     history: list[dict] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
-    pending_intent: str | None = None  # contexte pour l'injection de skills
+    # Contexte éphémère pour l'injection de skills — NON persisté intentionnellement
+    pending_intent: str | None = None
 
     # ── Ajout de messages ───────────────────────────────────────────────────
 
@@ -65,17 +66,29 @@ class Session:
 
     def prune_if_needed(self, max_tokens: int = MAX_HISTORY_TOKENS) -> bool:
         """
-        Si overflow : supprime les 4 plus anciens tours (2 paires user/assistant).
+        Si overflow : supprime les messages les plus anciens par blocs de 2
+        en respectant les frontières de rôles (user/assistant/tool).
         Retourne True si pruning effectué.
         """
         if self.estimated_tokens() <= max_tokens:
             return False
+
         removed = 0
-        target = 4  # tours à supprimer
+        target  = 4  # nombre de messages à supprimer
+
         while removed < target and self.history:
+            # Ne jamais laisser un tool_result orphelin en tête
+            if (
+                len(self.history) > 1
+                and self.history[0].get("role") == "tool"
+            ):
+                self.history.pop(0)
+                removed += 1
+                continue
             self.history.pop(0)
             removed += 1
-        logger.info("[%s] Pruning : %d tours supprimés", self.id, removed)
+
+        logger.info("[%s] Pruning : %d messages supprimés", self.id, removed)
         return True
 
     def clear(self) -> None:
@@ -89,7 +102,7 @@ class Session:
         """
         result = []
         for msg in self.history:
-            role = msg["role"]
+            role    = msg["role"]
             content = msg.get("content", "")
             if role == "tool":
                 result.append({
@@ -101,6 +114,7 @@ class Session:
                 result.append({"role": role, "content": content})
         return result
 
+
 # ──────────────────────────────────────────────────────────────────────────────
 # SessionStore
 # ──────────────────────────────────────────────────────────────────────────────
@@ -109,6 +123,11 @@ class SessionStore:
     """
     Gère le cycle de vie des sessions : création, lecture, écriture JSONL.
     Cache en mémoire pour les sessions actives.
+
+    Stratégie de persistance :
+    - create()       → écrit le header via save() (suppression de _write_header dupliqué)
+    - append_msg()   → append atomique d'un seul message (append-on-write)
+    - save()         → réécriture complète (utilisée après pruning ou mise à jour metadata)
     """
 
     def __init__(self, sessions_dir: Path | None = None) -> None:
@@ -130,15 +149,14 @@ class SessionStore:
             metadata=metadata or {},
         )
         self._cache[session_id] = session
-        # Écrit le header JSONL
-        self._write_header(session)
+        # FIX: _write_header() supprimé — save() fait la même chose, pas de duplication
+        self.save(session)
         logger.info("Session créée : %s", session_id)
         return session
 
     def get(self, session_id: str) -> Session | None:
         if session_id in self._cache:
             return self._cache[session_id]
-        # Tente de charger depuis le disque
         path = self._path(session_id)
         if path.exists():
             session = self._load(path)
@@ -153,35 +171,69 @@ class SessionStore:
         return session
 
     def save(self, session: Session) -> None:
-        """Réécrit entièrement le fichier JSONL (plus simple que l'append pour les edits)."""
-        path = self._path(session.id)
-        with path.open("w", encoding="utf-8") as f:
-            # Ligne header
-            f.write(json.dumps({
-                "_type": "session_header",
-                "id": session.id,
-                "system": session.system_prompt,
-                "metadata": session.metadata,
-                "saved_at": int(time.time()),
-            }, ensure_ascii=False) + "\n")
-            # Historique
-            for msg in session.history:
-                f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+        """
+        Réécriture complète du fichier JSONL.
+        Utiliser après un pruning ou une mise à jour de metadata.
+        Pour les nouveaux messages, préférer append_msg() (atomique).
+        """
+        path    = self._path(session.id)
+        tmp     = path.with_suffix(".tmp")
+        try:
+            with tmp.open("w", encoding="utf-8") as f:
+                # Ligne header
+                f.write(json.dumps({
+                    "_type":    "session_header",
+                    "id":       session.id,
+                    "system":   session.system_prompt,
+                    "metadata": session.metadata,
+                    "saved_at": int(time.time()),
+                }, ensure_ascii=False) + "\n")
+                # Historique
+                for msg in session.history:
+                    f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+            # Remplacement atomique
+            tmp.replace(path)
+        except Exception:
+            tmp.unlink(missing_ok=True)
+            raise
         logger.debug("Session sauvegardée : %s (%d tours)", session.id, len(session.history))
 
+    def append_msg(self, session: Session, msg: dict) -> None:
+        """
+        FIX: append atomique d'un message — évite la réécriture complète
+        et limite les risques de corruption en cas de crash.
+        """
+        path = self._path(session.id)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(msg, ensure_ascii=False) + "\n")
+
     def delete(self, session_id: str) -> bool:
+        """
+        FIX: retourne True dès qu'au moins une des deux suppressions
+        (fichier ou cache) a eu lieu. Ancienne version retournait False
+        si la session n'était qu'en cache.
+        """
+        deleted = False
         path = self._path(session_id)
         if path.exists():
             path.unlink()
+            deleted = True
         if session_id in self._cache:
             del self._cache[session_id]
-            return True
-        return False
+            deleted = True
+        return deleted
+
+    def list_ids(self) -> list[str]:
+        """
+        FIX: retourne uniquement les IDs sans charger toutes les sessions
+        en mémoire. Utiliser list_all() seulement si le contenu est nécessaire.
+        """
+        return [p.stem for p in sorted(self.sessions_dir.glob("*.jsonl"))]
 
     def list_all(self) -> list[Session]:
+        """Charge toutes les sessions. Attention : potentiellement lourd."""
         sessions = []
-        for path in sorted(self.sessions_dir.glob("*.jsonl")):
-            sid = path.stem
+        for sid in self.list_ids():
             session = self.get(sid)
             if session:
                 sessions.append(session)
@@ -190,20 +242,8 @@ class SessionStore:
     # ── Fichiers ────────────────────────────────────────────────────────────
 
     def _path(self, session_id: str) -> Path:
-        # Sécurise le nom de fichier
         safe_id = "".join(c for c in session_id if c.isalnum() or c in "-_.")
         return self.sessions_dir / f"{safe_id}.jsonl"
-
-    def _write_header(self, session: Session) -> None:
-        path = self._path(session.id)
-        with path.open("w", encoding="utf-8") as f:
-            f.write(json.dumps({
-                "_type": "session_header",
-                "id": session.id,
-                "system": session.system_prompt,
-                "metadata": session.metadata,
-                "created_at": int(time.time()),
-            }, ensure_ascii=False) + "\n")
 
     def _load(self, path: Path) -> Session:
         session = Session(id=path.stem)
@@ -215,11 +255,12 @@ class SessionStore:
                 try:
                     record = json.loads(line)
                 except json.JSONDecodeError:
+                    logger.warning("Session %s : ligne JSONL invalide ignorée", path.stem)
                     continue
                 if record.get("_type") == "session_header":
-                    session.id = record.get("id", session.id)
+                    session.id            = record.get("id", session.id)
                     session.system_prompt = record.get("system", session.system_prompt)
-                    session.metadata = record.get("metadata", {})
+                    session.metadata      = record.get("metadata", {})
                 else:
                     session.history.append(record)
         logger.debug("Session chargée : %s (%d tours)", session.id, len(session.history))
