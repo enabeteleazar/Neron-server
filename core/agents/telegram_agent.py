@@ -157,6 +157,63 @@ async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Erreur : {result['error']}")
 
 
+async def cmd_workspace(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    import os
+    workspace = "/mnt/usb-storage/neron/workspace"
+    files = sorted([f for f in os.listdir(workspace) if f.endswith(".py")])
+    if not files:
+        await update.message.reply_text("📂 Workspace vide")
+        return
+    lines = ["📂 <b>Workspace</b>\n"]
+    for f in files:
+        size = os.path.getsize(f"{workspace}/{f}")
+        lines.append(f"• {f} ({size} bytes)")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update): return await unauthorized(update)
+    if not context.args:
+        await update.message.reply_text("Usage: /run <fichier.py>\nEx: /run eclipse.py")
+        return
+
+    filename = context.args[0]
+    workspace = "/mnt/usb-storage/neron/workspace"
+    filepath = f"{workspace}/{filename}"
+
+    import os
+    if not os.path.exists(filepath):
+        await update.message.reply_text(f"❌ Fichier introuvable : {filename}\nFichiers disponibles :")
+        files = [f for f in os.listdir(workspace) if f.endswith(".py")]
+        if files:
+            await update.message.reply_text("\n".join(f"• {f}" for f in files))
+        return
+
+    await update.message.reply_text(f"⚙️ Exécution de {filename}...")
+
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["python3", filepath],
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+        output = result.stdout.strip() or result.stderr.strip() or "(aucune sortie)"
+        if len(output) > 3500:
+            output = output[:3500] + "\n... (tronqué)"
+        status = "✅" if result.returncode == 0 else "❌"
+        await update.message.reply_text(
+            f"{status} <b>{filename}</b>\n\n<pre>{output}</pre>",
+            parse_mode="HTML"
+        )
+    except subprocess.TimeoutExpired:
+        await update.message.reply_text(f"⏱ Timeout — {filename} a pris plus de 30 secondes")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur : {str(e)}")
+
+
 async def start_bot():
     global _telegram_app
 
@@ -168,6 +225,8 @@ async def start_bot():
     _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
     _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
     _telegram_app.add_handler(CommandHandler("call",      cmd_call))
+    _telegram_app.add_handler(CommandHandler("run",       cmd_run))
+    _telegram_app.add_handler(CommandHandler("workspace", cmd_workspace))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()
