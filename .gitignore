@@ -22,6 +22,7 @@
 *.pyd
 *.pyo
 *.pytest_cache/
+*.save
 *.secret
 *.sock
 *.swp
