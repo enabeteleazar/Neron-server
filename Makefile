@@ -25,7 +25,6 @@ help:
 	@echo "  make start      -- demarrer le service"
 	@echo "  make stop       -- arreter le service"
 	@echo "  make restart    -- redemarrer le service"
-	@echo "  make client     -- servir l'interface web (port 8080)"
 	@echo "  make status     -- etat du service"
 	@echo "  make logs       -- logs en direct"
 	@echo ""
@@ -35,7 +34,7 @@ help:
 	@echo ""
 	@echo "[Diagnostic]"
 	@echo "  make test       -- tester l'API et Ollama"
-	@echo "  make env        -- afficher la config active"
+	@echo "  make neron      -- afficher la config active"
 	@echo ""
 	@echo "[Integration]"
 	@echo "  make ollama     -- gerer le modele Ollama"
@@ -131,7 +130,7 @@ backup:
 	@echo "💾 Sauvegarde de Néron..."
 	@BACKUP_DIR=$(BASE_DIR)/backups/$$(date +%Y%m%d_%H%M%S) && \
 		mkdir -p $$BACKUP_DIR && \
-		cp $(BASE_DIR)/.env $$BACKUP_DIR/.env && \
+		cp $(BASE_DIR)/neron.yaml $$BACKUP_DIR/neron.yaml && \
 		cp $(BASE_DIR)/data/memory.db $$BACKUP_DIR/memory.db 2>/dev/null || true && \
 		echo "✔ Sauvegarde créée : $$BACKUP_DIR"
 
@@ -141,7 +140,7 @@ restore:
 	@echo ""
 	@read -p "Nom du dossier à restaurer : " BACKUP && \
 		test -d $(BASE_DIR)/backups/$$BACKUP || (echo "❌ Introuvable" && exit 1) && \
-		cp $(BASE_DIR)/backups/$$BACKUP/.env $(BASE_DIR)/.env && \
+		cp $(BASE_DIR)/backups/$$BACKUP/neron.yaml $(BASE_DIR)/neron.yaml && \
 		cp $(BASE_DIR)/backups/$$BACKUP/memory.db $(BASE_DIR)/data/memory.db 2>/dev/null || true && \
 		echo "✔ Restauration terminée — make restart pour appliquer"
 
@@ -152,11 +151,11 @@ test:
 	@curl -sf http://localhost:11434/api/tags > /dev/null && \
 		echo "✔ Ollama répond" || echo "❌ Ollama ne répond pas"
 
-env:
+neron:
 	@echo ""
 	@echo "  ⚙️  Configuration active (tokens masqués)"
 	@echo ""
-	@grep -E "^(OLLAMA|NERON_CORE_HTTP|WHISPER|STT_|LOG_|WATCHDOG_|CONTEXT_|TZ|OLLAMA_MODEL)" $(BASE_DIR)/.env | \
+	@grep -E "^(OLLAMA|NERON_CORE_HTTP|WHISPER|STT_|LOG_|WATCHDOG_|CONTEXT_|TZ|OLLAMA_MODEL)" $(BASE_DIR)/neron.yaml | \
 		grep -v "TOKEN\|token" | sed 's/^/  /'
 	@echo ""
 
@@ -167,7 +166,15 @@ version:
 		cut -d'"' -f2 | awk '{print "  Version  : "$$1}' || echo "  Version  : inconnue"
 	@echo "  Python   : $$(python3 --version 2>&1 | cut -d' ' -f2)"
 	@echo "  Ollama   : $$(ollama --version 2>/dev/null || echo 'non trouvé')"
-	@echo "  Modèle   : $$(grep OLLAMA_MODEL $(BASE_DIR)/.env | cut -d= -f2)"
+		@echo "  Modèles  :"
+	@cat $(BASE_DIR)/neron.yaml | awk '\
+		/^[a-zA-Z0-9_]+:/ { \
+			agent=$$1; sub(/:$$/,"",agent); next \
+		} \
+		/^[ \t]+model:/ { \
+			model=$$2; gsub(/^[ \t]+|[ \t]+$$/,"",model); \
+			if(model!="null" && model!=""){ print "    " agent " : " model } \
+		}'
 	@echo "  Service  : $$(systemctl is-active neron 2>/dev/null || echo 'inactif')"
 	@echo ""
 
@@ -245,34 +252,3 @@ ha-agent:
 		exit 1; \
 	fi
 	@echo ""
-
-client:
-	@echo "  URL : http://$(shell hostname -I | awk '{print $$1}'):8080"
-	@$(MAKE) client-start
-
-client-start:
-	@echo "▶  Démarrage du client Néron..."
-	@sudo systemctl start neron-client
-	@sleep 1
-	@sudo systemctl is-active --quiet neron-client && \
-		echo "✔ Client démarré — http://$(shell hostname -I | awk '{print $$1}'):8080" || \
-		(echo "❌ Échec — make client-logs pour plus d'infos" && exit 1)
-
-client-stop:
-	@echo "⏹  Arrêt du client Néron..."
-	@sudo systemctl stop neron-client
-	@echo "✔ Client arrêté"
-
-client-restart:
-	@echo "🔄 Redémarrage du client Néron..."
-	@sudo systemctl restart neron-client
-	@sleep 1
-	@sudo systemctl is-active --quiet neron-client && \
-		echo "✔ Client redémarré" || \
-		(echo "❌ Échec — make client-logs pour plus d'infos" && exit 1)
-
-client-logs:
-	@sudo journalctl -u neron-client -f
-
-client-status:
-	@sudo systemctl status neron-client --no-pager
