@@ -1,7 +1,7 @@
 # agents/system_agent.py
-# Supervision du système
-# Agent SYSTEM_STATUS - interroge neron_watchdog
-
+"""
+Agent SYSTEM_STATUS - interroge neron_watchdog
+"""
 import httpx
 import logging
 from typing import Optional

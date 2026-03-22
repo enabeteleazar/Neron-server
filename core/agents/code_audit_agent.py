@@ -1,7 +1,3 @@
-# agents/code_audit_agent.py
-# Néron Core — Agent Développeur Autonome
-# analyse et audit du code
-
 from ollama import Ollama
 import os
 

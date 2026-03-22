@@ -1,6 +1,5 @@
 # agents/tts_agent.py
 # Neron Core - Agent TTS (espeak + ffmpeg MP3)
-# Synthèse Vocale
 
 import os
 from config import settings

@@ -1,6 +1,4 @@
 # agents/web_agent.py
-# Intéraction avec Services Web
-
 import httpx
 from agents.base_agent import BaseAgent, AgentResult
 from config import settings

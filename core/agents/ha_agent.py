@@ -1,6 +1,5 @@
 # agents/ha_agent.py
 # Neron Core - Agent Home Assistant (REST API directe)
-# Intéraction avec Home Assistant
 
 import asyncio
 import httpx

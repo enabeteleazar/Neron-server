@@ -1,6 +1,5 @@
 # agents/memory_agent.py
 # Neron Core - Memory direct SQLite (sans neron_memory intermédiaire)
-# Gestion de la mémoire interne de Néron
 
 import sqlite3
 import json
