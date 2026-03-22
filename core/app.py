@@ -32,14 +32,16 @@ from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
 from config import settings
-from gateway import NeronGateway, GatewayConfig
-from agent_router import AgentRouter, LLMConfig, ToolRegistry
-from sessions import SessionStore
-from skills import SkillRegistry
-from gateway import NeronGateway, GatewayConfig
-from agent_router import AgentRouter, LLMConfig, ToolRegistry
-from sessions import SessionStore
-from skills import SkillRegistry
+from modules.gateway import NeronGateway, GatewayConfig
+from modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from modules.sessions import SessionStore
+from modules.skills import SkillRegistry
+from modules.scheduler import setup as scheduler_setup, start as scheduler_start, stop as scheduler_stop
+from modules.gateway import NeronGateway, GatewayConfig
+from modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from modules.sessions import SessionStore
+from modules.skills import SkillRegistry
+from modules.scheduler import setup as scheduler_setup, start as scheduler_start, stop as scheduler_stop
 
 # ----------------- Logging -----------------
 logging.basicConfig(level=settings.LOG_LEVEL)
@@ -210,6 +212,16 @@ async def lifespan(app: FastAPI):
 
     logger.info(json.dumps({"event": "agents_ready"}))
 
+    # ── Scheduler ──
+    scheduler_setup(
+        agents={
+            "code":   code_agent,
+            "memory": memory_agent,
+        },
+        notify_fn=send_notification,
+    )
+    scheduler_start()
+
     # ── Gateway WebSocket ──
     global _gateway_task
     try:
@@ -275,6 +287,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    scheduler_stop()
     await ha_agent.on_stop()
 
     if getattr(settings, "WATCHDOG_ENABLED", False):
