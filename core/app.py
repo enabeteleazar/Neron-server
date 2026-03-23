@@ -1,52 +1,58 @@
 # core/app.py
 # Neron Core v2.2.0
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
-import os
+import re
 import time
+import unicodedata
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, Security, Depends
-from fastapi.security.api_key import APIKeyHeader
-from fastapi.responses import PlainTextResponse
+from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.security.api_key import APIKeyHeader
 from pydantic import BaseModel
 
-from agents.llm_agent import LLMAgent
-from agents.web_agent import WebAgent
-from agents.stt_agent import STTAgent, load_model as stt_load_model
-from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
-from agents.memory_agent import MemoryAgent, init_db as memory_init_db
-from agents.telegram_agent import start_bot, stop_bot, set_agents, send_notification
-from agents.code_agent import CodeAgent
-from agents.watchdog_agent import (
-    setup as watchdog_setup, start_watchdog, stop_watchdog,
-    start_watchdog_bot, stop_watchdog_bot
-)
-from agents.ha_agent import HAAgent
 from agents.base_agent import get_logger
-from orchestrator.intent_router import IntentRouter, Intent
-from neron_time.time_provider import TimeProvider
+from agents.code_agent import CodeAgent
+from agents.ha_agent import HAAgent
+from agents.llm_agent import LLMAgent
+from agents.memory_agent import MemoryAgent, init_db as memory_init_db
+from agents.stt_agent import STTAgent, load_model as stt_load_model
+from agents.telegram_agent import send_notification, set_agents, start_bot, stop_bot
+from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
+from agents.watchdog_agent import (
+    setup as watchdog_setup,
+    start_watchdog,
+    start_watchdog_bot,
+    stop_watchdog,
+    stop_watchdog_bot,
+)
+from agents.web_agent import WebAgent
 from config import settings
-from modules.gateway import NeronGateway, GatewayConfig
-from modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
-from modules.sessions import SessionStore
-from modules.skills import SkillRegistry
-from modules.scheduler import setup as scheduler_setup, start as scheduler_start, stop as scheduler_stop
-from modules.gateway import NeronGateway, GatewayConfig
-from modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
-from modules.sessions import SessionStore
-from modules.skills import SkillRegistry
-from modules.scheduler import setup as scheduler_setup, start as scheduler_start, stop as scheduler_stop
 
-# ----------------- Logging -----------------
+# FIX: imports modules.* dédupliqués — un seul bloc
+from modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from modules.gateway import GatewayConfig, NeronGateway
+from modules.scheduler import setup as scheduler_setup
+from modules.scheduler import start as scheduler_start
+from modules.scheduler import stop as scheduler_stop
+from modules.sessions import SessionStore
+from modules.skills import SkillRegistry
+from neron_time.time_provider import TimeProvider
+from orchestrator.intent_router import Intent, IntentRouter
+
+# ── Logging ───────────────────────────────────────────────────────────────────
+
 logging.basicConfig(level=settings.LOG_LEVEL)
-_log_file = settings.LOGS_DIR / settings.LOG_NERON
 settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+_log_file     = settings.LOGS_DIR / settings.LOG_NERON
 _file_handler = logging.FileHandler(_log_file)
 _file_handler.setLevel(settings.LOG_LEVEL)
 _file_handler.setFormatter(
@@ -56,16 +62,30 @@ logging.getLogger().addHandler(_file_handler)
 logger = get_logger("neron_core")
 
 VERSION = "2.2.0"
-_startup_time: float = 0.0
+
+# ── État global ───────────────────────────────────────────────────────────────
+
+_startup_time:  float          = 0.0
+_gateway_task:  asyncio.Task | None = None  # FIX: déclaré au niveau module
+
+llm_agent:     LLMAgent      | None = None
+memory_agent:  MemoryAgent   | None = None
+web_agent:     WebAgent      | None = None
+stt_agent:     STTAgent      | None = None
+tts_agent:                    None  = None
+ha_agent:      HAAgent       | None = None
+code_agent:    CodeAgent     | None = None
+router:        IntentRouter  | None = None
+time_provider: TimeProvider  | None = None
 
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-# ----------------- Module personality -----------------
+# ── Module personality ────────────────────────────────────────────────────────
+
 def _personality_available() -> bool:
-    """Vérifie si le module personality est importable."""
     try:
         import personality  # noqa: F401
         return True
@@ -73,39 +93,40 @@ def _personality_available() -> bool:
         return False
 
 
-# ----------------- Metrics -----------------
-class Metrics:
-    def __init__(self):
-        self._intent_counts: dict     = {}
-        self._agent_errors: dict      = {}
-        self._latencies: dict         = {}
-        self._requests_total: int     = 0
-        self._requests_in_flight: int = 0
-        self._execution_times: list   = []
-        self._model_calls: dict       = {}
+# ── Metrics ───────────────────────────────────────────────────────────────────
 
-    def record_request_start(self):
+class Metrics:
+    def __init__(self) -> None:
+        self._intent_counts:      dict  = {}
+        self._agent_errors:       dict  = {}
+        self._latencies:          dict  = {}
+        self._requests_total:     int   = 0
+        self._requests_in_flight: int   = 0
+        self._execution_times:    list  = []
+        self._model_calls:        dict  = {}
+
+    def record_request_start(self) -> None:
         self._requests_total     += 1
         self._requests_in_flight += 1
 
-    def record_request_end(self, execution_time_ms: float):
+    def record_request_end(self, execution_time_ms: float) -> None:
         self._requests_in_flight = max(0, self._requests_in_flight - 1)
         self._execution_times.append(execution_time_ms)
         if len(self._execution_times) > 1000:
             self._execution_times = self._execution_times[-1000:]
 
-    def record_intent(self, intent: str):
+    def record_intent(self, intent: str) -> None:
         self._intent_counts[intent] = self._intent_counts.get(intent, 0) + 1
 
-    def record_error(self, agent: str):
+    def record_error(self, agent: str) -> None:
         self._agent_errors[agent] = self._agent_errors.get(agent, 0) + 1
 
-    def record_latency(self, agent: str, latency_ms: float):
+    def record_latency(self, agent: str, latency_ms: float) -> None:
         self._latencies.setdefault(agent, []).append(latency_ms)
         if len(self._latencies[agent]) > 1000:
             self._latencies[agent] = self._latencies[agent][-1000:]
 
-    def record_model_call(self, model: str):
+    def record_model_call(self, model: str) -> None:
         if model:
             self._model_calls[model] = self._model_calls.get(model, 0) + 1
 
@@ -160,21 +181,14 @@ class Metrics:
 
 metrics = Metrics()
 
-llm_agent:    LLMAgent     = None
-memory_agent: MemoryAgent  = None
-web_agent:    WebAgent     = None
-stt_agent:    STTAgent     = None
-tts_agent                  = None
-ha_agent:     HAAgent      = None
-router:       IntentRouter = None
-time_provider: TimeProvider = None
-code_agent:   CodeAgent    = None
 
-# ----------------- Lifespan -----------------
+# ── Lifespan ──────────────────────────────────────────────────────────────────
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
     global router, time_provider, _startup_time, memory_agent
+    global code_agent, _gateway_task
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
@@ -186,27 +200,26 @@ async def lifespan(app: FastAPI):
     stt_load_model()
     stt_agent = STTAgent()
     tts_load_engine()
-    tts_agent = TTSAgent()
-    ha_agent  = HAAgent()
-    global code_agent
+    tts_agent  = TTSAgent()
+    ha_agent   = HAAgent()
     code_agent = CodeAgent()
+
     await ha_agent.on_start()
     router        = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
 
-    # Log état module personality
     if _personality_available():
         try:
             from personality import get_current_state
             state = get_current_state()
             logger.info(json.dumps({
-                "event":   "personality_loaded",
-                "mood":    state.get("mood"),
-                "energy":  state.get("energy_level"),
-                "tone":    state.get("communication", {}).get("tone"),
+                "event":  "personality_loaded",
+                "mood":   state.get("mood"),
+                "energy": state.get("energy_level"),
+                "tone":   state.get("communication", {}).get("tone"),
             }))
         except Exception as e:
-            logger.warning(f"Personality chargé mais état illisible : {e}")
+            logger.warning("Personality chargé mais état illisible : %s", e)
     else:
         logger.warning("Module personality non disponible — system prompt statique actif")
 
@@ -214,16 +227,12 @@ async def lifespan(app: FastAPI):
 
     # ── Scheduler ──
     scheduler_setup(
-        agents={
-            "code":   code_agent,
-            "memory": memory_agent,
-        },
+        agents={"code": code_agent, "memory": memory_agent},
         notify_fn=send_notification,
     )
     scheduler_start()
 
     # ── Gateway WebSocket ──
-    global _gateway_task
     try:
         llm_cfg = LLMConfig(
             provider="ollama",
@@ -232,9 +241,9 @@ async def lifespan(app: FastAPI):
             max_tokens=settings.LLM_MAX_TOKENS,
             temperature=settings.LLM_TEMPERATURE,
         )
-        _sessions  = SessionStore()
-        _skills    = SkillRegistry()
-        _tools     = ToolRegistry().default_tools()
+        _sessions     = SessionStore()
+        _skills       = SkillRegistry()
+        _tools        = ToolRegistry().setup_defaults()
         _agent_router = AgentRouter(
             sessions=_sessions,
             skills=_skills,
@@ -255,15 +264,16 @@ async def lifespan(app: FastAPI):
         _gateway_task = asyncio.create_task(_gw.start())
         logger.info("Gateway WebSocket démarré sur ws://0.0.0.0:18789")
     except Exception as e:
-        logger.warning(f"Gateway WebSocket non démarré : {e}")
+        logger.warning("Gateway WebSocket non démarré : %s", e)
 
+    # FIX: tabulation mixte supprimée dans le dict set_agents
     set_agents({
         "llm":    llm_agent,
         "stt":    stt_agent,
         "tts":    tts_agent,
         "memory": memory_agent,
         "ha":     ha_agent,
-	"code":	  code_agent,
+        "code":   code_agent,
     })
 
     telegram_enabled = getattr(settings, "TELEGRAM_ENABLED", False)
@@ -273,22 +283,30 @@ async def lifespan(app: FastAPI):
         try:
             await start_bot()
         except Exception as e:
-            logger.warning(f"Impossible de démarrer Telegram : {e}")
+            logger.warning("Impossible de démarrer Telegram : %s", e)
     else:
         logger.info("Telegram désactivé ou token non configuré")
 
     if getattr(settings, "WATCHDOG_ENABLED", False):
         watchdog_setup(
             agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
-            notify_fn=send_notification
+            notify_fn=send_notification,
         )
         await start_watchdog()
         await start_watchdog_bot()
 
     yield
 
+    # ── Shutdown ──
     scheduler_stop()
     await ha_agent.on_stop()
+
+    if _gateway_task and not _gateway_task.done():
+        _gateway_task.cancel()
+        try:
+            await _gateway_task
+        except asyncio.CancelledError:
+            pass
 
     if getattr(settings, "WATCHDOG_ENABLED", False):
         await stop_watchdog_bot()
@@ -298,12 +316,13 @@ async def lifespan(app: FastAPI):
         try:
             await stop_bot()
         except Exception as e:
-            logger.warning(f"Impossible d'arrêter Telegram : {e}")
+            logger.warning("Impossible d'arrêter Telegram : %s", e)
 
     logger.info(json.dumps({"event": "shutdown"}))
 
 
-# ----------------- FastAPI app -----------------
+# ── FastAPI app ───────────────────────────────────────────────────────────────
+
 app = FastAPI(
     title="Neron Core",
     description="Orchestrateur central - v" + VERSION,
@@ -319,29 +338,31 @@ app.add_middleware(
 )
 
 
-# ----------------- Models -----------------
+# ── Models ────────────────────────────────────────────────────────────────────
+
 class TextInput(BaseModel):
     text: str
 
 
 class CoreResponse(BaseModel):
-    response:         str
-    intent:           str
-    agent:            str
-    confidence:       str
-    timestamp:        str
+    response:          str
+    intent:            str
+    agent:             str
+    confidence:        str
+    timestamp:         str
     execution_time_ms: float
-    model:            Optional[str]  = None
-    error:            Optional[str]  = None
-    transcription:    Optional[str]  = None
-    metadata:         dict           = {}
+    model:             Optional[str] = None
+    error:             Optional[str] = None
+    transcription:     Optional[str] = None
+    metadata:          dict          = {}
 
 
-# ----------------- Auth -----------------
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
+async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> None:
     if not settings.API_KEY or settings.API_KEY == "changez_moi":
         return
     if api_key is None:
@@ -350,7 +371,8 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)):
         raise HTTPException(status_code=403, detail="API Key invalide")
 
 
-# ----------------- Routes système -----------------
+# ── Routes système ────────────────────────────────────────────────────────────
+
 @app.get("/")
 def root():
     return {"service": "Neron Core", "version": VERSION, "status": "active"}
@@ -374,22 +396,15 @@ async def ha_reload(_: None = Depends(verify_api_key)):
     return {"status": "ok", "entities": count, "timestamp": utc_now_iso()}
 
 
-# =============================================================================
-# Routes /personality  — module personality v7
-# =============================================================================
+# ── Routes /personality ───────────────────────────────────────────────────────
 
 @app.get("/personality/state")
 async def personality_state(_: None = Depends(verify_api_key)):
-    """
-    Retourne la configuration active complète de la persona Neron :
-    traits, mood, energy_level, communication, behavior, learning.
-    """
     if not _personality_available():
         raise HTTPException(503, "Module personality non disponible")
     try:
         from personality import get_current_state
-        state = get_current_state()
-        return {"status": "ok", "state": state, "timestamp": utc_now_iso()}
+        return {"status": "ok", "state": get_current_state(), "timestamp": utc_now_iso()}
     except Exception as e:
         raise HTTPException(500, f"Erreur lecture état personality : {e}")
 
@@ -397,12 +412,8 @@ async def personality_state(_: None = Depends(verify_api_key)):
 @app.get("/personality/history")
 async def personality_history(
     limit: int = 20,
-    _: None = Depends(verify_api_key)
+    _: None = Depends(verify_api_key),
 ):
-    """
-    Retourne les dernières entrées de l'historique des changements d'état.
-    Paramètre query : limit (défaut 20, max 100).
-    """
     if not _personality_available():
         raise HTTPException(503, "Module personality non disponible")
     limit = min(max(1, limit), 100)
@@ -416,10 +427,6 @@ async def personality_history(
 
 @app.post("/personality/reset")
 async def personality_reset(_: None = Depends(verify_api_key)):
-    """
-    Remet mood et energy_level à leurs valeurs par défaut (neutre / normal).
-    Utile pour réinitialiser l'état émotionnel entre deux sessions.
-    """
     if not _personality_available():
         raise HTTPException(503, "Module personality non disponible")
     try:
@@ -440,19 +447,16 @@ async def personality_reset(_: None = Depends(verify_api_key)):
         raise HTTPException(500, f"Erreur reset personality : {e}")
 
 
-# =============================================================================
-# Routes /input
-# =============================================================================
+# ── Routes /input ─────────────────────────────────────────────────────────────
 
 @app.post("/input/text", response_model=CoreResponse)
 async def text_input(
     input_data: TextInput,
-    _: None = Depends(verify_api_key)
+    _: None = Depends(verify_api_key),
 ):
     query = input_data.text.strip()
     start = time.monotonic()
     metrics.record_request_start()
-
     logger.info(json.dumps({"event": "request_received", "query": query[:80]}))
 
     intent_result = await router.route(query)
@@ -465,51 +469,35 @@ async def text_input(
 
     try:
         if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
-            core_response = await _handle_personality_feedback(
-                query, intent_result, metadata, start
-            )
+            return await _handle_personality_feedback(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.TIME_QUERY:
-            core_response = _handle_time_query(intent_result, metadata, start, query)
+            return _handle_time_query(intent_result, metadata, start, query)
         elif intent_result.intent == Intent.WEB_SEARCH:
-            core_response = await _handle_web_search(
-                query, intent_result, metadata, start
-            )
+            return await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:
-            core_response = await _handle_ha_action(
-                query, intent_result, metadata, start
-            )
+            return await _handle_ha_action(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.CODE:
-            core_response = await _handle_code(
-                query, intent_result, metadata, start
-            )
+            return await _handle_code(query, intent_result, metadata, start)
         else:
-            core_response = await _handle_conversation(
-                query, intent_result, metadata, start
-            )
+            return await _handle_conversation(query, intent_result, metadata, start)
     finally:
         elapsed = round((time.monotonic() - start) * 1000, 2)
         metrics.record_request_end(elapsed)
-
-    return core_response
 
 
 @app.post("/input/stream")
 async def text_input_stream(
     input_data: TextInput,
-    _: None = Depends(verify_api_key)
+    _: None = Depends(verify_api_key),
 ):
-    from fastapi.responses import StreamingResponse
-
     query = input_data.text.strip()
 
     async def generate():
         intent_result = await router.route(query)
 
-        # Feedback comportemental → pas de stream, réponse directe
+        # Intents non-streamables → réponse directe encapsulée
         if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
-            result = await _handle_personality_feedback(
-                query, intent_result, {}, 0
-            )
+            result = await _handle_personality_feedback(query, intent_result, {}, 0)
             yield f"data: {json.dumps({'token': result.response, 'done': True})}\n\n"
             return
 
@@ -518,18 +506,23 @@ async def text_input_stream(
             yield f"data: {json.dumps({'token': response, 'done': True})}\n\n"
             return
 
+        # FIX: _store_memory() déplacé AVANT le yield done
+        # pour éviter que le générateur fasse du travail après
+        # avoir signalé la fin au client (cause du RemoteProtocolError)
         memory_context = await _get_memory_context(query)
         full_response  = ""
+
         async for token in llm_agent.stream(
             query, context_data=memory_context or None
         ):
             full_response += token
             yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
 
+        # Persiste la mémoire avant d'envoyer done
+        await _store_memory(query, full_response, {"intent": intent_result.intent.value})
+
+        # Signal de fin envoyé en dernier
         yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
-        await _store_memory(
-            query, full_response, {"intent": intent_result.intent.value}
-        )
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
@@ -538,7 +531,6 @@ async def text_input_stream(
 async def audio_input(file: UploadFile = File(...)):
     start = time.monotonic()
     metrics.record_request_start()
-
     try:
         audio_bytes = await file.read()
         result      = await stt_agent.transcribe(audio_bytes, file.filename)
@@ -550,16 +542,14 @@ async def audio_input(file: UploadFile = File(...)):
         if result.latency_ms:
             metrics.record_latency("stt_agent", result.latency_ms)
 
-        transcription       = result.content
-        input_data          = TextInput(text=transcription)
-        core_response       = await text_input(input_data)
+        transcription          = result.content
+        core_response          = await text_input(TextInput(text=transcription))
         core_response.transcription = transcription
         core_response.metadata["stt"] = {
-            "language":      result.metadata.get("language"),
+            "language":       result.metadata.get("language"),
             "stt_latency_ms": result.latency_ms,
         }
         return core_response
-
     except HTTPException:
         raise
     except Exception as e:
@@ -575,10 +565,9 @@ async def voice_input(file: UploadFile = File(...)):
 
     start = time.monotonic()
     metrics.record_request_start()
-
     try:
-        audio_bytes = await file.read()
-        stt_result  = await stt_agent.transcribe(audio_bytes, file.filename)
+        audio_bytes   = await file.read()
+        stt_result    = await stt_agent.transcribe(audio_bytes, file.filename)
 
         if not stt_result.success:
             metrics.record_error("stt_agent")
@@ -591,8 +580,7 @@ async def voice_input(file: UploadFile = File(...)):
         if not transcription:
             raise HTTPException(400, "Transcription vide")
 
-        input_data    = TextInput(text=transcription)
-        core_response = await text_input(input_data)
+        core_response = await text_input(TextInput(text=transcription))
         tts_result    = await tts_agent.synthesize(core_response.response)
 
         if not tts_result.success:
@@ -607,13 +595,12 @@ async def voice_input(file: UploadFile = File(...)):
             content=tts_result.metadata["audio_bytes"],
             media_type=tts_result.metadata.get("mimetype", "audio/wav"),
             headers={
-                "X-Transcription":    transcription[:200].encode("ascii", "replace").decode(),
-                "X-Response-Text":    core_response.response[:200].encode("ascii", "replace").decode(),
-                "X-Intent":           core_response.intent,
+                "X-Transcription":     transcription[:200].encode("ascii", "replace").decode(),
+                "X-Response-Text":     core_response.response[:200].encode("ascii", "replace").decode(),
+                "X-Intent":            core_response.intent,
                 "X-Execution-Time-Ms": str(execution_time_ms),
             },
         )
-
     except HTTPException:
         raise
     except Exception as e:
@@ -623,24 +610,16 @@ async def voice_input(file: UploadFile = File(...)):
         metrics.record_request_end(elapsed)
 
 
-# =============================================================================
-# Handlers internes
-# =============================================================================
+# ── Handlers internes ─────────────────────────────────────────────────────────
 
 async def _handle_personality_feedback(
     query: str, intent_result, metadata: dict, start: float
 ) -> CoreResponse:
-    """
-    Traite un feedback comportemental (ex: "sois bref", "mode focus").
-    Appelle update_from_feedback() du module personality et retourne
-    une confirmation lisible à l'utilisateur.
-    """
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
 
     if not _personality_available():
         return CoreResponse(
-            response="Je n'ai pas pu mettre à jour ma personnalité "
-                     "(module personality non disponible).",
+            response="Je n'ai pas pu mettre à jour ma personnalité (module non disponible).",
             intent="personality_feedback",
             agent="personality",
             confidence=intent_result.confidence,
@@ -654,11 +633,7 @@ async def _handle_personality_feedback(
         result = update_from_feedback(query)
 
         if result["status"] == "updated" and result["changes"]:
-            parts = []
-            for change in result["changes"]:
-                field = change["field"]
-                value = change["new_value"]
-                parts.append(f"{field} → {value}")
+            parts    = [f"{c['field']} → {c['new_value']}" for c in result["changes"]]
             response = "Compris. J'ai adapté mon comportement : " + ", ".join(parts) + "."
             logger.info(json.dumps({
                 "event":   "personality_updated",
@@ -676,9 +651,8 @@ async def _handle_personality_feedback(
             execution_time_ms=execution_time_ms,
             metadata={**metadata, "personality_changes": result.get("changes", [])},
         )
-
     except Exception as e:
-        logger.error(f"[PERSONALITY] update_from_feedback échoué : {e}")
+        logger.error("personality update_from_feedback échoué : %s", e)
         return CoreResponse(
             response="Je n'ai pas pu appliquer ce changement de comportement.",
             intent="personality_feedback",
@@ -696,47 +670,57 @@ def _handle_time_query(
 ) -> CoreResponse:
     q          = query.lower()
     heure_keys = ["heure", "time", "il est", "quelle heure"]
-    date_keys  = ["quelle date sommes", "on est quel jour", "quel jour sommes", "quel mois sommes", "donne moi la date", "c est quoi la date", "on est le combien"]
+    date_keys  = [
+        "quelle date sommes", "on est quel jour", "quel jour sommes",
+        "quel mois sommes", "donne moi la date", "c est quoi la date",
+        "on est le combien",
+    ]
     want_heure = any(k in q for k in heure_keys)
     want_date  = any(k in q for k in date_keys)
-    n          = time_provider.now()
+
+    n = time_provider.now()
     from neron_time.time_provider import JOURS, MOIS
     jour = JOURS[n.weekday()]
     mois = MOIS[n.month - 1]
+
     if want_heure and not want_date:
         response = f"Il est {n.hour:02d}h{n.minute:02d}."
     elif want_date and not want_heure:
         response = f"Nous sommes {jour} {n.day} {mois} {n.year}."
     else:
-        response = (
-            f"Il est {n.hour:02d}h{n.minute:02d}, "
-            f"{jour} {n.day} {mois} {n.year}."
-        )
-    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
+        response = f"Il est {n.hour:02d}h{n.minute:02d}, {jour} {n.day} {mois} {n.year}."
+
     return CoreResponse(
-        response=response, intent="time_query", agent="time_provider",
-        confidence=intent_result.confidence, timestamp=utc_now_iso(),
-        execution_time_ms=execution_time_ms, model=None, error=None,
-        metadata={
-            **metadata,
-            "iso":       time_provider.iso(),
-            "timestamp": time_provider.timestamp(),
-        },
+        response=response,
+        intent="time_query",
+        agent="time_provider",
+        confidence=intent_result.confidence,
+        timestamp=utc_now_iso(),
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+        metadata={**metadata, "iso": time_provider.iso(), "timestamp": time_provider.timestamp()},
     )
 
 
 async def _get_memory_context(query: str) -> str:
-    context_parts = []
     try:
         recent = memory_agent.retrieve(limit=1)
         if recent:
             entry = recent[0]
-            context_parts.append(
-                f"Échange précédent:\nUtilisateur: {entry['input']}\nNeron: {entry['response'][:120]}"
+            return (
+                f"Échange précédent:\n"
+                f"Utilisateur: {entry['input']}\n"
+                f"Neron: {entry['response'][:120]}"
             )
     except Exception as e:
         logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
-    return "\n\n".join(context_parts)
+    return ""
+
+
+async def _store_memory(query: str, response: str, metadata: dict) -> None:
+    try:
+        memory_agent.store(query, response, metadata)
+    except Exception as e:
+        logger.warning(json.dumps({"event": "memory_store_failed", "error": str(e)}))
 
 
 async def _handle_conversation(
@@ -756,7 +740,6 @@ async def _handle_conversation(
 
     model = result.metadata.get("model")
     metrics.record_model_call(model)
-    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
     await _store_memory(query, result.content, metadata)
 
     return CoreResponse(
@@ -765,9 +748,8 @@ async def _handle_conversation(
         agent="llm_agent",
         confidence=metadata.get("confidence", "low"),
         timestamp=utc_now_iso(),
-        execution_time_ms=execution_time_ms,
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
         model=model,
-        error=None,
         metadata={**metadata, **result.metadata},
     )
 
@@ -784,9 +766,7 @@ async def _handle_web_search(
     if web_result.latency_ms:
         metrics.record_latency("web_agent", web_result.latency_ms)
 
-    llm_result = await llm_agent.execute(
-        query=query, context_data=web_result.content
-    )
+    llm_result = await llm_agent.execute(query=query, context_data=web_result.content)
 
     if not llm_result.success:
         metrics.record_error("llm_agent")
@@ -799,7 +779,6 @@ async def _handle_web_search(
         if llm_result.latency_ms:
             metrics.record_latency("llm_agent", llm_result.latency_ms)
 
-    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
     metadata["web_sources"] = web_result.metadata.get("sources", [])
     await _store_memory(query, response_text, metadata)
 
@@ -809,9 +788,8 @@ async def _handle_web_search(
         agent="web_agent+llm_agent",
         confidence=intent_result.confidence,
         timestamp=utc_now_iso(),
-        execution_time_ms=execution_time_ms,
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
         model=model,
-        error=None,
         metadata={**metadata, **(llm_result.metadata if llm_result.success else {})},
     )
 
@@ -843,22 +821,29 @@ async def _handle_ha_action(
         metadata={},
     )
 
+
 async def _handle_code(
     query: str, intent_result, metadata: dict, start: float
 ) -> CoreResponse:
-    import re
+    # FIX: imports re et unicodedata déplacés en tête de fichier
     path_match = re.search(r"(\S+\.py)", query)
-    path = path_match.group(1) if path_match else ""
+    path       = path_match.group(1) if path_match else ""
 
-    # Générer un nom si pas de fichier explicite
     if not path:
-        import unicodedata
-        words = re.findall(r"[a-z0-9]+" , query.lower())
-        stop = {"un","une","le","la","les","de","du","des","qui","pour","que","moi","me","genere","cree","ecris","script","fichier","module","python","code","affiche","bonjour","donne"}
-        name_words = [w for w in words if w not in stop][:3]
-        path = "_".join(name_words) + ".py" if name_words else "script.py"
+        def _norm(t: str) -> str:
+            n = unicodedata.normalize("NFD", t.lower())
+            return "".join(c for c in n if unicodedata.category(c) != "Mn")
 
-    result = await code_agent.execute(query, path=path)
+        stop = {
+            "un", "une", "le", "la", "les", "de", "du", "des", "qui", "pour",
+            "que", "moi", "me", "genere", "cree", "ecris", "script", "fichier",
+            "module", "python", "code", "affiche", "bonjour", "donne",
+        }
+        words      = re.findall(r"[a-z0-9]+", _norm(query))
+        name_words = [w for w in words if w not in stop][:3]
+        path       = "_".join(name_words) + ".py" if name_words else "script.py"
+
+    result            = await code_agent.execute(query, path=path)
     execution_time_ms = round((time.monotonic() - start) * 1000, 2)
 
     if not result.success:
@@ -884,13 +869,6 @@ async def _handle_code(
         execution_time_ms=execution_time_ms,
         metadata=result.metadata,
     )
-
-
-async def _store_memory(query: str, response: str, metadata: dict):
-    try:
-        memory_agent.store(query, response, metadata)
-    except Exception as e:
-        logger.warning(json.dumps({"event": "memory_store_failed", "error": str(e)}))
 
 
 if __name__ == "__main__":
