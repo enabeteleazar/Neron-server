@@ -560,6 +560,8 @@ class CodeAgent(BaseAgent):
         """Liste tous les fichiers .py de Néron, hors dossiers exclus."""
         files = []
         for p in _NERON_ROOT.rglob("*.py"):
+            if p.name == "__init__.py":
+                continue
             if not any(excl in p.parts for excl in _EXCLUDE_DIRS):
                 files.append(p)
         return sorted(files)
