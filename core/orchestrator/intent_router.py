@@ -61,7 +61,7 @@ class IntentRouter:
         # ── Code / développement ──────────────────────────────────────────
         for kw in CODE_KEYWORDS:
             kw_norm = _normalize(kw)
-            if len(kw_norm) >= _CODE_KW_MIN_LEN and kw_norm in q_norm:
+            if kw_norm in q_norm:
                 logger.info("[ROUTER] intent=code — déclencheur: %r", kw)
                 return IntentResult(intent=Intent.CODE, confidence="high")
 
