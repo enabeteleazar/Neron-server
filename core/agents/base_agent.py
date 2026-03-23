@@ -1,31 +1,39 @@
 # agents/base_agent.py
+# Socle commun de tous les agents Neron.
+
+from __future__ import annotations
+
 import logging
+import os
+import sys
 import time
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Literal, Optional
 
 
-import sys
-import os
+# ──────────────────────────────────────────────────────────────────────────────
+# Logging coloré
+# ──────────────────────────────────────────────────────────────────────────────
+
 
 class ColorFormatter(logging.Formatter):
+    # FIX: préfixe \033 ajouté — sans lui les codes s'affichaient en texte brut
     COLORS = {
-        'DEBUG':    '[36m',
-        'INFO':     '[32m',
-        'WARNING':  '[33m',
-        'ERROR':    '[31m',
-        'CRITICAL': '[35m',
+        "DEBUG":    "\033[36m",
+        "INFO":     "\033[32m",
+        "WARNING":  "\033[33m",
+        "ERROR":    "\033[31m",
+        "CRITICAL": "\033[35m",
     }
-    RESET = '[0m'
-    DIM   = '[2m'
+    RESET = "\033[0m"
+    DIM   = "\033[2m"
 
-    def __init__(self, *args, use_color=True, **kwargs):
+    def __init__(self, *args: Any, use_color: bool = True, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.use_color = use_color
 
-    def format(self, record):
+    def format(self, record: logging.LogRecord) -> str:
         msg = record.getMessage()
         ts  = self.formatTime(record, self.datefmt)
         if self.use_color:
@@ -39,64 +47,108 @@ class ColorFormatter(logging.Formatter):
         return f"{ts} {record.name} {record.levelname:<8} {msg}"
 
 
-def get_logger(name: str) -> logging.Logger:
+def get_logger(name: str, level: int | None = None) -> logging.Logger:
+    """
+    Retourne un logger nommé avec formatter coloré.
+
+    FIX: niveau de log configurable via le paramètre 'level'
+    ou la variable d'env NERON_LOG_LEVEL (défaut : INFO).
+    """
     logger = logging.getLogger(name)
     if not logger.handlers:
-        # Couleur seulement si stdout est un vrai terminal
-        use_color = os.environ.get("FORCE_COLOR", "") == "1" or (hasattr(sys.stdout, "isatty") and sys.stdout.isatty())
+        use_color = (
+            os.environ.get("FORCE_COLOR", "") == "1"
+            or (hasattr(sys.stdout, "isatty") and sys.stdout.isatty())
+        )
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(ColorFormatter(datefmt="%H:%M:%S", use_color=use_color))
         logger.addHandler(handler)
         logger.propagate = False
+
+        # FIX: niveau défini explicitement — sans ça DEBUG/INFO sont silencieux
+        if level is not None:
+            logger.setLevel(level)
+        else:
+            env_level = os.environ.get("NERON_LOG_LEVEL", "INFO").upper()
+            logger.setLevel(getattr(logging, env_level, logging.INFO))
+
     return logger
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# AgentResult
+# ──────────────────────────────────────────────────────────────────────────────
+
+# FIX: confidence typé Literal au lieu de str libre
+ConfidenceLevel = Literal["low", "medium", "high"]
 
 
 @dataclass
 class AgentResult:
-    success: bool
-    content: str
-    source: str
-    intent: str = "unknown"
-    confidence: str = "low"
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    error: Optional[str] = None
-    latency_ms: Optional[float] = None
+    success:    bool
+    content:    str
+    source:     str
+    intent:     str                = "unknown"
+    confidence: ConfidenceLevel    = "low"
+    metadata:   Dict[str, Any]     = field(default_factory=dict)
+    error:      Optional[str]      = None
+    latency_ms: Optional[float]    = None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BaseAgent
+# ──────────────────────────────────────────────────────────────────────────────
 
 
 class BaseAgent(ABC):
-    def __init__(self, name: str):
-        self.name = name
+    def __init__(self, name: str) -> None:
+        self.name   = name
         self.logger = get_logger(f"agent.{name}")
 
-    async def on_start(self):
+    async def on_start(self) -> None:
         """Hook de démarrage — override dans les agents si besoin."""
         pass
 
     @abstractmethod
-    async def execute(self, query: str, **kwargs) -> AgentResult:
-        pass
+    async def execute(self, query: str, **kwargs: Any) -> AgentResult:
+        """Point d'entrée principal de l'agent."""
+        ...
 
-    def _success(self, content: str, metadata: Dict[str, Any] = None, latency_ms: float = None) -> AgentResult:
+    def _success(
+        self,
+        content:    str,
+        metadata:   Dict[str, Any] | None = None,
+        latency_ms: float | None          = None,
+        confidence: ConfidenceLevel        = "low",
+    ) -> AgentResult:
         return AgentResult(
-            success=True,
-            content=content,
-            source=self.name,
-            metadata=metadata or {},
-            latency_ms=latency_ms
+            success    = True,
+            content    = content,
+            source     = self.name,
+            metadata   = metadata or {},
+            latency_ms = latency_ms,
+            confidence = confidence,
         )
 
-    def _failure(self, error: str, latency_ms: float = None) -> AgentResult:
-        self.logger.error(f"[{self.name}] Echec : {error}")
+    def _failure(
+        self,
+        error:      str,
+        latency_ms: float | None = None,
+    ) -> AgentResult:
+        # FIX: log simplifié — le nom de l'agent est déjà dans le nom du logger
+        self.logger.error("Echec : %s", error)
         return AgentResult(
-            success=False,
-            content="",
-            source=self.name,
-            error=error,
-            latency_ms=latency_ms
+            success    = False,
+            content    = "",
+            source     = self.name,
+            error      = error,
+            latency_ms = latency_ms,
         )
 
     def _timer(self) -> float:
+        """Retourne le timestamp de départ pour mesure de latence."""
         return time.monotonic()
 
     def _elapsed_ms(self, start: float) -> float:
+        """Retourne le temps écoulé en millisecondes depuis start."""
         return round((time.monotonic() - start) * 1000, 2)
