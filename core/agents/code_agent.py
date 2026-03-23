@@ -1,18 +1,20 @@
 # agents/code_agent.py
 # Néron Core — Agent Développeur Autonome
 
+from __future__ import annotations
+
 import asyncio
-import hashlib
-import httpx
 import json
 import os
+import re
 import shutil
-import subprocess
 import tempfile
-import time
+import unicodedata
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
+
+import httpx
 
 from agents.base_agent import BaseAgent, AgentResult
 from config import settings
@@ -20,21 +22,25 @@ from config import settings
 # ── Constantes ────────────────────────────────────────────────────────────────
 
 OLLAMA_HOST  = settings.OLLAMA_HOST
-OLLAMA_MODEL = getattr(settings, 'CODE_AGENT_MODEL', settings.OLLAMA_MODEL)
-
+OLLAMA_MODEL = getattr(settings, "CODE_AGENT_MODEL", settings.OLLAMA_MODEL)
 LLM_TIMEOUT  = settings.LLM_TIMEOUT
 
 # Répertoire racine de Néron — toute écriture hors de là est bloquée
-_NERON_ROOT  = Path(__file__).parent.parent.resolve()
-_WORKSPACE   = Path("/mnt/usb-storage/neron/workspace")
-_BACKUP_DIR  = _NERON_ROOT / "data" / "code_backups"
+_NERON_ROOT = Path(__file__).parent.parent.resolve()
+
+# FIX: _WORKSPACE externalisé via variable d'env
+_WORKSPACE  = Path(
+    os.getenv("NERON_WORKSPACE", "/mnt/usb-storage/neron/workspace")
+)
+_BACKUP_DIR      = _NERON_ROOT / "data" / "code_backups"
 _SANDBOX_TIMEOUT = 10  # secondes
 
-# Extensions considérées comme code Python
 _PY_EXT = {".py"}
 
-# Dossiers exclus de l'auto-analyse (on ne touche pas au venv, cache, etc.)
 _EXCLUDE_DIRS = {"__pycache__", "venv", ".git", "data", "docs", "scripts"}
+
+# Semaphore pour limiter la concurrence des appels LLM en self_review
+_REVIEW_CONCURRENCY = 4
 
 # ── Prompts LLM ───────────────────────────────────────────────────────────────
 
@@ -62,10 +68,11 @@ un rapport JSON avec exactement ce format (rien d'autre) :
 }"""
 
 
-# ── Utilitaires internes ───────────────────────────────────────────────────────
+# ── Utilitaires internes ──────────────────────────────────────────────────────
 
 def _safe_path(raw: str, generated: bool = False) -> Path:
-    """Valide et retourne le chemin.
+    """
+    Valide et retourne le chemin.
     - Si generated=True : écrit dans _WORKSPACE
     - Sinon : doit rester dans _NERON_ROOT
     """
@@ -84,10 +91,18 @@ def _backup(path: Path) -> Optional[Path]:
     if not path.exists():
         return None
     _BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    ts        = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_name = str(path.relative_to(_NERON_ROOT)).replace("/", "_").replace("\\", "_")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # FIX: supporte les chemins dans _WORKSPACE et dans _NERON_ROOT
+    try:
+        rel = path.relative_to(_NERON_ROOT)
+    except ValueError:
+        rel = path.relative_to(_WORKSPACE.parent)
+
+    safe_name = str(rel).replace("/", "_").replace("\\", "_")
     dest      = _BACKUP_DIR / f"{safe_name}.{ts}.bak"
     shutil.copy2(path, dest)
+
     # Rotation : garder les 10 derniers backups de ce fichier
     existing = sorted(_BACKUP_DIR.glob(f"{safe_name}.*.bak"))
     for old in existing[:-10]:
@@ -96,8 +111,16 @@ def _backup(path: Path) -> Optional[Path]:
 
 
 def _rollback(path: Path) -> bool:
-    """Restaure le backup le plus récent pour ce fichier."""
-    safe_name = str(path.relative_to(_NERON_ROOT)).replace("/", "_").replace("\\", "_")
+    """
+    Restaure le backup le plus récent pour ce fichier.
+    FIX: supporte les chemins dans _WORKSPACE et dans _NERON_ROOT.
+    """
+    try:
+        rel = path.relative_to(_NERON_ROOT)
+    except ValueError:
+        rel = path.relative_to(_WORKSPACE.parent)
+
+    safe_name = str(rel).replace("/", "_").replace("\\", "_")
     backups   = sorted(_BACKUP_DIR.glob(f"{safe_name}.*.bak"))
     if not backups:
         return False
@@ -105,9 +128,21 @@ def _rollback(path: Path) -> bool:
     return True
 
 
-def _sandbox_test(code: str) -> dict:
+def _strip_markdown_fences(code: str) -> str:
     """
-    Exécute le code dans un subprocess isolé.
+    Supprime les balises markdown que certains modèles ajoutent.
+    FIX: fonction dédiée et testable au lieu de triple re.sub inline.
+    """
+    code = re.sub(r"^```python\s*\n?", "", code.strip())
+    code = re.sub(r"^```\s*\n?",       "", code.strip())
+    code = re.sub(r"\n?```$",          "", code.strip())
+    return code.strip()
+
+
+async def _sandbox_test(code: str) -> dict:
+    """
+    Exécute le code dans un subprocess isolé (async).
+    FIX: subprocess.run() bloquant remplacé par asyncio.create_subprocess_exec().
     Retourne {"ok": bool, "stdout": str, "stderr": str}
     """
     with tempfile.NamedTemporaryFile(
@@ -116,65 +151,77 @@ def _sandbox_test(code: str) -> dict:
         f.write(code)
         tmp = Path(f.name)
     try:
-        result = subprocess.run(
-            ["python3", str(tmp)],
-            capture_output=True, text=True,
-            timeout=_SANDBOX_TIMEOUT
+        proc = await asyncio.create_subprocess_exec(
+            "python3", str(tmp),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=_SANDBOX_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
+            return {"ok": False, "stdout": "", "stderr": f"Timeout ({_SANDBOX_TIMEOUT}s)"}
         return {
-            "ok":     result.returncode == 0,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "ok":     proc.returncode == 0,
+            "stdout": stdout.decode(),
+            "stderr": stderr.decode(),
         }
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "stdout": "", "stderr": f"Timeout ({_SANDBOX_TIMEOUT}s)"}
     except Exception as e:
         return {"ok": False, "stdout": "", "stderr": str(e)}
     finally:
         tmp.unlink(missing_ok=True)
 
 
-def _check_syntax(code: str) -> dict:
-    """Vérifie la syntaxe Python sans exécuter le code."""
+async def _check_syntax(code: str) -> dict:
+    """
+    Vérifie la syntaxe Python sans exécuter le code (async).
+    FIX: subprocess.run() bloquant remplacé par asyncio.create_subprocess_exec().
+    """
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".py", delete=False, encoding="utf-8"
     ) as f:
         f.write(code)
         tmp = Path(f.name)
     try:
-        result = subprocess.run(
-            ["python3", "-m", "py_compile", str(tmp)],
-            capture_output=True, text=True
+        proc = await asyncio.create_subprocess_exec(
+            "python3", "-m", "py_compile", str(tmp),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        return {"ok": result.returncode == 0, "stderr": result.stderr}
+        _, stderr = await proc.communicate()
+        return {"ok": proc.returncode == 0, "stderr": stderr.decode()}
     finally:
         tmp.unlink(missing_ok=True)
 
 
-# ── Agent principal ────────────────────────────────────────────────────────────
+# ── Agent principal ───────────────────────────────────────────────────────────
+
 
 class CodeAgent(BaseAgent):
     """
     Agent développeur autonome de Néron.
 
     Actions disponibles via execute() :
-      - "generate"  : génère un nouveau fichier Python
-      - "improve"   : améliore un fichier existant (backup + sandbox)
-      - "analyze"   : analyse un fichier et retourne un rapport
-      - "read"      : lit le contenu d'un fichier source
+      - "generate"    : génère un nouveau fichier Python
+      - "improve"     : améliore un fichier existant (backup + sandbox)
+      - "analyze"     : analyse un fichier et retourne un rapport
+      - "read"        : lit le contenu d'un fichier source
       - "self_review" : passe en revue tous les fichiers source de Néron
-      - "rollback"  : restaure le dernier backup d'un fichier
+      - "rollback"    : restaure le dernier backup d'un fichier
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(name="code_agent")
         self.logger.info(
-            f"CodeAgent init — Ollama : {OLLAMA_HOST} | modèle : {OLLAMA_MODEL}"
+            "CodeAgent init — Ollama : %s | modèle : %s", OLLAMA_HOST, OLLAMA_MODEL
         )
 
-    # ── Point d'entrée principal ───────────────────────────────────────────
+    # ── Point d'entrée principal ──────────────────────────────────────────
 
-    async def execute(self, query: str, **kwargs) -> AgentResult:
+    async def execute(self, query: str, **kwargs: Any) -> AgentResult:
         """
         Dispatch selon kwargs["action"]. Si aucune action explicite,
         détecte l'intention depuis le texte de la query.
@@ -183,7 +230,9 @@ class CodeAgent(BaseAgent):
         action = kwargs.get("action") or self._detect_action(query)
         path   = kwargs.get("path", "")
 
-        self.logger.info(f"CodeAgent action={action!r} path={path!r} query={query[:60]!r}")
+        self.logger.info(
+            "action=%r path=%r query=%r", action, path, query[:60]
+        )
 
         try:
             if action == "generate":
@@ -197,17 +246,16 @@ class CodeAgent(BaseAgent):
             elif action == "self_review":
                 return await self._self_review(start)
             elif action == "rollback":
-                return self._do_rollback(path, start)
+                return await self._do_rollback(path, start)
             else:
-                # Action inconnue → génération libre
                 return await self._generate(query, path, start)
         except ValueError as e:
             return self._failure(str(e), latency_ms=self._elapsed_ms(start))
         except Exception as e:
-            self.logger.exception(f"CodeAgent exception inattendue : {e}")
+            self.logger.exception("Exception inattendue : %s", e)
             return self._failure(f"Erreur inattendue : {e}", latency_ms=self._elapsed_ms(start))
 
-    # ── check_connection (requis par watchdog_agent) ───────────────────────
+    # ── Healthcheck (requis par watchdog_agent) ───────────────────────────
 
     async def check_connection(self) -> bool:
         try:
@@ -220,42 +268,53 @@ class CodeAgent(BaseAgent):
     async def reload(self) -> bool:
         return await self.check_connection()
 
-    # ── Actions ────────────────────────────────────────────────────────────
+    # ── Actions ───────────────────────────────────────────────────────────
 
     async def _generate(self, query: str, path: str, start: float) -> AgentResult:
         """Génère du code Python et l'écrit si un path est fourni."""
         code = await self._llm_call(_PROMPT_GENERATE, query)
         if not code:
-            return self._failure("LLM n'a pas retourné de code", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                "LLM n'a pas retourné de code",
+                latency_ms=self._elapsed_ms(start),
+            )
 
-        # Nettoyer les balises markdown que certains modèles ajoutent
-        import re as _re
-        code = _re.sub(r"^```python\s*", "", code.strip())
-        code = _re.sub(r"^```\s*", "", code.strip())
-        code = _re.sub(r"```$", "", code.strip()).strip()
-
-        result_meta = {"action": "generate", "code_length": len(code)}
+        # FIX: _strip_markdown_fences() dédiée au lieu de triple re.sub inline
+        code        = _strip_markdown_fences(code)
+        result_meta: dict[str, Any] = {"action": "generate", "code_length": len(code)}
 
         if path:
-            write_result = self._write_code(path, code)
+            write_result = await self._write_code(path, code)
             if not write_result["ok"]:
-                return self._failure(write_result["error"], latency_ms=self._elapsed_ms(start))
+                return self._failure(
+                    write_result["error"], latency_ms=self._elapsed_ms(start)
+                )
             result_meta["path"]    = write_result["path"]
             result_meta["sandbox"] = write_result.get("sandbox", {})
-            summary = f"Fichier généré : {write_result['path']}\n\n```python\n{code[:500]}\n```"
+            summary = (
+                f"Fichier généré : {write_result['path']}\n\n"
+                f"```python\n{code[:500]}\n```"
+            )
         else:
             summary = f"```python\n{code}\n```"
 
-        return self._success(summary, metadata=result_meta, latency_ms=self._elapsed_ms(start))
+        return self._success(
+            summary, metadata=result_meta, latency_ms=self._elapsed_ms(start)
+        )
 
     async def _improve(self, path: str, context: str, start: float) -> AgentResult:
         """Améliore un fichier existant. Backup + syntax check + écriture."""
         if not path:
-            return self._failure("Chemin de fichier requis pour 'improve'", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                "Chemin de fichier requis pour 'improve'",
+                latency_ms=self._elapsed_ms(start),
+            )
 
         safe = _safe_path(path)
         if not safe.exists():
-            return self._failure(f"Fichier introuvable : {path}", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                f"Fichier introuvable : {path}", latency_ms=self._elapsed_ms(start)
+            )
 
         original = safe.read_text(encoding="utf-8")
         prompt   = f"Contexte : {context}\n\nCode à améliorer :\n{original}"
@@ -265,43 +324,46 @@ class CodeAgent(BaseAgent):
             return self._success(
                 f"Aucune amélioration nécessaire pour {path}",
                 metadata={"action": "improve", "changed": False},
-                latency_ms=self._elapsed_ms(start)
+                latency_ms=self._elapsed_ms(start),
             )
 
-        # Vérification syntaxe
-        syntax = _check_syntax(improved)
+        syntax = await _check_syntax(improved)
         if not syntax["ok"]:
             return self._failure(
                 f"Syntaxe invalide dans le code amélioré : {syntax['stderr'][:200]}",
-                latency_ms=self._elapsed_ms(start)
+                latency_ms=self._elapsed_ms(start),
             )
 
-        # Backup + écriture
         backup_path = _backup(safe)
         safe.write_text(improved, encoding="utf-8")
-        self.logger.info(f"Fichier amélioré : {safe} (backup : {backup_path})")
+        self.logger.info("Fichier amélioré : %s (backup : %s)", safe, backup_path)
 
         return self._success(
-            f"✅ {path} amélioré avec succès.\nBackup : {backup_path.name if backup_path else 'N/A'}",
+            f"✅ {path} amélioré.\nBackup : {backup_path.name if backup_path else 'N/A'}",
             metadata={
-                "action":      "improve",
-                "path":        str(safe),
-                "backup":      str(backup_path) if backup_path else None,
-                "changed":     True,
+                "action":       "improve",
+                "path":         str(safe),
+                "backup":       str(backup_path) if backup_path else None,
+                "changed":      True,
                 "lines_before": len(original.splitlines()),
                 "lines_after":  len(improved.splitlines()),
             },
-            latency_ms=self._elapsed_ms(start)
+            latency_ms=self._elapsed_ms(start),
         )
 
     async def _analyze(self, path: str, start: float) -> AgentResult:
         """Analyse un fichier et retourne un rapport qualité JSON."""
         if not path:
-            return self._failure("Chemin de fichier requis pour 'analyze'", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                "Chemin de fichier requis pour 'analyze'",
+                latency_ms=self._elapsed_ms(start),
+            )
 
         safe = _safe_path(path)
         if not safe.exists():
-            return self._failure(f"Fichier introuvable : {path}", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                f"Fichier introuvable : {path}", latency_ms=self._elapsed_ms(start)
+            )
 
         code   = safe.read_text(encoding="utf-8")
         prompt = f"Fichier : {path}\n\nCode :\n{code}"
@@ -321,56 +383,52 @@ class CodeAgent(BaseAgent):
         return self._success(
             summary,
             metadata={"action": "analyze", "path": str(safe), "report": report},
-            latency_ms=self._elapsed_ms(start)
+            latency_ms=self._elapsed_ms(start),
         )
 
     async def _read(self, path: str, start: float) -> AgentResult:
         """Lit le contenu d'un fichier source."""
         if not path:
-            return self._failure("Chemin de fichier requis pour 'read'", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                "Chemin de fichier requis pour 'read'",
+                latency_ms=self._elapsed_ms(start),
+            )
 
         safe = _safe_path(path)
         if not safe.exists():
-            return self._failure(f"Fichier introuvable : {path}", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                f"Fichier introuvable : {path}", latency_ms=self._elapsed_ms(start)
+            )
 
         content = safe.read_text(encoding="utf-8")
         return self._success(
             content,
-            metadata={"action": "read", "path": str(safe), "lines": len(content.splitlines())},
-            latency_ms=self._elapsed_ms(start)
+            metadata={
+                "action": "read",
+                "path":   str(safe),
+                "lines":  len(content.splitlines()),
+            },
+            latency_ms=self._elapsed_ms(start),
         )
 
     async def _self_review(self, start: float) -> AgentResult:
         """
         Passe en revue tous les fichiers Python de Néron.
-        Analyse chacun et retourne un rapport global.
+        FIX: appels LLM parallélisés via asyncio.gather() + Semaphore
+        pour éviter de saturer Ollama.
         """
         files   = self._list_source_files()
-        reports = []
+        sem     = asyncio.Semaphore(_REVIEW_CONCURRENCY)
+        reports = await asyncio.gather(
+            *[self._review_file(f, sem) for f in files],
+            return_exceptions=False,
+        )
 
-        for f in files:
-            try:
-                code   = f.read_text(encoding="utf-8")
-                prompt = f"Fichier : {f.name}\n\nCode :\n{code[:3000]}"  # limite contexte
-                raw    = await self._llm_call(_PROMPT_ANALYZE, prompt)
-                try:
-                    report = json.loads(raw or "{}")
-                except json.JSONDecodeError:
-                    report = {"quality_score": None, "issues": [], "suggestions": []}
-
-                reports.append({
-                    "file":          str(f.relative_to(_NERON_ROOT)),
-                    "quality_score": report.get("quality_score"),
-                    "issues":        report.get("issues", []),
-                    "suggestions":   report.get("suggestions", []),
-                })
-            except Exception as e:
-                self.logger.warning(f"self_review: erreur sur {f}: {e}")
-                reports.append({"file": str(f), "error": str(e)})
-
-        # Résumé global
-        scored  = [r for r in reports if isinstance(r.get("quality_score"), (int, float))]
-        avg     = round(sum(r["quality_score"] for r in scored) / len(scored), 1) if scored else None
+        scored = [
+            r for r in reports
+            if isinstance(r.get("quality_score"), (int, float))
+        ]
+        avg          = round(sum(r["quality_score"] for r in scored) / len(scored), 1) if scored else None
         total_issues = sum(len(r.get("issues", [])) for r in reports)
 
         summary = (
@@ -387,13 +445,40 @@ class CodeAgent(BaseAgent):
                 "total_issues": total_issues,
                 "reports":      reports,
             },
-            latency_ms=self._elapsed_ms(start)
+            latency_ms=self._elapsed_ms(start),
         )
 
-    def _do_rollback(self, path: str, start: float) -> AgentResult:
-        """Restaure le dernier backup d'un fichier."""
+    async def _review_file(self, f: Path, sem: asyncio.Semaphore) -> dict:
+        """Analyse un fichier unique dans le cadre d'un self_review."""
+        async with sem:
+            try:
+                code   = f.read_text(encoding="utf-8")
+                prompt = f"Fichier : {f.name}\n\nCode :\n{code[:3000]}"
+                raw    = await self._llm_call(_PROMPT_ANALYZE, prompt)
+                try:
+                    report = json.loads(raw or "{}")
+                except json.JSONDecodeError:
+                    report = {"quality_score": None, "issues": [], "suggestions": []}
+
+                return {
+                    "file":          str(f.relative_to(_NERON_ROOT)),
+                    "quality_score": report.get("quality_score"),
+                    "issues":        report.get("issues", []),
+                    "suggestions":   report.get("suggestions", []),
+                }
+            except Exception as e:
+                self.logger.warning("self_review: erreur sur %s : %s", f, e)
+                return {"file": str(f), "error": str(e)}
+
+    async def _do_rollback(self, path: str, start: float) -> AgentResult:
+        """
+        Restaure le dernier backup d'un fichier.
+        FIX: rendu async pour uniformité avec les autres actions.
+        """
         if not path:
-            return self._failure("Chemin requis pour 'rollback'", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                "Chemin requis pour 'rollback'", latency_ms=self._elapsed_ms(start)
+            )
         try:
             safe = _safe_path(path)
             ok   = _rollback(safe)
@@ -401,18 +486,20 @@ class CodeAgent(BaseAgent):
                 return self._success(
                     f"✅ Rollback effectué pour {path}",
                     metadata={"action": "rollback", "path": str(safe)},
-                    latency_ms=self._elapsed_ms(start)
+                    latency_ms=self._elapsed_ms(start),
                 )
-            return self._failure(f"Aucun backup trouvé pour {path}", latency_ms=self._elapsed_ms(start))
+            return self._failure(
+                f"Aucun backup trouvé pour {path}",
+                latency_ms=self._elapsed_ms(start),
+            )
         except ValueError as e:
             return self._failure(str(e), latency_ms=self._elapsed_ms(start))
 
-    # ── Helpers ────────────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────────
 
     def _detect_action(self, query: str) -> str:
-        import unicodedata
-
-        def norm(t):
+        """Détecte l'action depuis le texte de la query (normalisation unicode)."""
+        def norm(t: str) -> str:
             n = unicodedata.normalize("NFD", t.lower())
             return "".join(c for c in n if unicodedata.category(c) != "Mn")
 
@@ -432,35 +519,35 @@ class CodeAgent(BaseAgent):
             return "read"
         return "generate"
 
-
-    def _write_code(self, path: str, code: str) -> dict:
-        """Valide, sauvegarde et écrit du code. Rollback auto si erreur."""
+    async def _write_code(self, path: str, code: str) -> dict:
+        """
+        Valide, sauvegarde et écrit du code.
+        FIX: rendu async pour utiliser _check_syntax() et _sandbox_test() async.
+        FIX: chmod 0o644 au lieu de 0o755 — fichier Python pas exécutable par défaut.
+        """
         try:
             safe = _safe_path(path, generated=True)
         except ValueError as e:
             return {"ok": False, "error": str(e)}
 
-        # Forcer extension .py
         if safe.suffix not in _PY_EXT:
             safe = safe.with_suffix(".py")
 
-        # Vérification syntaxe
-        syntax = _check_syntax(code)
+        syntax = await _check_syntax(code)
         if not syntax["ok"]:
             return {"ok": False, "error": f"Syntaxe invalide : {syntax['stderr'][:200]}"}
 
-        # Backup si existant
         backup = _backup(safe)
-
-        # Écriture
         safe.parent.mkdir(parents=True, exist_ok=True)
         safe.write_text(code, encoding="utf-8")
-        safe.chmod(0o755)
+        # FIX: 0o644 — lecture/écriture owner, lecture seule groupe/autres
+        safe.chmod(0o644)
 
-        # Test sandbox (non bloquant — on avertit seulement)
-        sandbox = _sandbox_test(code)
+        sandbox = await _sandbox_test(code)
         if not sandbox["ok"]:
-            self.logger.warning(f"Sandbox KO pour {safe} : {sandbox['stderr'][:100]}")
+            self.logger.warning(
+                "Sandbox KO pour %s : %s", safe, sandbox["stderr"][:100]
+            )
 
         return {
             "ok":      True,
@@ -490,13 +577,15 @@ class CodeAgent(BaseAgent):
         for attempt in range(1, 3):
             try:
                 async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(connect=5.0, read=LLM_TIMEOUT, write=5.0, pool=5.0)
+                    timeout=httpx.Timeout(
+                        connect=5.0, read=LLM_TIMEOUT, write=5.0, pool=5.0
+                    )
                 ) as client:
                     r = await client.post(f"{OLLAMA_HOST}/api/chat", json=payload)
                     r.raise_for_status()
                     return r.json().get("message", {}).get("content", "").strip()
             except httpx.TimeoutException:
-                self.logger.warning(f"LLM timeout (essai {attempt})")
+                self.logger.warning("LLM timeout (essai %d)", attempt)
             except Exception as e:
-                self.logger.warning(f"LLM erreur (essai {attempt}) : {e}")
+                self.logger.warning("LLM erreur (essai %d) : %s", attempt, e)
         return None
