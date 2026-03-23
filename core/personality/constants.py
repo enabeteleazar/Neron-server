@@ -10,23 +10,23 @@ Note : PROTECTED_FIELDS n'est plus défini ici.
        C'est le YAML qui fait autorité.
 """
 
+from __future__ import annotations
+
 # Nom du fichier de base de données SQLite
 DB_FILENAME = "persona_state.db"
 
 # Valeurs par défaut pour les champs dynamiques
-# Utilisées par loader.load_persona() pour combler tout champ manquant,
-# même si absent du YAML ou de la DB.
-DEFAULTS = {
-    "mood": "neutre",
+DEFAULTS: dict = {
+    "mood":         "neutre",
     "energy_level": "normal",
     "communication": {
-        "tone": "technique",
+        "tone":      "technique",
         "verbosity": "medium",
-        "format": "structuré",
+        "format":    "structuré",
     },
     "behavior": {
-        "proactive": True,
-        "suggest_improvements": True,
+        "proactive":             True,
+        "suggest_improvements":  True,
     },
     "learning": {
         "enabled": True,
@@ -34,14 +34,14 @@ DEFAULTS = {
 }
 
 # Traductions energy_level → instruction de ton pour le LLM
-ENERGY_INSTRUCTIONS = {
+ENERGY_INSTRUCTIONS: dict[str, str] = {
     "high":   "Sois particulièrement énergique, précis et enthousiaste dans tes réponses.",
     "low":    "Adopte un ton posé, calme et mesuré.",
     "normal": "Maintiens un équilibre entre clarté et concision.",
 }
 
 # Traductions mood → nuance comportementale pour le LLM
-MOOD_INSTRUCTIONS = {
+MOOD_INSTRUCTIONS: dict[str, str] = {
     "neutre":  "Reste objectif et factuel.",
     "positif": "Adopte un ton encourageant et constructif.",
     "focus":   "Concentre-toi sur l'essentiel, évite tout hors-sujet.",
