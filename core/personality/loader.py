@@ -2,37 +2,34 @@
 loader.py — Chargement de la persona Neron
 Fusionne persona.yaml (config de base) avec l'état SQLite (état dynamique).
 Protège les champs définis dans core_identity.protected_fields du YAML.
-
-Corrections v5 :
-- _safe_json_load centralisé ici (unique point de désérialisation JSON)
-- Exporté pour __init__.py (get_history)
 """
 
-import yaml
+from __future__ import annotations
+
 import json
-import sqlite3
 import logging
+import sqlite3
 from pathlib import Path
+
+import yaml
 
 from .constants import DB_FILENAME, DEFAULTS
 
 logger = logging.getLogger(__name__)
 
-BASE_PATH        = Path(__file__).parent
-DB_PATH          = BASE_PATH / DB_FILENAME
-YAML_PATH        = BASE_PATH / "persona.yaml"
+BASE_PATH          = Path(__file__).parent
+DB_PATH            = BASE_PATH / DB_FILENAME
+YAML_PATH          = BASE_PATH / "persona.yaml"
 JSON_FALLBACK_PATH = BASE_PATH / "persona_state.json"
 
 
-# ---------------------------------------------------------------------------
-# Utilitaire JSON partagé
-# ---------------------------------------------------------------------------
+# ── Utilitaire JSON partagé ───────────────────────────────────────────────────
 
 def _safe_json_load(value: str | None):
     """
     Parse JSON silencieusement.
     Retourne la valeur brute en cas d'échec, None si valeur absente.
-    Centralisé ici pour éviter toute duplication dans __init__.py.
+    Centralisé ici — source unique pour __init__.py et loader.
     """
     if value is None:
         return None
@@ -42,9 +39,7 @@ def _safe_json_load(value: str | None):
         return value
 
 
-# ---------------------------------------------------------------------------
-# SQLite
-# ---------------------------------------------------------------------------
+# ── SQLite ────────────────────────────────────────────────────────────────────
 
 def _init_db() -> sqlite3.Connection:
     """Initialise la base SQLite et crée les tables si elles n'existent pas."""
@@ -67,7 +62,6 @@ def _init_db() -> sqlite3.Connection:
     """)
     conn.commit()
 
-    # Seed initial depuis JSON si la table est vide
     cursor = conn.execute("SELECT COUNT(*) FROM persona_state")
     if cursor.fetchone()[0] == 0:
         try:
@@ -77,12 +71,13 @@ def _init_db() -> sqlite3.Connection:
                 if key != "history":
                     conn.execute(
                         "INSERT OR IGNORE INTO persona_state(key, value) VALUES (?, ?)",
-                        (key, json.dumps(value))
+                        (key, json.dumps(value)),
                     )
             conn.commit()
             logger.info("persona_state.db initialisée depuis persona_state.json")
         except Exception as e:
-            logger.warning(f"Impossible de seeder la DB depuis JSON : {e}")
+            # FIX: %s au lieu de f-string
+            logger.warning("Impossible de seeder la DB depuis JSON : %s", e)
 
     return conn
 
@@ -90,10 +85,8 @@ def _init_db() -> sqlite3.Connection:
 def _read_field(conn: sqlite3.Connection, key: str):
     """Lit un champ depuis SQLite. Retourne None si absent."""
     cursor = conn.execute("SELECT value FROM persona_state WHERE key = ?", (key,))
-    row = cursor.fetchone()
-    if row is None:
-        return None
-    return _safe_json_load(row[0])
+    row    = cursor.fetchone()
+    return _safe_json_load(row[0]) if row else None
 
 
 def _load_db_state(conn: sqlite3.Connection) -> dict:
@@ -104,13 +97,11 @@ def _load_db_state(conn: sqlite3.Connection) -> dict:
         for key, value in cursor.fetchall():
             state[key] = _safe_json_load(value)
     except Exception as e:
-        logger.warning(f"[PERSONA] Lecture SQLite échouée : {e}")
+        logger.warning("[PERSONA] Lecture SQLite échouée : %s", e)
     return state
 
 
-# ---------------------------------------------------------------------------
-# YAML
-# ---------------------------------------------------------------------------
+# ── YAML ──────────────────────────────────────────────────────────────────────
 
 def _load_yaml_base() -> dict:
     """Charge persona.yaml avec messages d'erreur explicites."""
@@ -121,26 +112,24 @@ def _load_yaml_base() -> dict:
             raise ValueError("persona.yaml ne contient pas un mapping valide.")
         return data
     except FileNotFoundError:
-        logger.error(f"[PERSONA] Fichier introuvable : {YAML_PATH}")
+        logger.error("[PERSONA] Fichier introuvable : %s", YAML_PATH)
         raise RuntimeError(
             f"[PERSONA ERREUR] persona.yaml est manquant ({YAML_PATH}). "
             "Vérifiez l'installation du module personality."
         )
     except yaml.YAMLError as e:
-        logger.error(f"[PERSONA] Erreur de parsing YAML : {e}")
+        logger.error("[PERSONA] Erreur de parsing YAML : %s", e)
         raise RuntimeError(
-            f"[PERSONA ERREUR] persona.yaml est corrompu ou mal formaté.\n"
-            f"Détail : {e}"
+            f"[PERSONA ERREUR] persona.yaml est corrompu ou mal formaté.\nDétail : {e}"
         )
     except Exception as e:
-        logger.error(f"[PERSONA] Erreur inattendue lors du chargement YAML : {e}")
+        logger.error("[PERSONA] Erreur inattendue lors du chargement YAML : %s", e)
         raise RuntimeError(f"[PERSONA ERREUR] Chargement impossible : {e}")
 
 
 def _get_protected_fields(yaml_base: dict) -> set:
     """
     Lit les champs protégés depuis core_identity.protected_fields dans le YAML.
-    C'est cette liste qui fait autorité — constants.py ne la duplique plus.
     Fallback sur un set minimal si le champ est absent ou mal formé.
     """
     try:
@@ -155,38 +144,33 @@ def _get_protected_fields(yaml_base: dict) -> set:
     return {"name", "role", "core_identity"}
 
 
-# ---------------------------------------------------------------------------
-# Point d'entrée principal
-# ---------------------------------------------------------------------------
+# ── Point d'entrée principal ──────────────────────────────────────────────────
 
 def load_persona() -> dict:
     """
     Charge et fusionne la persona complète.
-    - Lit persona.yaml UNE SEULE FOIS
-    - Champs protégés lus dynamiquement depuis core_identity.protected_fields
-    - DEFAULTS appliqués pour tout champ manquant
-    - Protection réimposée en fin de fusion
+    1. Lit persona.yaml (base immuable)
+    2. Sauvegarde les champs protégés
+    3. Charge l'état SQLite
+    4. Fusionne sections dynamiques + DEFAULTS
+    5. Réimpose les champs protégés
     """
-    # ── 1. Chargement YAML — une seule fois ──────────────────────────────────
-    base = _load_yaml_base()
-
-    # ── 2. Champs protégés sauvegardés avant toute fusion ────────────────────
+    base      = _load_yaml_base()
     protected = _get_protected_fields(base)
     protected_values = {f: base[f] for f in protected if f in base}
 
-    # ── 3. Chargement de l'état SQLite ───────────────────────────────────────
     conn = None
     try:
-        conn = _init_db()
+        conn  = _init_db()
         state = _load_db_state(conn)
     except Exception as e:
-        logger.warning(f"[PERSONA] SQLite inaccessible, utilisation YAML seule : {e}")
+        logger.warning("[PERSONA] SQLite inaccessible, utilisation YAML seule : %s", e)
         state = {}
     finally:
         if conn is not None:
             conn.close()
 
-    # ── 4. Fusion des sections dynamiques + DEFAULTS ─────────────────────────
+    # Fusion sections dynamiques
     for section in ("communication", "behavior", "learning"):
         db_section = state.get(section)
         if isinstance(db_section, dict):
@@ -194,11 +178,11 @@ def load_persona() -> dict:
         for k, v in DEFAULTS.get(section, {}).items():
             base.setdefault(section, {}).setdefault(k, v)
 
-    # ── 5. Champs de premier niveau (mood, energy_level) ─────────────────────
+    # Champs de premier niveau
     for field in ("mood", "energy_level"):
         base[field] = state.get(field, DEFAULTS.get(field))
 
-    # ── 6. Réimpose les champs protégés (jamais écrasables par SQLite) ───────
+    # Réimpose les champs protégés
     base.update(protected_values)
 
     return base
