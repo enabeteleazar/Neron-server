@@ -10,6 +10,8 @@ import time
 import unicodedata
 from pathlib import Path
 
+from constants import CODE_KEYWORDS
+
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -252,21 +254,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.chat.send_action("typing")
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
 
-    # FIX: détection is_code synchronisée avec _CODE_KEYWORDS d'intent_router
-    # en utilisant des expressions explicites (plus de mots courts ambigus)
+    # FIX: CODE_KEYWORDS importé depuis constants.py — source de vérité unique
     q = _normalize(user_message)
-    _CODE_TRIGGERS = [
-        "genere", "cree un fichier", "ecris un script", "ecris un module",
-        "ecris une classe", "ecris une fonction",
-        "ameliore le fichier", "ameliore ce code",
-        "optimise le fichier", "optimise ce code",
-        "corrige le fichier", "corrige ce code",
-        "refactorise", "analyse le fichier", "analyse ce code",
-        "lis le fichier", "montre le code", "affiche le fichier",
-        "self review", "auto review", "revue de code",
-        "passe en revue", "rollback", "restaure le fichier",
-    ]
-    is_code = any(trigger in q for trigger in _CODE_TRIGGERS)
+    is_code = any(_normalize(kw) in q for kw in CODE_KEYWORDS)
 
     try:
         if is_code:

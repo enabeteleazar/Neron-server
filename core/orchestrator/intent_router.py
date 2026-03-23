@@ -7,6 +7,13 @@ from dataclasses import dataclass
 from enum import Enum
 
 from agents.base_agent import get_logger
+from constants import (
+    CODE_KEYWORDS,
+    HA_KEYWORDS,
+    PERSONALITY_KEYWORDS,
+    TIME_KEYWORDS,
+    WEB_KEYWORDS,
+)
 
 logger = get_logger(__name__)
 
@@ -26,59 +33,7 @@ class IntentResult:
     confidence: str
 
 
-# ── Mots-clés feedback comportemental ────────────────────────────────────────
-# Synchronisés avec l'INTENT_MATRIX de core/personality/updater.py
-
-_PERSONALITY_KEYWORDS = [
-    "trop long", "trop verbeux", "trop bavard", "raccourcis", "sois bref",
-    "plus de détail", "développe", "explique mieux", "trop court",
-    "niveau ok", "longueur ok",
-    "sois direct", "va droit au but", "sans détour", "sans blabla",
-    "plus doux", "sois plus sympa", "moins froid", "plus chaleureux",
-    "redeviens technique", "mode technique", "sois technique",
-    "arrête de proposer", "moins de suggestions", "pas de suggestions",
-    "sois proactif", "propose plus", "anticipe",
-    "arrête d'apprendre", "désactive l'apprentissage", "mode statique",
-    "réactive l'apprentissage", "apprends de moi", "mode adaptatif",
-    "tu sembles fatigué", "sois plus énergique", "réveille-toi",
-    "calme-toi", "moins d'énergie", "sois plus calme",
-    "énergie normale", "niveau normal",
-    "mode normal", "humeur normale",
-    "sois positif", "bonne humeur", "optimiste",
-    "mode focus", "concentration", "sois sérieux",
-]
-
-# FIX: mots-clés code revus — suppression des termes trop courts ou ambigus
-# ("code", "module", "classe", "fonction" généraient des faux positifs sur
-# des messages comme "Ça va, je m'occupe de corriger ton code source")
-# Tous les déclencheurs sont désormais des expressions d'au moins 5 caractères
-# décrivant une action explicite de développement.
-_CODE_KEYWORDS = [
-    # Actions explicites de génération
-    "génère", "genere",
-    "crée un fichier", "cree un fichier",
-    "écris un script", "ecris un script",
-    "écris un module", "ecris un module",
-    "écris une classe", "ecris une classe",
-    "écris une fonction", "ecris une fonction",
-    # Actions explicites d'amélioration / analyse
-    "améliore le fichier", "ameliore le fichier",
-    "améliore ce code", "ameliore ce code",
-    "optimise le fichier", "optimise ce code",
-    "corrige le fichier", "corrige ce code",
-    "refactorise",
-    "analyse le fichier", "analyse ce code",
-    "inspecte le fichier",
-    "qualité du code", "qualite du code",
-    # Lecture de fichier
-    "lis le fichier", "montre le code", "affiche le fichier",
-    # Revue / rollback
-    "self review", "auto review", "revue de code",
-    "passe en revue", "rollback", "restaure le fichier",
-]
-
-# Longueur minimale d'un déclencheur code pour éviter les faux positifs
-_CODE_KW_MIN_LEN = 5
+# Toutes les listes de mots-clés sont dans constants.py
 
 
 def _normalize(text: str) -> str:
@@ -95,7 +50,7 @@ class IntentRouter:
         q_norm = _normalize(query)
 
         # ── Feedback comportemental (priorité haute) ──────────────────────
-        for kw in _PERSONALITY_KEYWORDS:
+        for kw in PERSONALITY_KEYWORDS:
             if _normalize(kw) in q_norm:
                 logger.info("[ROUTER] intent=personality_feedback — déclencheur: %r", kw)
                 return IntentResult(
@@ -104,8 +59,7 @@ class IntentRouter:
                 )
 
         # ── Code / développement ──────────────────────────────────────────
-        # FIX: vérification longueur minimale + expressions explicites uniquement
-        for kw in _CODE_KEYWORDS:
+        for kw in CODE_KEYWORDS:
             kw_norm = _normalize(kw)
             if len(kw_norm) >= _CODE_KW_MIN_LEN and kw_norm in q_norm:
                 logger.info("[ROUTER] intent=code — déclencheur: %r", kw)
