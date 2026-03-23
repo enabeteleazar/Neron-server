@@ -1,73 +1,55 @@
 # agents/system_agent.py
-"""
-Agent SYSTEM_STATUS - interroge neron_watchdog
-"""
-import httpx
-import logging
-from typing import Optional
+# Agent SYSTEM_STATUS — interroge le watchdog natif (plus de service HTTP séparé)
 
-from config import settings
+from __future__ import annotations
 
-logger = logging.getLogger(__name__)
+from agents.base_agent import get_logger
 
-WATCHDOG_URL = settings.NERON_WATCHDOG_URL
+logger = get_logger("system_agent")
 
 
 async def handle_system_status(query: str) -> str:
     """
-    Interroge le watchdog NERON et retourne un résumé de l'état système.
-
-    Args:
-        query: Requête utilisateur à analyser.
-
-    Returns:
-        Chaîne décrivant l'état du système ou un message d'erreur.
+    Retourne un résumé de l'état système.
+    FIX: appels directs aux fonctions natives du watchdog_agent
+    au lieu d'appels HTTP vers un service externe supprimé.
     """
+    # Import ici pour éviter les imports circulaires
+    from agents.watchdog_agent import get_status, get_health_score, get_anomalies
+
     q = query.lower()
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            if any(word in q for word in ["cpu", "ram", "memoire", "ressource"]):
-                return await _get_resources_status(client)
-            return await _get_services_status(client)
-    except httpx.TimeoutException:
-        logger.error("Timeout lors de la connexion au watchdog")
-        return "Impossible de contacter le watchdog (timeout)."
-    except httpx.RequestError as e:
-        logger.error(f"Erreur de connexion au watchdog: {e}")
-        return "Impossible de contacter le watchdog."
+        if any(word in q for word in ["cpu", "ram", "memoire", "ressource", "process"]):
+            return _format_resources(get_status())
+        if any(word in q for word in ["anomalie", "probleme", "erreur", "crash"]):
+            return _format_anomalies(get_anomalies(days=7))
+        return _format_health(get_status(), get_health_score())
+    except Exception as e:
+        logger.error("handle_system_status error : %s", e)
+        return "Impossible de récupérer l'état du système."
 
 
-async def _get_resources_status(client: httpx.AsyncClient) -> str:
-    """Récupère et formate les statistiques de ressources."""
-    response = await client.get(f"{WATCHDOG_URL}/docker-stats")
-    response.raise_for_status()
-    data = response.json()
-    stats = data.get("stats", {})
-
-    total_cpu = sum(s.get("cpu", 0) for s in stats.values())
-    total_ram = sum(s.get("ram_mb", 0) for s in stats.values())
-    top = sorted(
-        stats.items(),
-        key=lambda x: x[1].get("cpu", 0),
-        reverse=True
-    )[:3]
-    top_str = ", ".join(
-        f"{name} ({s.get('cpu', 0):.1f}%)" for name, s in top
+def _format_resources(sys_: dict) -> str:
+    return (
+        f"CPU : {sys_.get('cpu_pct')}% | "
+        f"RAM : {sys_.get('ram_pct')}% ({sys_.get('ram_used_mb')} MB) | "
+        f"Disque : {sys_.get('disk_pct')}% | "
+        f"Process Néron : {sys_.get('process_ram_mb')} MB"
     )
-    return f"CPU total {total_cpu:.1f}%, RAM {total_ram:.0f}MB. Plus actifs : {top_str}."
 
 
-async def _get_services_status(client: httpx.AsyncClient) -> str:
-    """Récupère et formate l'état des services."""
-    response = await client.get(f"{WATCHDOG_URL}/status")
-    response.raise_for_status()
-    data = response.json()
-    services = data.get("services", {})
-    total = len(services)
-    healthy = sum(1 for s in services.values() if s.get("healthy"))
-    down = [name for name, s in services.items() if not s.get("healthy")]
-    score = (healthy / total * 100) if total else 0
+def _format_health(sys_: dict, score: dict) -> str:
+    return (
+        f"{score['level']} — Score santé : {score['score']}/100\n"
+        f"CPU : {sys_.get('cpu_pct')}% | RAM : {sys_.get('ram_pct')}% | "
+        f"Disque : {sys_.get('disk_pct')}%"
+    )
 
-    if down:
-        return f"Score {score:.0f}%. Probleme sur : {', '.join(down)}."
-    return f"Systeme nominal. {total} services actifs, score {score:.0f}%."
+
+def _format_anomalies(anomalies: list) -> str:
+    if not anomalies:
+        return "✅ Aucune anomalie détectée sur les 7 derniers jours."
+    lines = [f"🔍 {len(anomalies)} anomalie(s) détectée(s) :"]
+    for a in anomalies[:5]:
+        lines.append(f"  • {a.get('message', '?')}")
+    return "\n".join(lines)
