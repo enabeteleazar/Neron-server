@@ -10,6 +10,7 @@ import time
 import unicodedata
 from pathlib import Path
 
+import httpx
 from constants import CODE_KEYWORDS
 
 import httpx
@@ -297,6 +298,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                             break
             if not accumulated:
                 await sent.edit_text("❌ Pas de réponse")
+    except httpx.RemoteProtocolError:
+        # Stream coupé proprement — on affiche ce qui a été accumulé
+        if accumulated:
+            try:
+                await sent.edit_text(accumulated[:4096])
+            except Exception:
+                pass
+        else:
+            await sent.edit_text("❌ Connexion interrompue — réessaie")
+    except httpx.TimeoutException:
+        if accumulated:
+            try:
+                await sent.edit_text(accumulated[:4096])
+            except Exception:
+                pass
+        else:
+            await sent.edit_text("❌ Timeout — Néron met trop de temps à répondre")
     except Exception as e:
         await sent.edit_text(f"❌ Erreur: {e}")
 
