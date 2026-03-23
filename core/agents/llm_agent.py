@@ -6,45 +6,58 @@
 # - Le system_prompt est injecté dans chaque requête Ollama via le champ "system"
 # - Fallback transparent sur l'ancien SYSTEM_PROMPT si le module est indisponible
 
-import httpx
+from __future__ import annotations
+
 import json
-import logging
-from config import settings
+from typing import AsyncIterator
+
+import httpx
+
 from agents.base_agent import BaseAgent, AgentResult
+from config import settings
+
+# ── Constantes ────────────────────────────────────────────────────────────────
 
 OLLAMA_HOST  = settings.OLLAMA_HOST
 LLM_TIMEOUT  = settings.LLM_TIMEOUT
 OLLAMA_MODEL = settings.OLLAMA_MODEL
 
-# Prompt statique de secours (lu depuis neron.yaml, inchangé)
 _STATIC_SYSTEM_PROMPT = settings.SYSTEM_PROMPT
 
-logger = logging.getLogger(__name__)
+# ── Import personality au niveau module ───────────────────────────────────────
+# FIX: import tenté une seule fois au chargement du module au lieu de
+# répéter le try/import dans chaque appel à _get_system_prompt().
+
+try:
+    from personality import build_system_prompt as _build_personality_prompt
+    _PERSONALITY_AVAILABLE = True
+except Exception:
+    _build_personality_prompt  = None  # type: ignore[assignment]
+    _PERSONALITY_AVAILABLE     = False
 
 
-def _get_system_prompt(user_context: str = "") -> str:
+def _get_system_prompt(user_context: str = "") -> tuple[str, bool]:
     """
-    Retourne le system prompt actif.
-    - Nominal  : généré dynamiquement par le module personality (mood, energy, traits…)
-    - Fallback : SYSTEM_PROMPT statique depuis neron.yaml si le module est indisponible
+    Retourne (system_prompt, personality_active).
+    - Nominal  : généré dynamiquement par le module personality
+    - Fallback : SYSTEM_PROMPT statique depuis neron.yaml
+    FIX: retourne un bool pour indiquer si le module personality est actif,
+    permettant de renseigner correctement personality_active dans metadata.
     """
-    try:
-        from personality import build_system_prompt
-        return build_system_prompt(user_context=user_context)
-    except Exception as e:
-        logger.warning(f"[LLM] Module personality indisponible, fallback statique : {e}")
-        return _STATIC_SYSTEM_PROMPT
+    if _PERSONALITY_AVAILABLE and _build_personality_prompt is not None:
+        try:
+            return _build_personality_prompt(user_context=user_context), True
+        except Exception:
+            pass
+    return _STATIC_SYSTEM_PROMPT, False
 
 
-def _build_messages(query: str, context_data: str = None) -> list[dict]:
+def _build_messages(query: str, context_data: str | None = None) -> list[dict]:
     """
     Construit la liste de messages au format chat Ollama.
-    Le system prompt est injecté en premier message de rôle 'system'.
-    Le contexte mémoire est fusionné dans le message utilisateur si présent.
+    FIX: context_data annoté str | None au lieu de str = None.
     """
-    # Contexte utilisateur pour enrichir le prompt système (ex: infos session)
-    system_prompt = _get_system_prompt()
-
+    system_prompt, _ = _get_system_prompt()
     messages = [{"role": "system", "content": system_prompt}]
 
     if context_data:
@@ -71,23 +84,32 @@ def _build_messages(query: str, context_data: str = None) -> list[dict]:
     return messages
 
 
+# ── Agent ─────────────────────────────────────────────────────────────────────
+
+
 class LLMAgent(BaseAgent):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__(name="llm_agent")
         self.logger.info(
-            f"LLMAgent init — Ollama : {OLLAMA_HOST} | modèle : {OLLAMA_MODEL} | "
-            "personality : module v7"
+            "LLMAgent init — Ollama : %s | modèle : %s | personality : %s",
+            OLLAMA_HOST,
+            OLLAMA_MODEL,
+            "module v7" if _PERSONALITY_AVAILABLE else "fallback statique",
         )
 
     async def execute(
-        self, query: str, context_data: str = None, **kwargs
+        self,
+        query:        str,
+        context_data: str | None = None,
+        **kwargs,
     ) -> AgentResult:
-        self.logger.info("LLM query : " + repr(query[:80]))
+        # FIX: self.logger au lieu de concaténation de chaîne
+        self.logger.info("LLM query : %r", query[:80])
         start = self._timer()
 
+        _, personality_active = _get_system_prompt()
         messages = _build_messages(query, context_data)
 
-        # Ollama /api/chat pour le format messages (system + user)
         payload = {
             "model":    OLLAMA_MODEL,
             "messages": messages,
@@ -111,22 +133,22 @@ class LLMAgent(BaseAgent):
         except httpx.ConnectError:
             return self._failure(
                 f"ollama inaccessible à {OLLAMA_HOST}",
-                latency_ms=self._elapsed_ms(start)
+                latency_ms=self._elapsed_ms(start),
             )
         except httpx.HTTPStatusError as e:
             return self._failure(
                 f"ollama erreur HTTP {e.response.status_code}",
-                latency_ms=self._elapsed_ms(start)
+                latency_ms=self._elapsed_ms(start),
             )
         except httpx.RequestError as e:
             return self._failure(
-                f"erreur réseau ollama : {str(e)}",
-                latency_ms=self._elapsed_ms(start)
+                f"erreur réseau ollama : {e}",
+                latency_ms=self._elapsed_ms(start),
             )
         except Exception as e:
             return self._failure(
-                f"erreur inattendue : {str(e)}",
-                latency_ms=self._elapsed_ms(start)
+                f"erreur inattendue : {e}",
+                latency_ms=self._elapsed_ms(start),
             )
 
         latency = self._elapsed_ms(start)
@@ -140,43 +162,64 @@ class LLMAgent(BaseAgent):
                 "model":              OLLAMA_MODEL,
                 "tokens_used":        data.get("eval_count"),
                 "generation_time_s":  round(data.get("total_duration", 0) / 1e9, 2),
-                "personality_active": True,
+                # FIX: personality_active reflète l'état réel du module
+                "personality_active": personality_active,
             },
             latency_ms=latency,
         )
 
-    async def stream(self, query: str, context_data: str = None):
-        """Streaming token par token via /api/chat (format messages)."""
+    async def stream(
+        self,
+        query:        str,
+        context_data: str | None = None,
+    ) -> AsyncIterator[str]:
+        """
+        Streaming token par token via /api/chat.
+        FIX: gestion d'erreurs ajoutée — les exceptions sont loggées
+        et le stream s'arrête proprement au lieu de propager une exception brute.
+        """
         messages = _build_messages(query, context_data)
         payload  = {"model": OLLAMA_MODEL, "messages": messages, "stream": True}
 
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(
-                connect=5.0, read=LLM_TIMEOUT, write=5.0, pool=5.0
-            )
-        ) as client:
-            async with client.stream(
-                "POST", f"{OLLAMA_HOST}/api/chat", json=payload
-            ) as response:
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    try:
-                        data  = json.loads(line)
-                        token = data.get("message", {}).get("content", "")
-                        if token:
-                            yield token
-                        if data.get("done"):
-                            break
-                    except Exception:
-                        continue
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=5.0, read=LLM_TIMEOUT, write=5.0, pool=5.0
+                )
+            ) as client:
+                async with client.stream(
+                    "POST", f"{OLLAMA_HOST}/api/chat", json=payload
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        try:
+                            data  = json.loads(line)
+                            token = data.get("message", {}).get("content", "")
+                            if token:
+                                yield token
+                            if data.get("done"):
+                                break
+                        except json.JSONDecodeError:
+                            continue
+
+        except httpx.TimeoutException:
+            self.logger.warning("stream : ollama timeout")
+        except httpx.ConnectError:
+            self.logger.error("stream : ollama inaccessible à %s", OLLAMA_HOST)
+        except httpx.HTTPStatusError as e:
+            self.logger.error("stream : erreur HTTP %s", e.response.status_code)
+        except Exception as e:
+            self.logger.exception("stream : erreur inattendue : %s", e)
 
     async def reload(self) -> bool:
         """Recharge la connexion Ollama."""
         try:
             return await self.check_connection()
         except Exception as e:
-            logger.error(f"LLM reload error: {e}")
+            # FIX: self.logger au lieu du logger module-level
+            self.logger.error("LLM reload error : %s", e)
             return False
 
     async def check_connection(self) -> bool:
