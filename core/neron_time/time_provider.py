@@ -1,15 +1,19 @@
 # neron_time/time_provider.py
+
+from __future__ import annotations
+
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 JOURS = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
-MOIS = [
+MOIS  = [
     "janvier", "février", "mars", "avril", "mai", "juin",
-    "juillet", "août", "septembre", "octobre", "novembre", "décembre"
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
 ]
 
+
 class TimeProvider:
-    def __init__(self, tz: str = "Europe/Paris"):
+    def __init__(self, tz: str = "Europe/Paris") -> None:
         self.tz = ZoneInfo(tz)
 
     def now(self) -> datetime:
@@ -19,10 +23,10 @@ class TimeProvider:
         return self.now().isoformat()
 
     def human(self) -> str:
-        n = self.now()
+        n    = self.now()
         jour = JOURS[n.weekday()]
         mois = MOIS[n.month - 1]
-        return f"{jour} {n.day} {mois} {n.year} a {n.hour:02d}h{n.minute:02d}"
+        return f"{jour} {n.day} {mois} {n.year} à {n.hour:02d}h{n.minute:02d}"
 
     def timestamp(self) -> float:
         return self.now().timestamp()
