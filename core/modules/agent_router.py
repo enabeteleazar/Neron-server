@@ -1,46 +1,57 @@
-from dataclasses import dataclass
-from modules.sessions import SessionStore, Session
-from modules.skills import SkillRegistry
-from typing import Any, AsyncIterator
+# neron/agent_router.py
+# Agent Router — LLM loop inspiré d'OpenClaw Pi Agent (RPC mode).
+# Routage des requêtes entre agents.
+
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
+import os
+from dataclasses import dataclass, field
+from typing import Any, AsyncIterator, Callable, Awaitable
+
 import httpx
 
-logger = logging.getLogger(__name__)
-
-from dataclasses import dataclass
 from modules.sessions import SessionStore, Session
 from modules.skills import SkillRegistry
-# neron/agent.py
-# Agent Router — LLM loop inspiré d'OpenClaw Pi Agent (RPC mode).
-# Routage des requêtes entre agents
+
+logger = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Configuration LLM
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class LLMConfig:
-    provider: str = "ollama"          # "ollama" | "claude"
-    model: str = "llama3.2"
-    base_url: str = "http://192.168.1.130:8010"   # IP LAN de ton serveur NEXUS
-    api_key: str | None = None
-    max_tokens: int = 2048
-    temperature: float = 0.7
-    timeout: float = 120.0
-    stream: bool = True
+    provider:    str        = "ollama"
+    model:       str        = "llama3.2"
+    # FIX: base_url externalisée via variable d'env (fallback sur l'IP LAN)
+    base_url:    str        = field(
+        default_factory=lambda: os.getenv(
+            "NERON_OLLAMA_URL", "http://192.168.1.130:8010"
+        )
+    )
+    api_key:     str | None = None
+    max_tokens:  int        = 2048
+    temperature: float      = 0.7
+    timeout:     float      = 120.0
+    stream:      bool       = True
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Tool dispatch table (extensible)
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Tool:
-    name: str
-    description: str
+    name:         str
+    description:  str
     input_schema: dict
-    handler: Any  # callable async
+    # FIX: typé Callable explicite au lieu de Any
+    handler: Callable[..., Awaitable[Any]]
 
 
 class ToolRegistry:
@@ -57,8 +68,8 @@ class ToolRegistry:
         """Format attendu par Claude / Ollama tool-use."""
         return [
             {
-                "name": t.name,
-                "description": t.description,
+                "name":         t.name,
+                "description":  t.description,
                 "input_schema": t.input_schema,
             }
             for t in self._tools.values()
@@ -74,8 +85,11 @@ class ToolRegistry:
             logger.exception("Erreur tool %s", name)
             return {"error": str(e)}
 
-    def default_tools(self) -> "ToolRegistry":
-        """Enregistre les outils de base Neron."""
+    def setup_defaults(self) -> "ToolRegistry":
+        """
+        Enregistre les outils de base Neron.
+        FIX: renommé default_tools() → setup_defaults() pour plus de clarté.
+        """
         self.register(Tool(
             name="get_time",
             description="Retourne l'heure et la date actuelle.",
@@ -88,7 +102,7 @@ class ToolRegistry:
             input_schema={
                 "type": "object",
                 "properties": {
-                    "key": {"type": "string"},
+                    "key":   {"type": "string"},
                     "value": {"type": "string"},
                 },
                 "required": ["key", "value"],
@@ -101,16 +115,22 @@ class ToolRegistry:
 async def _tool_get_time() -> dict:
     from datetime import datetime
     now = datetime.now()
-    return {"datetime": now.isoformat(), "human": now.strftime("%A %d %B %Y, %H:%M")}
+    return {
+        "datetime": now.isoformat(),
+        "human":    now.strftime("%A %d %B %Y, %H:%M"),
+    }
 
 
 async def _tool_remember(key: str, value: str) -> dict:
-    # Dans un vrai système : persist dans la session. Ici, stub simple.
-    return {"stored": True, "key": key, "value": value}
+    # NOTE: stub — la persistance réelle doit être connectée à la session.
+    # Non implémenté : retourne simplement un accusé de réception.
+    return {"stored": False, "key": key, "value": value, "note": "non persisté"}
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # AgentRouter — cœur du module
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class AgentRouter:
     """
@@ -120,16 +140,16 @@ class AgentRouter:
 
     def __init__(
         self,
-        sessions: SessionStore,
-        skills: SkillRegistry,
-        llm_config: LLMConfig | None = None,
-        tools: ToolRegistry | None = None,
+        sessions:   SessionStore,
+        skills:     SkillRegistry,
+        llm_config: LLMConfig    | None = None,
+        tools:      ToolRegistry | None = None,
     ) -> None:
         self.sessions = sessions
-        self.skills = skills
-        self.llm = llm_config or LLMConfig()
-        self.tools = tools or ToolRegistry().default_tools()
-        self._usage: dict[str, dict] = {}  # session_id → dernière usage
+        self.skills   = skills
+        self.llm      = llm_config or LLMConfig()
+        self.tools    = tools or ToolRegistry().setup_defaults()
+        self._usage:  dict[str, dict] = {}  # session_id → dernière usage
 
     def last_usage(self, session_id: str) -> dict:
         return self._usage.get(session_id, {})
@@ -142,83 +162,95 @@ class AgentRouter:
         """Streame les tokens de la réponse LLM (sans tool-use)."""
         session = self._ensure_session(session_id)
         session.add_user(message)
-        messages = self._build_messages(session)
+        # FIX: append_msg() atomique au lieu de save() complet
+        self.sessions.append_msg(session, session.history[-1])
 
+        messages     = self._build_messages(session)
         full_response = ""
+
         async for token in self._llm_stream(messages):
             full_response += token
             yield token
 
         session.add_assistant(full_response)
-        self.sessions.save(session)
+        self.sessions.append_msg(session, session.history[-1])
 
     async def run_stream(
         self,
         session_id: str,
-        message: str,
-        thinking: bool = False,
+        message:    str,
+        thinking:   bool = False,
     ) -> AsyncIterator[dict]:
         """
         Agent loop complet avec tool-use.
         Yield des events Gateway-compatibles.
+        FIX: try/finally garantit que save() est toujours appelé,
+        même en cas d'exception dans la boucle.
         """
         session = self._ensure_session(session_id)
         session.add_user(message)
+        self.sessions.append_msg(session, session.history[-1])
 
-        max_loops = 8
+        max_loops  = 8
         loop_count = 0
 
-        while loop_count < max_loops:
-            loop_count += 1
-            messages = self._build_messages(session)
-            tools_schema = self.tools.schema_list()
+        try:
+            while loop_count < max_loops:
+                loop_count += 1
+                messages     = self._build_messages(session)
+                tools_schema = self.tools.schema_list()
 
-            # Collecte tokens + éventuel tool_use
-            accumulated = ""
-            tool_calls: list[dict] = []
-            stop_reason = "end_turn"
+                accumulated = ""
+                tool_calls: list[dict] = []
+                stop_reason = "end_turn"
 
-            async for chunk in self._llm_stream_full(messages, tools=tools_schema):
-                if chunk["type"] == "token":
-                    token = chunk["text"]
-                    accumulated += token
-                    yield {"event": "agent.token", "data": {
-                        "session_id": session_id, "token": token
-                    }}
-                elif chunk["type"] == "tool_call":
-                    tool_calls.append(chunk["call"])
-                    yield {"event": "agent.tool_use", "data": {
+                async for chunk in self._llm_stream_full(messages, tools=tools_schema):
+                    if chunk["type"] == "token":
+                        token        = chunk["text"]
+                        accumulated += token
+                        yield {"event": "agent.token", "data": {
+                            "session_id": session_id,
+                            "token":      token,
+                        }}
+                    elif chunk["type"] == "tool_call":
+                        tool_calls.append(chunk["call"])
+                        yield {"event": "agent.tool_use", "data": {
+                            "session_id": session_id,
+                            "tool":       chunk["call"]["name"],
+                            "input":      chunk["call"]["input"],
+                        }}
+                    elif chunk["type"] == "stop":
+                        stop_reason              = chunk["reason"]
+                        self._usage[session_id]  = chunk.get("usage", {})
+
+                if accumulated:
+                    session.add_assistant(accumulated)
+                    self.sessions.append_msg(session, session.history[-1])
+
+                if stop_reason != "tool_use" or not tool_calls:
+                    break
+
+                # Exécute les tools en parallèle
+                results = await asyncio.gather(
+                    *[self.tools.dispatch(tc["name"], tc["input"]) for tc in tool_calls]
+                )
+
+                for tc, result in zip(tool_calls, results):
+                    session.add_tool_result(tc["id"], result)
+                    self.sessions.append_msg(session, session.history[-1])
+                    yield {"event": "agent.tool_result", "data": {
                         "session_id": session_id,
-                        "tool": chunk["call"]["name"],
-                        "input": chunk["call"]["input"],
+                        "tool":       tc["name"],
+                        "result":     result,
                     }}
-                elif chunk["type"] == "stop":
-                    stop_reason = chunk["reason"]
-                    self._usage[session_id] = chunk.get("usage", {})
 
-            if accumulated:
-                session.add_assistant(accumulated)
+        finally:
+            # FIX: save() garanti même en cas d'exception (réécriture complète finale)
+            self.sessions.save(session)
 
-            if stop_reason != "tool_use" or not tool_calls:
-                break
-
-            # Exécute les tools en parallèle
-            results = await asyncio.gather(
-                *[self.tools.dispatch(tc["name"], tc["input"]) for tc in tool_calls]
-            )
-
-            for tc, result in zip(tool_calls, results):
-                session.add_tool_result(tc["id"], result)
-                yield {"event": "agent.tool_result", "data": {
-                    "session_id": session_id,
-                    "tool": tc["name"],
-                    "result": result,
-                }}
-
-        self.sessions.save(session)
         yield {"event": "agent.done", "data": {
             "session_id": session_id,
-            "usage": self._usage.get(session_id, {}),
+            "usage":      self._usage.get(session_id, {}),
         }}
 
     # ── Helpers internes ────────────────────────────────────────────────────
@@ -233,24 +265,23 @@ class AgentRouter:
         """
         Assemble le contexte complet :
         system prompt + skills injectées + historique.
+        FIX: utilise session.messages_for_llm() pour filtrer les clés
+        internes (ts) avant envoi au LLM.
         """
-        # Injection sélective des skills pertinentes (comme OpenClaw)
         skill_context = self.skills.build_system_injection(session.pending_intent)
-        system = session.system_prompt
+        system        = session.system_prompt
         if skill_context:
             system = f"{system}\n\n---\n{skill_context}"
 
-        msgs: list[dict] = []
-        # Note : Ollama/Claude acceptent un champ "system" séparé OU
-        # un premier message role=system. On utilise le format messages.
-        msgs.append({"role": "system", "content": system})
-        msgs.extend(session.history)
+        msgs: list[dict] = [{"role": "system", "content": system}]
+        # FIX: messages_for_llm() filtre les timestamps internes
+        msgs.extend(session.messages_for_llm())
         return msgs
 
     # ── LLM calls ───────────────────────────────────────────────────────────
 
     async def _llm_stream(self, messages: list[dict]) -> AsyncIterator[str]:
-        """Stream simple tokens seulement."""
+        """Stream simple — tokens seulement."""
         if self.llm.provider == "ollama":
             async for token in self._ollama_stream(messages):
                 yield token
@@ -272,13 +303,13 @@ class AgentRouter:
     # ── Ollama ──────────────────────────────────────────────────────────────
 
     async def _ollama_stream(self, messages: list[dict]) -> AsyncIterator[str]:
-        """Streaming via Ollama /api/chat (format OpenAI-compatible)."""
-        url = f"{self.llm.base_url}/api/chat"
+        """Streaming via Ollama /api/chat."""
+        url     = f"{self.llm.base_url}/api/chat"
         payload = {
-            "model": self.llm.model,
+            "model":    self.llm.model,
             "messages": messages,
-            "stream": True,
-            "options": {
+            "stream":   True,
+            "options":  {
                 "temperature": self.llm.temperature,
                 "num_predict": self.llm.max_tokens,
             },
@@ -290,7 +321,7 @@ class AgentRouter:
                     if not line.strip():
                         continue
                     try:
-                        data = json.loads(line)
+                        data    = json.loads(line)
                         content = data.get("message", {}).get("content", "")
                         if content:
                             yield content
@@ -303,35 +334,32 @@ class AgentRouter:
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> AsyncIterator[dict]:
         """
-        Ollama avec tool-use (format OpenAI tools).
-        Ollama >= 0.3.x supporte les tools via /api/chat.
+        Ollama avec tool-use (format OpenAI tools, Ollama >= 0.3.x).
+        FIX: variables mortes tool_calls_buffer et accumulated_content supprimées.
         """
-        url = f"{self.llm.base_url}/api/chat"
+        url     = f"{self.llm.base_url}/api/chat"
         payload: dict = {
-            "model": self.llm.model,
+            "model":    self.llm.model,
             "messages": messages,
-            "stream": True,
-            "options": {
+            "stream":   True,
+            "options":  {
                 "temperature": self.llm.temperature,
                 "num_predict": self.llm.max_tokens,
             },
         }
         if tools:
-            # Format OpenAI-style attendu par Ollama >= 0.3
             payload["tools"] = [
                 {
                     "type": "function",
                     "function": {
-                        "name": t["name"],
+                        "name":        t["name"],
                         "description": t["description"],
-                        "parameters": t["input_schema"],
+                        "parameters":  t["input_schema"],
                     },
                 }
                 for t in tools
             ]
 
-        accumulated_content = ""
-        tool_calls_buffer: dict[int, dict] = {}
         stop_reason = "end_turn"
         usage: dict = {}
 
@@ -346,26 +374,24 @@ class AgentRouter:
                     except json.JSONDecodeError:
                         continue
 
-                    msg = data.get("message", {})
+                    msg     = data.get("message", {})
                     content = msg.get("content", "")
                     if content:
                         yield {"type": "token", "text": content}
-                        accumulated_content += content
 
-                    # Tool calls (Ollama renvoie tool_calls dans message)
                     for tc in msg.get("tool_calls", []):
-                        fn = tc.get("function", {})
+                        fn      = tc.get("function", {})
                         call_id = str(id(tc))
                         yield {"type": "tool_call", "call": {
-                            "id": call_id,
-                            "name": fn.get("name", ""),
+                            "id":    call_id,
+                            "name":  fn.get("name", ""),
                             "input": fn.get("arguments", {}),
                         }}
                         stop_reason = "tool_use"
 
                     if data.get("done"):
                         usage = {
-                            "prompt_tokens": data.get("prompt_eval_count", 0),
+                            "prompt_tokens":     data.get("prompt_eval_count", 0),
                             "completion_tokens": data.get("eval_count", 0),
                         }
                         break
@@ -374,28 +400,33 @@ class AgentRouter:
 
     # ── Claude ──────────────────────────────────────────────────────────────
 
-    async def _claude_stream(self, messages: list[dict]) -> AsyncIterator[str]:
-        """Streaming Anthropic via API (text-stream events)."""
-        # Sépare system des messages
-        system_msg = ""
+    def _split_system(
+        self, messages: list[dict]
+    ) -> tuple[str, list[dict]]:
+        """Extrait le message system des messages chat."""
+        system    = ""
         chat_msgs = []
         for m in messages:
             if m["role"] == "system":
-                system_msg = m["content"]
+                system = m["content"]
             else:
                 chat_msgs.append(m)
+        return system, chat_msgs
 
+    async def _claude_stream(self, messages: list[dict]) -> AsyncIterator[str]:
+        """Streaming Anthropic via API (SSE text-stream)."""
+        system, chat_msgs = self._split_system(messages)
         headers = {
-            "x-api-key": self.llm.api_key or "",
+            "x-api-key":         self.llm.api_key or "",
             "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
+            "content-type":      "application/json",
         }
         payload = {
-            "model": self.llm.model,
+            "model":      self.llm.model,
             "max_tokens": self.llm.max_tokens,
-            "system": system_msg,
-            "messages": chat_msgs,
-            "stream": True,
+            "system":     system,
+            "messages":   chat_msgs,
+            "stream":     True,
         }
         async with httpx.AsyncClient(timeout=self.llm.timeout) as client:
             async with client.stream(
@@ -423,33 +454,26 @@ class AgentRouter:
     async def _claude_stream_full(
         self, messages: list[dict], tools: list[dict] | None = None
     ) -> AsyncIterator[dict]:
-        """Claude avec tool-use streaming."""
-        system_msg = ""
-        chat_msgs = []
-        for m in messages:
-            if m["role"] == "system":
-                system_msg = m["content"]
-            else:
-                chat_msgs.append(m)
-
+        """Claude avec tool-use streaming (SSE)."""
+        system, chat_msgs = self._split_system(messages)
         headers = {
-            "x-api-key": self.llm.api_key or "",
+            "x-api-key":         self.llm.api_key or "",
             "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
+            "content-type":      "application/json",
         }
         payload: dict = {
-            "model": self.llm.model,
+            "model":      self.llm.model,
             "max_tokens": self.llm.max_tokens,
-            "system": system_msg,
-            "messages": chat_msgs,
-            "stream": True,
+            "system":     system,
+            "messages":   chat_msgs,
+            "stream":     True,
         }
         if tools:
             payload["tools"] = tools
 
         current_block: dict = {}
-        stop_reason = "end_turn"
-        usage: dict = {}
+        stop_reason         = "end_turn"
+        usage: dict         = {}
 
         async with httpx.AsyncClient(timeout=self.llm.timeout) as client:
             async with client.stream(
@@ -473,17 +497,24 @@ class AgentRouter:
                     etype = ev.get("type")
 
                     if etype == "content_block_start":
-                        block = ev.get("content_block", {})
-                        current_block = {"type": block.get("type"), "id": block.get("id"), "name": block.get("name"), "input": ""}
+                        block         = ev.get("content_block", {})
+                        current_block = {
+                            "type":  block.get("type"),
+                            "id":    block.get("id"),
+                            "name":  block.get("name"),
+                            "input": "",
+                        }
 
                     elif etype == "content_block_delta":
                         delta = ev.get("delta", {})
                         dtype = delta.get("type")
                         if dtype == "text_delta":
-                            text = delta.get("text", "")
-                            yield {"type": "token", "text": text}
+                            yield {"type": "token", "text": delta.get("text", "")}
                         elif dtype == "input_json_delta":
-                            current_block["input"] = current_block.get("input", "") + delta.get("partial_json", "")
+                            current_block["input"] = (
+                                current_block.get("input", "")
+                                + delta.get("partial_json", "")
+                            )
 
                     elif etype == "content_block_stop":
                         if current_block.get("type") == "tool_use":
@@ -492,14 +523,14 @@ class AgentRouter:
                             except json.JSONDecodeError:
                                 parsed_input = {}
                             yield {"type": "tool_call", "call": {
-                                "id": current_block.get("id", ""),
-                                "name": current_block.get("name", ""),
+                                "id":    current_block.get("id", ""),
+                                "name":  current_block.get("name", ""),
                                 "input": parsed_input,
                             }}
 
                     elif etype == "message_delta":
                         stop_reason = ev.get("delta", {}).get("stop_reason", "end_turn")
-                        usage = ev.get("usage", {})
+                        usage       = ev.get("usage", {})
 
                     elif etype == "message_stop":
                         break
