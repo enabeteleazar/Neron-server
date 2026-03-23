@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import logging
@@ -15,38 +16,62 @@ from typing import Any, Callable
 logger = logging.getLogger("neron.skills")
 
 WORKSPACE_DIR = Path(os.getenv("NERON_WORKSPACE_DIR", Path.home() / ".neron" / "workspace"))
-SKILLS_DIR = WORKSPACE_DIR / "skills"
+SKILLS_DIR    = WORKSPACE_DIR / "skills"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Dataclass Skill
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class Skill:
-    name: str
-    description: str = ""
-    version: str = "1.0.0"
-    triggers: list[str] = field(default_factory=list)
-    inject_always: bool = False
-    skill_md: str = ""           # contenu du SKILL.md
-    tools: list[str] = field(default_factory=list)  # noms d'outils Python
+    name:          str
+    description:   str       = ""
+    version:       str       = "1.0.0"
+    triggers:      list[str] = field(default_factory=list)
+    inject_always: bool      = False
+    skill_md:      str       = ""
+    tools:         list[str] = field(default_factory=list)
+    # Préfixe _ : champ interne non destiné à être manipulé directement
     _handlers: dict[str, Callable] = field(default_factory=dict, repr=False)
 
     def matches_intent(self, intent: str | None) -> bool:
-        if intent is None:
+        """
+        Retourne True si l'intent contient au moins un trigger de la skill.
+        Retourne False si intent est None ou si triggers est vide.
+        """
+        if not intent or not self.triggers:
             return False
         intent_lower = intent.lower()
         return any(trigger.lower() in intent_lower for trigger in self.triggers)
 
     async def call(self, tool_name: str, **kwargs: Any) -> Any:
+        """
+        Appelle un handler de la skill par son nom.
+
+        FIX: détection asyncio.iscoroutinefunction() pour supporter
+        les handlers synchrones sans lever de TypeError.
+
+        Args:
+            tool_name: Nom de l'outil à appeler.
+            **kwargs:  Arguments passés au handler.
+
+        Returns:
+            Résultat du handler, ou dict d'erreur si outil inconnu.
+        """
         handler = self._handlers.get(tool_name)
         if handler is None:
             return {"error": f"Outil inconnu dans la skill {self.name} : {tool_name}"}
-        return await handler(**kwargs)
+
+        if asyncio.iscoroutinefunction(handler):
+            return await handler(**kwargs)
+        return handler(**kwargs)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # SkillRegistry
 # ──────────────────────────────────────────────────────────────────────────────
+
 
 class SkillRegistry:
     """
@@ -62,23 +87,32 @@ class SkillRegistry:
     # ── Chargement ──────────────────────────────────────────────────────────
 
     def _load_all(self) -> None:
+        """
+        Charge toutes les skills depuis le disque.
+
+        FIX: logique unifiée — les builtins sont toujours installés en base,
+        puis les skills disque sont chargées par-dessus (peuvent surcharger
+        une builtin de même nom). Plus de double appel possible.
+        """
+        # Toujours installer les builtins en premier
+        self._install_builtin_skills()
+
         if not self.skills_dir.exists():
             self.skills_dir.mkdir(parents=True, exist_ok=True)
-            self._install_builtin_skills()
+            logger.info("Dossier skills créé : %s", self.skills_dir)
+            logger.info("Skills chargées : %s", list(self._skills.keys()))
             return
 
         for skill_dir in sorted(self.skills_dir.iterdir()):
             if skill_dir.is_dir():
                 self._load_skill_dir(skill_dir)
 
-        if not self._skills:
-            self._install_builtin_skills()
-
         logger.info("Skills chargées : %s", list(self._skills.keys()))
 
     def _load_skill_dir(self, skill_dir: Path) -> None:
+        """Charge une skill depuis son répertoire."""
         meta_path = skill_dir / "skill.json"
-        md_path = skill_dir / "SKILL.md"
+        md_path   = skill_dir / "SKILL.md"
 
         if not meta_path.exists():
             return
@@ -104,7 +138,6 @@ class SkillRegistry:
             tools=meta.get("tools", []),
         )
 
-        # Charge le module Python de la skill si présent
         py_path = skill_dir / "skill.py"
         if py_path.exists():
             self._load_skill_module(skill, py_path)
@@ -113,19 +146,37 @@ class SkillRegistry:
         logger.debug("Skill chargée : %s (triggers: %s)", skill.name, skill.triggers)
 
     def _load_skill_module(self, skill: Skill, py_path: Path) -> None:
-        """Charge dynamiquement le module Python d'une skill."""
+        """
+        Charge dynamiquement le module Python d'une skill.
+
+        FIX: vérification que spec et spec.loader ne sont pas None
+        avant d'appeler exec_module(), évite un AttributeError si le
+        fichier est invalide ou non reconnu par importlib.
+        """
         try:
             spec = importlib.util.spec_from_file_location(
                 f"neron.skills.{skill.name}", py_path
             )
+            # FIX: spec ou spec.loader peut être None sur fichier invalide
+            if spec is None or spec.loader is None:
+                logger.warning(
+                    "Impossible de créer le spec pour %s (fichier invalide ?)", py_path
+                )
+                return
+
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
-            # Enregistre les handlers : fonctions async dont le nom est dans skill.tools
+
             for tool_name in skill.tools:
                 handler = getattr(module, tool_name, None)
                 if handler and callable(handler):
                     skill._handlers[tool_name] = handler
                     logger.debug("Handler %s.%s chargé", skill.name, tool_name)
+                else:
+                    logger.warning(
+                        "Handler '%s' introuvable ou non callable dans %s",
+                        tool_name, py_path
+                    )
         except Exception as e:
             logger.warning("Erreur chargement module skill %s : %s", skill.name, e)
 
@@ -159,35 +210,43 @@ class SkillRegistry:
     # ── API publique ────────────────────────────────────────────────────────
 
     def register(self, skill: Skill) -> None:
+        """Enregistre ou remplace une skill dans le registre."""
         self._skills[skill.name] = skill
         logger.info("Skill enregistrée : %s", skill.name)
 
     def get(self, name: str) -> Skill | None:
+        """Retourne une skill par son nom, ou None si inconnue."""
         return self._skills.get(name)
 
     def list_all(self) -> list[Skill]:
+        """Retourne toutes les skills enregistrées."""
         return list(self._skills.values())
 
     def build_system_injection(self, intent: str | None = None) -> str:
         """
         Retourne le contenu SKILL.md des skills pertinentes à injecter.
-        Sélection : inject_always=True OU trigger matche l'intent.
-        Limite : max 3 skills injectées par tour pour ne pas saturer le prompt.
+
+        FIX: la limite de 3 skills contextuelles s'applique désormais
+        indépendamment des skills inject_always, qui sont toujours
+        incluses en totalité sans compter dans le quota.
+
+        Sélection :
+        - inject_always=True  → toujours incluses (hors quota)
+        - trigger matche      → max 3 skills contextuelles
         """
-        selected: list[Skill] = []
+        always:      list[Skill] = []
+        contextual:  list[Skill] = []
 
-        # 1. Skills toujours injectées
         for skill in self._skills.values():
-            if skill.inject_always and skill.skill_md:
-                selected.append(skill)
+            if not skill.skill_md:
+                continue
+            if skill.inject_always:
+                always.append(skill)
+            elif intent and skill.matches_intent(intent):
+                contextual.append(skill)
 
-        # 2. Skills contextuelles (max 2 supplémentaires)
-        if intent:
-            for skill in self._skills.values():
-                if not skill.inject_always and skill.skill_md and skill.matches_intent(intent):
-                    selected.append(skill)
-                    if len(selected) >= 3:
-                        break
+        # FIX: limite appliquée uniquement aux contextuelles
+        selected = always + contextual[:3]
 
         if not selected:
             return ""
@@ -195,13 +254,32 @@ class SkillRegistry:
         parts = [f"## Skill : {s.name}\n{s.skill_md.strip()}" for s in selected]
         return "\n\n".join(parts)
 
-    async def call(self, skill_name: str, tool_name: str | None = None, **kwargs: Any) -> Any:
-        """Appel direct d'une skill depuis la Gateway."""
+    async def call(
+        self,
+        skill_name: str,
+        tool_name: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """
+        Appel direct d'une skill depuis la Gateway.
+
+        Args:
+            skill_name: Nom de la skill cible.
+            tool_name:  Nom de l'outil à appeler (optionnel).
+            **kwargs:   Arguments passés au handler.
+
+        Returns:
+            Résultat du handler, métadonnées de la skill, ou dict d'erreur.
+        """
         skill = self._skills.get(skill_name)
         if skill is None:
             return {"error": f"Skill inconnue : {skill_name}"}
         if tool_name is None:
-            return {"name": skill.name, "description": skill.description, "skill_md": skill.skill_md}
+            return {
+                "name":        skill.name,
+                "description": skill.description,
+                "skill_md":    skill.skill_md,
+            }
         return await skill.call(tool_name, **kwargs)
 
     def reload(self) -> None:
@@ -209,6 +287,7 @@ class SkillRegistry:
         self._skills.clear()
         self._load_all()
         logger.info("Skills rechargées")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Contenu SKILL.md des skills intégrées
@@ -251,12 +330,12 @@ Ces états sont transmis via WebSocket au client NEXUS frontend.
 # ──────────────────────────────────────────────────────────────────────────────
 
 EXAMPLE_SKILL_JSON = {
-    "name": "example_skill",
-    "description": "Exemple de skill externe.",
-    "version": "1.0.0",
-    "triggers": ["exemple", "test", "démo"],
+    "name":         "example_skill",
+    "description":  "Exemple de skill externe.",
+    "version":      "1.0.0",
+    "triggers":     ["exemple", "test", "démo"],
     "inject_always": False,
-    "tools": ["hello_world"],
+    "tools":        ["hello_world"],
 }
 
 EXAMPLE_SKILL_MD = """
@@ -275,7 +354,9 @@ def create_example_skill(skills_dir: Path | None = None) -> Path:
     """Utilitaire : crée une skill d'exemple sur le disque."""
     base = (skills_dir or SKILLS_DIR) / "example_skill"
     base.mkdir(parents=True, exist_ok=True)
-    (base / "skill.json").write_text(json.dumps(EXAMPLE_SKILL_JSON, indent=2, ensure_ascii=False))
+    (base / "skill.json").write_text(
+        json.dumps(EXAMPLE_SKILL_JSON, indent=2, ensure_ascii=False)
+    )
     (base / "SKILL.md").write_text(EXAMPLE_SKILL_MD)
     (base / "skill.py").write_text(EXAMPLE_SKILL_PY)
     return base
