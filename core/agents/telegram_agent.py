@@ -13,7 +13,6 @@ from pathlib import Path
 import httpx
 from constants import CODE_KEYWORDS
 
-import httpx
 from telegram import Update
 from telegram.ext import (
     Application,
