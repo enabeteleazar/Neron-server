@@ -1,7 +1,7 @@
 # neron/gateway.py
 # Gateway WebSocket — Plan de contrôle central inspiré d'OpenClaw.
 # Port par défaut : ws://0.0.0.0:18789
-# interface avec l'exterieur (API, webhooks, etc)
+# Interface avec l'extérieur (API, webhooks, etc.)
 
 from __future__ import annotations
 
@@ -33,12 +33,12 @@ MAX_MESSAGE_SIZE = 10 * 1024 * 1024  # 10 MB
 DEFAULT_SYSTEM_PROMPT = "Tu es Neron, un assistant IA local."
 
 # Codes d'erreur JSON-RPC 2.0
-ERROR_PARSE_ERROR = -32700
-ERROR_INVALID_REQUEST = -32600
+ERROR_PARSE_ERROR      = -32700
+ERROR_INVALID_REQUEST  = -32600
 ERROR_METHOD_NOT_FOUND = -32601
-ERROR_INVALID_PARAMS = -32602
-ERROR_INTERNAL_ERROR = -32603
-ERROR_AUTH_REQUIRED = 401
+ERROR_INVALID_PARAMS   = -32602
+ERROR_INTERNAL_ERROR   = -32603
+ERROR_AUTH_REQUIRED    = 401
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Dataclasses internes
@@ -49,20 +49,20 @@ ERROR_AUTH_REQUIRED = 401
 class GatewayConfig:
     """Configuration du serveur Gateway."""
 
-    host: str = DEFAULT_HOST
-    port: int = DEFAULT_PORT
-    token: str | None = None
-    max_connections: int = 64
-    ping_interval: float = 20.0
-    ping_timeout: float = 10.0
+    host:            str        = DEFAULT_HOST
+    port:            int        = DEFAULT_PORT
+    token:           str | None = None
+    max_connections: int        = 64
+    ping_interval:   float      = 20.0
+    ping_timeout:    float      = 10.0
 
 
 @dataclass
 class ConnectedClient:
     """Représente un client connecté au gateway."""
 
-    ws: WebSocketServerProtocol
-    client_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    ws:            WebSocketServerProtocol
+    client_id:     str  = field(default_factory=lambda: str(uuid.uuid4())[:8])
     authenticated: bool = False
 
     def __hash__(self) -> int:
@@ -93,36 +93,36 @@ class NeronGateway:
     streaming des réponses d'agents.
 
     Attributes:
-        config: Configuration du gateway.
+        config:   Configuration du gateway.
         sessions: Magasin de sessions actif.
-        skills: Registre des skills disponibles.
-        agent: Routeur d'agents LLM.
+        skills:   Registre des skills disponibles.
+        agent:    Routeur d'agents LLM.
     """
 
     def __init__(
         self,
-        config: GatewayConfig | None = None,
-        agent_router: AgentRouter | None = None,
-        session_store: SessionStore | None = None,
-        skill_registry: SkillRegistry | None = None,
+        config:           GatewayConfig  | None = None,
+        agent_router:     "AgentRouter"  | None = None,
+        session_store:    "SessionStore" | None = None,
+        skill_registry:   "SkillRegistry"| None = None,
     ) -> None:
-        self.config = config or GatewayConfig()
-        self.sessions = session_store or SessionStore()
-        self.skills = skill_registry or SkillRegistry()
-        self.agent = agent_router or AgentRouter(
+        self.config   = config or GatewayConfig()
+        self.sessions = session_store  or SessionStore()
+        self.skills   = skill_registry or SkillRegistry()
+        self.agent    = agent_router   or AgentRouter(
             sessions=self.sessions,
             skills=self.skills,
         )
-        self._clients: dict[str, ConnectedClient] = {}
-        self._handlers: dict[str, HandlerType] = {
-            "ping": self._ping,
-            "chat.send": self._chat_send,
-            "agent.run": self._agent_run,
-            "session.new": self._session_new,
+        self._clients:  dict[str, ConnectedClient] = {}
+        self._handlers: dict[str, HandlerType]     = {
+            "ping":         self._ping,
+            "chat.send":    self._chat_send,
+            "agent.run":    self._agent_run,
+            "session.new":  self._session_new,
             "session.list": self._session_list,
-            "session.get": self._session_get,
-            "skill.call": self._skill_call,
-            "skill.list": self._skill_list,
+            "session.get":  self._session_get,
+            "skill.call":   self._skill_call,
+            "skill.list":   self._skill_list,
         }
 
     # ── Entrée serveur ──────────────────────────────────────────────────────
@@ -144,18 +144,23 @@ class NeronGateway:
 
     # ── Connexion client ────────────────────────────────────────────────────
 
-    async def _handle_client(
-        self, ws: WebSocketServerProtocol
-    ) -> None:
+    async def _handle_client(self, ws: WebSocketServerProtocol) -> None:
         """
         Gère le cycle de vie complet d'un client WebSocket.
 
-        Crée une entrée client, gère l'authentification initiale, puis
-        dispatch chaque message reçu jusqu'à la déconnexion.
+        Vérifie la limite de connexions, crée une entrée client, gère
+        l'authentification initiale, puis dispatch chaque message reçu
+        jusqu'à la déconnexion.
 
         Args:
             ws: Protocole WebSocket du client entrant.
         """
+        # FIX: max_connections déclaré dans GatewayConfig mais jamais appliqué
+        if len(self._clients) >= self.config.max_connections:
+            logger.warning("Limite de connexions atteinte (%d), client refusé", self.config.max_connections)
+            await ws.close(1013, "Trop de connexions")
+            return
+
         client = ConnectedClient(ws=ws)
         self._clients[client.client_id] = client
         logger.info("[%s] connexion depuis %s", client.client_id, ws.remote_address)
@@ -186,16 +191,13 @@ class NeronGateway:
 
         Args:
             client: Client émetteur du message.
-            raw: Payload brut (JSON).
+            raw:    Payload brut (JSON).
         """
         try:
             frame = json.loads(raw)
         except json.JSONDecodeError as e:
             logger.debug("[%s] JSON decode error: %s", client.client_id, e)
-            await self._send(
-                client.ws,
-                _error(None, ERROR_PARSE_ERROR, "Parse error"),
-            )
+            await self._send(client.ws, _error(None, ERROR_PARSE_ERROR, "Parse error"))
             return
 
         if not isinstance(frame, dict):
@@ -310,10 +312,10 @@ class NeronGateway:
         Returns:
             ID de la session créée.
         """
-        del client
+        del client  # non utilisé
         session_id = params.get("session_id") or str(uuid.uuid4())
-        system = params.get("system", DEFAULT_SYSTEM_PROMPT)
-        session = self.sessions.create(session_id, system_prompt=system)
+        system     = params.get("system", DEFAULT_SYSTEM_PROMPT)
+        session    = self.sessions.create(session_id, system_prompt=system)
         return {"session_id": session.id, "created": True}
 
     async def _session_list(self, client: ConnectedClient, params: dict) -> dict:
@@ -327,7 +329,8 @@ class NeronGateway:
         Returns:
             Liste des sessions avec leur ID et nombre de tours.
         """
-        del params
+        # FIX: del client, params — client était absent du del, inconsistant avec les autres handlers
+        del client, params
         sessions = self.sessions.list_all()
         return {
             "sessions": [
@@ -349,7 +352,7 @@ class NeronGateway:
         Raises:
             ValueError: Si la session n'existe pas.
         """
-        del client
+        del client  # non utilisé
         session_id = params.get("session_id")
         if not session_id:
             raise ValueError("session_id requis")
@@ -360,23 +363,24 @@ class NeronGateway:
 
         return {
             "session_id": session.id,
-            "history": session.history,
-            "system": session.system_prompt,
+            "history":    session.history,
+            "system":     session.system_prompt,
         }
 
     async def _chat_send(self, client: ConnectedClient, params: dict) -> None:
         """
         Envoie un message en streaming.
 
-        Envoie des events 'agent.token' par小块, suivi d'un event
+        Envoie des events 'agent.token' par petits blocs, suivi d'un event
         'agent.done' avec les statistiques d'usage.
 
         Args:
             client: Client destinataire des events.
             params: Contient 'session_id' et 'message'.
         """
+        # FIX: caractère chinois parasite "小块" retiré de la docstring
         session_id = params.get("session_id", "default")
-        message = params.get("message", "")
+        message    = params.get("message", "")
 
         if not message:
             await self._send(
@@ -391,7 +395,7 @@ class NeronGateway:
                     client.ws,
                     _event("agent.token", {
                         "session_id": session_id,
-                        "token": token,
+                        "token":      token,
                     }),
                 )
 
@@ -400,7 +404,7 @@ class NeronGateway:
                 client.ws,
                 _event("agent.done", {
                     "session_id": session_id,
-                    "usage": usage or {},
+                    "usage":      usage or {},
                 }),
             )
         except Exception as e:
@@ -409,7 +413,7 @@ class NeronGateway:
                 client.ws,
                 _event("agent.error", {
                     "session_id": session_id,
-                    "message": str(e),
+                    "message":    str(e),
                 }),
             )
 
@@ -424,8 +428,8 @@ class NeronGateway:
             params: Contient 'session_id', 'message', 'thinking'.
         """
         session_id = params.get("session_id", "default")
-        message = params.get("message", "")
-        thinking = params.get("thinking", False)
+        message    = params.get("message", "")
+        thinking   = params.get("thinking", False)
 
         try:
             async for event in self.agent.run_stream(
@@ -438,7 +442,7 @@ class NeronGateway:
                 client.ws,
                 _event("agent.error", {
                     "session_id": session_id,
-                    "message": str(e),
+                    "message":    str(e),
                 }),
             )
 
@@ -453,7 +457,7 @@ class NeronGateway:
         Returns:
             Liste des skills avec nom et description.
         """
-        del params
+        del client, params
         skills = self.skills.list_all()
         return {
             "skills": [
@@ -472,25 +476,25 @@ class NeronGateway:
         Returns:
             Résultat de l'exécution du skill.
         """
-        del client
+        del client  # non utilisé
         name = params.get("name")
         if not name:
             raise ValueError("name requis")
 
         skill_params = params.get("params", {})
-        result = await self.skills.call(name, **skill_params)
+        result       = await self.skills.call(name, **skill_params)
         return {"result": result}
 
     # ── Helpers envoi ───────────────────────────────────────────────────────
 
     async def _send(self, ws: WebSocketServerProtocol, payload: dict) -> None:
         """
-        Envoie un payload JSON au client.
+        Sérialise et envoie un payload JSON au client.
 
         Attrape silencieusement les erreurs de connexion fermée.
 
         Args:
-            ws: Socket du client.
+            ws:      Socket du client.
             payload: Objet à sérialiser en JSON.
         """
         try:
@@ -502,6 +506,11 @@ class NeronGateway:
         """
         Envoie un message à tous les clients connectés.
 
+        FIX: sérialisation du JSON effectuée une seule fois avant le gather,
+        puis transmission de la chaîne déjà sérialisée via _safe_send().
+        L'asymétrie _send(dict) / _safe_send(str) est désormais documentée
+        intentionnellement : broadcast sérialise une fois pour tous les clients.
+
         Args:
             payload: Message à diffuser.
         """
@@ -510,15 +519,20 @@ class NeronGateway:
 
         msg = json.dumps(payload, ensure_ascii=False)
         await asyncio.gather(
-            *[
-                self._safe_send(c.ws, msg)
-                for c in self._clients.values()
-            ],
+            *[self._safe_send(c.ws, msg) for c in self._clients.values()],
             return_exceptions=True,
         )
 
     async def _safe_send(self, ws: WebSocketServerProtocol, msg: str) -> None:
-        """Envoie un message en ignorant les déconnexions."""
+        """
+        Envoie une chaîne JSON déjà sérialisée en ignorant les déconnexions.
+
+        Utilisé exclusivement par broadcast() pour éviter N sérialisations.
+
+        Args:
+            ws:  Socket du client.
+            msg: Chaîne JSON déjà sérialisée.
+        """
         try:
             await ws.send(msg)
         except ConnectionClosed:
@@ -538,7 +552,7 @@ class NeronGateway:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Helpers frames
+# Helpers frames JSON-RPC
 # ──────────────────────────────────────────────────────────────────────────────
 
 
