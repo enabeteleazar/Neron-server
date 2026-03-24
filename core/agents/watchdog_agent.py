@@ -758,7 +758,8 @@ async def _wdog_cmd_start(update, context) -> None:
         "/rapport — rapport quotidien immédiat\n"
         "/hebdo — rapport hebdomadaire immédiat\n"
         "\n🔧 <b>Actions</b>\n"
-        "/restart &lt;agent&gt; — recharger un agent\n"
+        "/reload — recharger tous les agents sans redémarrer\n"
+        "/restart &lt;agent&gt; — recharger un agent (core, llm, memory)\n"
         "/mute &lt;min&gt; — couper les alertes X minutes\n"
         "/config [clé] [valeur] — voir/modifier les seuils\n"
         "/clear — effacer l'historique events\n",
@@ -1043,12 +1044,20 @@ async def _wdog_cmd_confirm(update, context) -> None:
     del _pending_confirm[chat_id]
 
     if action == "restart_core":
-        await update.message.reply_text("🔄 Redémarrage de Néron Core...")
-        log_event("restart", service="core", message="restart manuel via Telegram")
+        await update.message.reply_text("🔄 Redémarrage de Néron Core via systemd...")
+        log_event("restart", service="core", message="restart systemd via Telegram watchdog")
         await _notify("🔄 Redémarrage Core déclenché via Telegram", "warning")
-        await asyncio.sleep(1)
-        import os as _os, sys as _sys
-        _os.execv(_sys.executable, [_sys.executable] + _sys.argv)
+        # FIX: systemctl restart au lieu de os.execv — lifecycle propre via systemd
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "systemctl", "restart", "neron",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            await update.message.reply_text(
+                f"❌ Échec systemctl restart : {stderr.decode()[:200]}"
+            )
     elif action == "clear_events":
         try:
             conn = sqlite3.connect(DB_PATH)
@@ -1058,6 +1067,32 @@ async def _wdog_cmd_confirm(update, context) -> None:
             await update.message.reply_text("✅ Historique events effacé")
         except Exception as e:
             await update.message.reply_text(f"❌ {e}")
+
+
+async def _wdog_cmd_reload(update, context) -> None:
+    """Recharge tous les agents sans redémarrer le process."""
+    if not _wdog_authorized(update):
+        return
+    await update.message.reply_text("🔄 Rechargement des agents en cours...")
+
+    results = []
+    for name, agent in _agents.items():
+        try:
+            ok = (
+                await agent.reload()
+                if asyncio.iscoroutinefunction(agent.reload)
+                else agent.reload()
+            )
+            status = "✅" if ok else "⚠️"
+            results.append(f"{status} {name}")
+            log_event("recovery", service=name, message="reload via /reload watchdog")
+        except Exception as e:
+            results.append(f"❌ {name} : {e}")
+            log_event("crash", service=name, message=f"reload échoué: {e}")
+
+    lines = ["🔄 <b>Reload terminé</b>\n"] + results
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    logger.info("Reload agents terminé : %s", results)
 
 
 async def _wdog_cmd_restart(update, context) -> None:
@@ -1121,6 +1156,7 @@ async def start_watchdog_bot() -> None:
         ("status",    _wdog_cmd_status),
         ("score",     _wdog_cmd_score),
         ("anomalies", _wdog_cmd_anomalies),
+        ("reload",    _wdog_cmd_reload),
         ("restart",   _wdog_cmd_restart),
         ("confirm",   _wdog_cmd_confirm),
         ("cancel",    _wdog_cmd_cancel),
