@@ -592,6 +592,15 @@ async def _watchdog_loop() -> None:
 
 # ── API publique ──────────────────────────────────────────────────────────────
 
+async def send_watchdog_notification(message: str, level: str = "info") -> None:
+    """
+    Envoie une notification sur le bot watchdog dédié.
+    Utilisé comme notify_fn central pour le scheduler et app.py.
+    Fallback sur _notify_fn si le bot watchdog n'est pas démarré.
+    """
+    await _notify(message, level)
+
+
 async def start_watchdog() -> None:
     global _task, _start_time
     _start_time = time.monotonic()

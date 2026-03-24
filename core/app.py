@@ -28,6 +28,7 @@ from agents.stt_agent import STTAgent, load_model as stt_load_model
 from agents.telegram_agent import send_notification, set_agents, start_bot, stop_bot
 from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
 from agents.watchdog_agent import (
+    send_watchdog_notification,
     setup as watchdog_setup,
     start_watchdog,
     start_watchdog_bot,
@@ -197,10 +198,11 @@ async def lifespan(app: FastAPI):
     web_agent = WebAgent()
     memory_init_db()
     memory_agent = MemoryAgent()
-    stt_load_model()
-    stt_agent = STTAgent()
-    tts_load_engine()
-    tts_agent  = TTSAgent()
+    # STT/TTS désactivés — pipeline voix supprimé avec NEXUS avatar 3D
+    # stt_load_model()
+    # stt_agent = STTAgent()
+    # tts_load_engine()
+    # tts_agent  = TTSAgent()
     ha_agent   = HAAgent()
     code_agent = CodeAgent()
 
@@ -228,7 +230,7 @@ async def lifespan(app: FastAPI):
     # ── Scheduler ──
     scheduler_setup(
         agents={"code": code_agent, "memory": memory_agent},
-        notify_fn=send_notification,
+        notify_fn=send_watchdog_notification,
     )
     scheduler_start()
 
@@ -290,7 +292,7 @@ async def lifespan(app: FastAPI):
     if getattr(settings, "WATCHDOG_ENABLED", False):
         watchdog_setup(
             agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
-            notify_fn=send_notification,
+            notify_fn=send_watchdog_notification,
         )
         await start_watchdog()
         await start_watchdog_bot()
@@ -493,36 +495,42 @@ async def text_input_stream(
     query = input_data.text.strip()
 
     async def generate():
-        intent_result = await router.route(query)
+        try:
+            intent_result = await router.route(query)
+            logger.debug("stream: intent=%s", intent_result.intent.value)
 
-        # Intents non-streamables → réponse directe encapsulée
-        if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
-            result = await _handle_personality_feedback(query, intent_result, {}, 0)
-            yield f"data: {json.dumps({'token': result.response, 'done': True})}\n\n"
-            return
+            # Intents non-streamables → réponse directe encapsulée
+            if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
+                result = await _handle_personality_feedback(query, intent_result, {}, 0)
+                yield f"data: {json.dumps({'token': result.response, 'done': True})}\n\n"
+                return
 
-        if intent_result.intent == Intent.TIME_QUERY:
-            response = _handle_time_query(intent_result, {}, 0, query).response
-            yield f"data: {json.dumps({'token': response, 'done': True})}\n\n"
-            return
+            if intent_result.intent == Intent.TIME_QUERY:
+                response = _handle_time_query(intent_result, {}, 0, query).response
+                yield f"data: {json.dumps({'token': response, 'done': True})}\n\n"
+                return
 
-        # FIX: _store_memory() déplacé AVANT le yield done
-        # pour éviter que le générateur fasse du travail après
-        # avoir signalé la fin au client (cause du RemoteProtocolError)
-        memory_context = await _get_memory_context(query)
-        full_response  = ""
+            memory_context = await _get_memory_context(query)
+            full_response  = ""
+            token_count    = 0
 
-        async for token in llm_agent.stream(
-            query, context_data=memory_context or None
-        ):
-            full_response += token
-            yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
+            async for token in llm_agent.stream(
+                query, context_data=memory_context or None
+            ):
+                full_response += token
+                token_count   += 1
+                yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
 
-        # Persiste la mémoire avant d'envoyer done
-        await _store_memory(query, full_response, {"intent": intent_result.intent.value})
+            logger.debug("stream: %d tokens reçus, sauvegarde mémoire", token_count)
+            await _store_memory(query, full_response, {"intent": intent_result.intent.value})
 
-        # Signal de fin envoyé en dernier
-        yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
+            logger.debug("stream: envoi done")
+            yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
+            logger.debug("stream: terminé proprement")
+
+        except Exception as e:
+            logger.exception("stream: exception dans generate() : %s", e)
+            yield f"data: {json.dumps({'token': '', 'done': True, 'error': str(e)})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 
