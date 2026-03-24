@@ -12,7 +12,6 @@ from pathlib import Path
 
 import httpx
 from constants import CODE_KEYWORDS
-
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -82,6 +81,32 @@ async def _post_text(client: httpx.AsyncClient, text: str) -> dict:
 
 
 # ── Handlers commandes ────────────────────────────────────────────────────────
+
+async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    await update.message.reply_text(
+        "🤖 <b>Néron — Commandes disponibles</b>\n\n"
+        "💬 <b>Conversation</b>\n"
+        "Envoie n'importe quel message pour parler à Néron\n\n"
+        "🔧 <b>Code</b>\n"
+        "/fix &lt;fichier.py&gt; — améliore un fichier\n"
+        "/review — auto-review de tout le code\n"
+        "/run &lt;fichier.py&gt; — exécute un script du workspace\n"
+        "/workspace — liste les fichiers du workspace\n\n"
+        "🧠 <b>Mémoire</b>\n"
+        "/memory — 5 derniers échanges\n\n"
+        "🏠 <b>Home Assistant</b>\n"
+        "/ha_reload — recharge les entités HA\n\n"
+        "📊 <b>Système</b>\n"
+        "/status — CPU, RAM, disque, tâches planifiées\n\n"
+        "📞 <b>Téléphonie</b>\n"
+        "/call [message] — appel vocal via Twilio\n\n"
+        "❓ <b>Aide</b>\n"
+        "/help — cette aide",
+        parse_mode="HTML",
+    )
+
 
 async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
@@ -345,6 +370,7 @@ async def start_bot() -> None:
         return
 
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
+    _telegram_app.add_handler(CommandHandler("help",      cmd_help))
     _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
     _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
     _telegram_app.add_handler(CommandHandler("call",      cmd_call))
