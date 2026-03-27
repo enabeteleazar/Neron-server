@@ -75,9 +75,7 @@ def check_system():
             "disk": psutil.disk_usage("/").percent,
             "timestamp": time.time(),
         }
-    
         world_model.update("system", "resources", data)
-    
     except Exception as e:
         world_model.update("system", "error", str(e))
 
@@ -371,18 +369,15 @@ async def _check_agents() -> List[str]:
 
     return issues
 
-    def check_agents(agents: dict):
-        for name, agent in agents.items():
+    def check_agents():
+        for name, agent in _agents.items():
             status = "online" if agent else "offline"
-            
-            world_model.update("agents", name, {
+            data = {
                 "status": status,
                 "timestamp": time.time()
-            })
-
-
-
-
+            }
+            world_model.update("agents", name, data)
+            
 # ── Détecteur d'anomalies ─────────────────────────────────────────────────────
 
 class AnomalyDetector:
@@ -686,37 +681,17 @@ async def _send_weekly_report() -> None:
         logger.error("Rapport hebdomadaire erreur : %s", e)
 
 
-async def _watchdog_loop() -> None:
+async def _watchdog_loop():
     logger.info("Watchdog démarré — intervalle %ds", CHECK_INTERVAL)
-    await asyncio.sleep(10)
-    cycle = 0
-
     while True:
         try:
-            stats  = await _check_system()
-            issues = await _check_agents()
-
-            logger.info(
-                "[watchdog] CPU=%s%% RAM=%s%% Disk=%s%% ProcRAM=%sMB issues=%d",
-                stats["cpu"], stats["ram"], stats["disk"],
-                stats["proc_ram_mb"], len(issues),
-            )
-
-            cycle += 1
-            if cycle % 10 == 0:
-                await _detector.run_analysis(_notify_fn)
-
-            now = datetime.now()
-            if now.hour == 8 and now.minute == 0 and now.second < CHECK_INTERVAL:
-                await _send_daily_report()
-                if now.weekday() == 0:
-                    await _send_weekly_report()
-
+            check_system()
+            check_agents()
+            check_alert()
         except Exception as e:
-            logger.error("Watchdog loop error : %s", e)
-
-        await asyncio.sleep(CHECK_INTERVAL)
-
+            logger.error("Watchdog check error : %s", e)
+            world_model.update("system", "error", str(e))
+        await asyncio.sleep(WATCHDOG_INTERVAL)
 
 # ── API publique ──────────────────────────────────────────────────────────────
 
@@ -1340,3 +1315,32 @@ async def stop_watchdog_bot() -> None:
         logger.error("Erreur stop_watchdog_bot : %s", e)
     finally:
         _watchdog_bot_app = None
+
+WATCHDOG_INTERVAL = 10  # secondes entre chaque check
+CPU_ALERT_PCT = 90.0   # % CPU système avant alerte
+RAM_ALERT_PCT = 90.0   # % RAM système avant alerte
+DISK_ALERT_PCT = 90.0  # % disque avant alerte
+RAM_PROCESS_ALERT_MB = 500.0  # MB RAM process Néron avant alerte
+OLLAMA_SILENT_MINUTES = 5  # minutes sans réponse Ollama avant alerte
+NERON_SILENT_HOURS = 4      # heures sans conversation avant alerte
+ALERT_COOLDOWN = 3600      # secondes minimum entre 2 alertes identiques
+CPU_TEMP_ALERT_C = 85.0    # °C température CPU avant alerte      
+
+async def watchdog_loop() -> None:
+    logger.info("Watchdog démarré — intervalle %ds", WATCHDOG_INTERVAL)
+    await asyncio.sleep(10)
+    cycle = 0
+
+    while True:
+        try:
+            check_agents()  # update l'etat des agents dans WM
+            check_system()  # update le status système dans WM
+            check_ollama()  # update le status d'Ollama dans WM
+            check_alerts()  # envoie les alertes si seuils dépassés
+        except Exception as e:
+            # on logue l'erreur mais on continue le loop pour ne pas perdre les alertes suivantes
+            logger.error("Watchdog loop error : %s", e)
+            world_model.update("system", "watchdog_error", str(e))
+        await asyncio.sleep(WATCHDOG_INTERVAL)  # petit sleep pour laisser le temps aux checks de mettre à jour le WM
+
+

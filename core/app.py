@@ -44,7 +44,8 @@ from core.agents.watchdog_agent import (
     start_watchdog_bot,
     stop_watchdog,
     stop_watchdog_bot,
-    world_model
+    world_model,
+    watchdog_loop,
 )
 from core.agents.web_agent import WebAgent
 from core.config import settings
@@ -340,6 +341,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def startup_event():
+    # Lancement de la boucle de surveillance système (watchdog)
+    if getattr(settings, "WATCHDOG_ENABLED", False):
+        asyncio.create_task(watchdog_loop())    
+    else:
+        logger.info("Watchdog desactive, aucune surveillance systeme active")   
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
