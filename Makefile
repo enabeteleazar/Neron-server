@@ -2,7 +2,7 @@
 # ============================================
 
 BASE_DIR  := /mnt/usb-storage/neron/server
-VENV      := /mnt/usb-storage/neron/venv
+VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
 PIP       := $(VENV)/bin/pip
 SERVICE   := neron

@@ -152,3 +152,22 @@ class BaseAgent(ABC):
     def _elapsed_ms(self, start: float) -> float:
         """Retourne le temps écoulé en millisecondes depuis start."""
         return round((time.monotonic() - start) * 1000, 2)
+
+# ─────────────────────────────────────────────────────────────
+# Ajouter en bas du fichier, après la classe BaseAgent
+# ─────────────────────────────────────────────────────────────
+
+from typing import Dict
+
+# dictionnaire global de tous les agents instanciés
+_agents: Dict[str, BaseAgent] = {}
+
+def register_agent(agent: BaseAgent) -> None:
+    """Enregistre un agent globalement, accessible depuis Telegram et Watchdog"""
+    global _agents
+    _agents[agent.name] = agent
+    agent.logger.info("Agent enregistré globalement")
+
+def get_agents() -> Dict[str, BaseAgent]:
+    """Retourne tous les agents enregistrés"""
+    return _agents
