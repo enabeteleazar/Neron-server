@@ -9,10 +9,11 @@ import logging
 import os
 import sqlite3
 import time
+
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List, Any
 
 import psutil
 from telegram import Update as TGUpdate
@@ -24,8 +25,124 @@ from telegram.ext import (
 
 from core.agents.base_agent import get_logger
 from core.config import settings
+from core.modules.world_model import WorldModel
+
+# Instance uniqe du Word Model
+world_model = WorldModel()
+
+# Stockage des agents
+_agents: Dict[str, Any] = {}
+
+# Callback optionnel
+_notify_fn = None
+
+# ==========
+#  SETUP
+# ==========
+
+def set_agents(agents: dict) -> None:
+    global _agents
+    _agents = agents
+
+def set_notify_fn(fn) -> None:
+    global _notify_fn
+    _notify_fn = fn
+
+# ============
+# CHECK AGENT
+# ============
+
+def check_agents():
+    for name, agent in _agents.items():
+        status = "online" if agent else "offline"
+        
+        data = {
+            "status": status,
+            "timestamp": time.time()
+        }
+
+        world_model.update("agents", name, data)
+
+# =============
+#  CHECK SYSTEM
+# =============
+
+def check_system():
+    try:
+        data = {
+            "cpu": psutil.cpu_percent(interval=1),
+            "ram": psutil.virtual_memory().percent,
+            "disk": psutil.disk_usage("/").percent,
+            "timestamp": time.time(),
+        }
+    
+        world_model.update("system", "resources", data)
+    
+    except Exception as e:
+        world_model.update("system", "error", str(e))
+
+
+# ==========
+# ALERT SIMPLE
+# ==========
+
+def check_alert():
+    system = world_model.get_category("system")
+
+    resources = system.get("resources", {})
+
+    if not resources:
+        return
+
+    ram = resources.get("ram", 0)
+
+    if ram > 80:
+        alert = f"RAM usage high: {ram}%"
+        world_model.update("alerts", "ram", {"message": alert, "timestamp": time.time()})
+        if _notify_fn:
+            asyncio.create_task(_notify_fn(alert, "warning", key="ram_alert"))      
+
+    cpu = resources.get("cpu", 0)
+
+    if cpu > 80:
+        alert = f"CPU usage high: {cpu}%"
+        world_model.update("alerts", "cpu", {"message": alert, "timestamp": time.time()})
+        if _notify_fn:
+            asyncio.create_task(_notify_fn(alert, "warning", key="cpu_alert"))
+
+
+# ==========
+# LOOP PRINCIPALE
+# ==========
+
+async def watchdog_loop():
+    while True:
+        try:
+            check_agents()
+            check_system()
+            check_alert()
+            await asyncio.sleep(60)
+        
+        except Exception as e:
+            logger.error("Error in watchdog loop: %s", e)
+            print(f"[WATCHDOG ERROR] {e}")
+
+        await asyncio.sleep(10)
+
+# ==========
+# START
+# ==========
+
+async def start_watchdog():
+    logger.info("Starting watchdog loop...")
+    asyncio.create_task(watchdog_loop())
+
+
+
 
 logger = get_logger("watchdog_agent")
+world_model = WorldModel()
+_agents = {}
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -253,6 +370,17 @@ async def _check_agents() -> List[str]:
                 _agent_failures[key] = []
 
     return issues
+
+    def check_agents(agents: dict):
+        for name, agent in agents.items():
+            status = "online" if agent else "offline"
+            
+            world_model.update("agents", name, {
+                "status": status,
+                "timestamp": time.time()
+            })
+
+
 
 
 # ── Détecteur d'anomalies ─────────────────────────────────────────────────────

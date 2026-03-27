@@ -44,6 +44,7 @@ from core.agents.watchdog_agent import (
     start_watchdog_bot,
     stop_watchdog,
     stop_watchdog_bot,
+    world_model
 )
 from core.agents.web_agent import WebAgent
 from core.config import settings
@@ -379,11 +380,16 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> None:
 def root():
     return {"service": "Neron Core", "version": VERSION, "status": "active"}
 
-
 @app.get("/health")
 def health():
     return {"status": "healthy", "version": VERSION}
 
+@app.get("/status")
+def status():
+    try:
+        return world_model.get()
+    except Exception as e:
+        raise HTTPException(500, f"Impossible de recuperer le status : {e}")
 
 @app.get("/metrics")
 def prometheus_metrics():
