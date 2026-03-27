@@ -2,11 +2,11 @@
 # Neron Core - Agent TTS (espeak + ffmpeg MP3)
 
 import os
-from config import settings
+from core.config import settings
 import sys
 import time
 
-from agents.base_agent import AgentResult, get_logger
+from core.agents.base_agent import AgentResult, get_logger
 
 logger = get_logger("tts_agent")
 

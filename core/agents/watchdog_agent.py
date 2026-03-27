@@ -22,8 +22,8 @@ from telegram.ext import (
     ContextTypes as TGContextTypes,
 )
 
-from agents.base_agent import get_logger
-from config import settings
+from core.agents.base_agent import get_logger
+from core.config import settings
 
 logger = get_logger("watchdog_agent")
 

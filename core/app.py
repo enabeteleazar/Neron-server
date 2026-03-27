@@ -29,15 +29,15 @@ from prometheus_client import (
 )
 from pydantic import BaseModel
 
-from agents.base_agent import get_logger
-from agents.code_agent import CodeAgent
-from agents.ha_agent import HAAgent
-from agents.llm_agent import LLMAgent
-from agents.memory_agent import MemoryAgent, init_db as memory_init_db
-from agents.stt_agent import STTAgent, load_model as stt_load_model
-from agents.telegram_agent import send_notification, set_agents, start_bot, stop_bot
-from agents.tts_agent import TTSAgent, load_engine as tts_load_engine
-from agents.watchdog_agent import (
+from core.agents.base_agent import get_logger
+from core.agents.code_agent import CodeAgent
+from core.agents.ha_agent import HAAgent
+from core.agents.llm_agent import LLMAgent
+from core.agents.memory_agent import MemoryAgent, init_db as memory_init_db
+from core.agents.stt_agent import STTAgent, load_model as stt_load_model
+from core.agents.telegram_agent import send_notification, set_agents, start_bot, stop_bot
+from core.agents.tts_agent import TTSAgent, load_engine as tts_load_engine
+from core.agents.watchdog_agent import (
     send_watchdog_notification,
     setup as watchdog_setup,
     start_watchdog,
@@ -45,17 +45,17 @@ from agents.watchdog_agent import (
     stop_watchdog,
     stop_watchdog_bot,
 )
-from agents.web_agent import WebAgent
-from config import settings
-from modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
-from modules.gateway import GatewayConfig, NeronGateway
-from modules.scheduler import setup as scheduler_setup
-from modules.scheduler import start as scheduler_start
-from modules.scheduler import stop as scheduler_stop
-from modules.sessions import SessionStore
-from modules.skills import SkillRegistry
-from neron_time.time_provider import TimeProvider
-from orchestrator.intent_router import Intent, IntentRouter
+from core.agents.web_agent import WebAgent
+from core.config import settings
+from core.modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from core.modules.gateway import GatewayConfig, NeronGateway
+from core.modules.scheduler import setup as scheduler_setup
+from core.modules.scheduler import start as scheduler_start
+from core.modules.scheduler import stop as scheduler_stop
+from core.modules.sessions import SessionStore
+from core.modules.skills import SkillRegistry
+from core.neron_time.time_provider import TimeProvider
+from core.orchestrator.intent_router import Intent, IntentRouter
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 

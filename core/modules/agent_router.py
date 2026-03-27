@@ -13,8 +13,8 @@ from typing import Any, AsyncIterator, Callable, Awaitable
 
 import httpx
 
-from modules.sessions import SessionStore, Session
-from modules.skills import SkillRegistry
+from core.modules.sessions import SessionStore, Session
+from core.modules.skills import SkillRegistry
 
 logger = logging.getLogger(__name__)
 

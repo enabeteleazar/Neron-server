@@ -11,7 +11,7 @@ import unicodedata
 from pathlib import Path
 
 import httpx
-from constants import CODE_KEYWORDS
+from core.constants import CODE_KEYWORDS
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -21,10 +21,10 @@ from telegram.ext import (
     filters,
 )
 
-from agents.base_agent import get_logger
-from agents.watchdog_agent import get_anomalies, get_health_score, get_status
-from config import settings
-from tools.twilio_tool import call as twilio_call
+from core.agents.base_agent import get_logger
+from core.agents.watchdog_agent import get_anomalies, get_health_score, get_status
+from core.config import settings
+from core.tools.twilio_tool import call as twilio_call
 
 logger = get_logger("telegram_agent")
 
@@ -270,7 +270,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # Mise à jour watchdog
     try:
-        import agents.watchdog_agent as _wdog_mod
+        import core.agents.watchdog_agent as _wdog_mod
         _wdog_mod._last_conversation = time.monotonic()
     except Exception:
         pass
