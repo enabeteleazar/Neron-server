@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-import asyncio
+import html
 import json
 import logging
 import os
@@ -20,15 +20,11 @@ from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
-from prometheus_client import (
-    CONTENT_TYPE_LATEST,
-    REGISTRY,
-    Counter,
-    Gauge,
-    Histogram,
-    generate_latest,
-)
-from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from pydantic import BaseModel, Field, field_validator
 
 from core.agents.base_agent import BaseAgent, AgentResult, get_logger
 from core.agents.code_agent import CodeAgent
@@ -139,7 +135,17 @@ class Metrics:
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
 class TextInput(BaseModel):
-    text: str
+    text: str = Field(..., min_length=1, max_length=5000)
+    
+    @field_validator('text')
+    @classmethod
+    def sanitize_input(cls, v: str) -> str:
+        """Sanitize input to prevent XSS and injection attacks."""
+        # Escape HTML characters
+        v = html.escape(v.strip())
+        # Remove potentially dangerous characters
+        v = re.sub(r'[<>"\'`;]', '', v)
+        return v
 
 class CoreResponse(BaseModel):
     response:          str
@@ -288,16 +294,25 @@ class APIAgent(BaseAgent):
     # ── Construction FastAPI ──────────────────────────────────────────────────
 
     def _build_app(self) -> FastAPI:
+        # Rate limiting
+        limiter = Limiter(key_func=get_remote_address)
+        
         app = FastAPI(
             title="Neron Core",
             description="Orchestrateur central v" + VERSION,
             version=VERSION,
         )
+        
+        # Add rate limiting middleware
+        app.state.limiter = limiter
+        app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+        app.add_middleware(SlowAPIMiddleware)
+        
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_origins=["http://localhost:3000", "https://yourdomain.com"],  # Restrict origins
+            allow_methods=["GET", "POST"],
+            allow_headers=["Content-Type", "X-API-Key"],
         )
 
         API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -387,10 +402,12 @@ class APIAgent(BaseAgent):
         # ── Routes /input ─────────────────────────────────────────────────────
 
         @app.post("/input/text", response_model=CoreResponse)
+        @limiter.limit("100/hour")
         async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             return await self._handle_text(input_data.text.strip())
 
         @app.post("/input/stream")
+        @limiter.limit("50/hour")
         async def text_input_stream(input_data: TextInput, _: None = Depends(verify_api_key)):
             return StreamingResponse(
                 self._stream(input_data.text.strip()),

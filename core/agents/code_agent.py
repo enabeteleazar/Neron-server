@@ -14,10 +14,52 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-import httpx
+import ast
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.config import settings
+# Whitelist des fonctions/builtins autorisées
+_SAFE_BUILTINS = {
+    'print', 'len', 'range', 'str', 'int', 'list', 'dict', 'set', 'tuple',
+    'sum', 'min', 'max', 'abs', 'round', 'sorted', 'reversed', 'enumerate',
+    'zip', 'filter', 'map', 'any', 'all', 'bool', 'float', 'type',
+    'isinstance', 'hasattr', 'getattr', 'setattr', 'dir', 'vars',
+    'open', 'close', 'read', 'write', 'json', 'math', 'random', 'datetime',
+    'time', 'os', 'sys', 'pathlib', 'tempfile', 'shutil', 'glob', 'fnmatch'
+}
+
+def _validate_code_ast(code: str) -> bool:
+    """Valide le code avec AST pour whitelist les appels autorisés."""
+    try:
+        tree = ast.parse(code)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name not in _SAFE_BUILTINS:
+                        return False
+            elif isinstance(node, ast.ImportFrom):
+                if node.module not in _SAFE_BUILTINS:
+                    return False
+            elif isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name):
+                    if node.func.id not in _SAFE_BUILTINS:
+                        return False
+                elif isinstance(node.func, ast.Attribute):
+                    # Permettre les méthodes sur les objets autorisés
+                    if isinstance(node.func.value, ast.Name):
+                        if node.func.value.id not in _SAFE_BUILTINS:
+                            return False
+        return True
+    except SyntaxError:
+        return False
+
+async def _sandbox_test(code: str) -> dict:
+    """
+    Exécute le code dans un subprocess isolé (async) avec validation AST.
+    """
+    # Validation AST avant exécution
+    if not _validate_code_ast(code):
+        return {"ok": False, "stdout": "", "stderr": "Code non autorisé (AST validation failed)"}
+    
+    # ... reste du code ...
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 

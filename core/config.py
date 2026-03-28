@@ -1,11 +1,12 @@
 # neron_core/config.py
 # Loader de configuration — neron.yaml (priorité) + .env (fallback)
-# v2.1.0
+# v2.1.0 - Security enhanced
 
 from __future__ import annotations
 
 import logging
 import os
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -14,13 +15,37 @@ try:
 except ImportError:
     yaml = None  # type: ignore[assignment]
 
+try:
+    from cryptography.fernet import Fernet
+    _cipher = Fernet(os.getenv("NERON_CIPHER_KEY", "default_key_not_secure").encode())
+except ImportError:
+    Fernet = None
+    _cipher = None
+
 logger = logging.getLogger(__name__)
 
 NERON_DIR = Path(os.getenv("NERON_DIR", Path(__file__).parent.parent))
 YAML_PATH = NERON_DIR / "neron.yaml"
 
-# Niveaux de log valides — utilisé pour valider LOG_LEVEL
-_VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+def _decrypt_secret(encrypted_value: str) -> str:
+    """Déchiffre une valeur secrète avec Fernet."""
+    if not _cipher or not encrypted_value:
+        logger.warning("Cryptography non disponible ou valeur vide — retourne valeur brute")
+        return encrypted_value
+    try:
+        return _cipher.decrypt(encrypted_value.encode()).decode()
+    except Exception as e:
+        logger.error("Erreur déchiffrement: %s", e)
+        return encrypted_value
+
+def _verify_api_key(api_key: str) -> bool:
+    """Vérifie l'API key avec hash SHA256."""
+    expected_hash = os.getenv("NERON_API_KEY_HASH")
+    if not expected_hash:
+        logger.warning("NERON_API_KEY_HASH non défini — accepte toute clé")
+        return True
+    actual_hash = hashlib.sha256(api_key.encode()).hexdigest()
+    return actual_hash == expected_hash
 
 
 def _load_yaml() -> dict:
@@ -59,7 +84,10 @@ _cfg = _load_yaml()
 class Config:
     # ── General ───────────────────────────────────────────────────────────
     VERSION  = _get(_cfg, "neron", "version",   fallback_env="NERON_VERSION",  default="2.1.0")
-    API_KEY  = _get(_cfg, "neron", "api_key",   fallback_env="NERON_API_KEY",  default="changez_moi")
+    
+    # API_KEY sécurisée avec hash SHA256
+    _raw_api_key = _get(_cfg, "neron", "api_key", fallback_env="NERON_API_KEY", default="changez_moi")
+    API_KEY = _raw_api_key if _verify_api_key(_raw_api_key) else None
 
     # FIX: validation du log_level — avertit si valeur invalide (ex: "LOGGER")
     _raw_log_level = str(_get(_cfg, "neron", "log_level", fallback_env="LOG_LEVEL", default="INFO")).upper()
@@ -93,7 +121,7 @@ class Config:
 
     # ── Telegram ──────────────────────────────────────────────────────────
     TELEGRAM_ENABLED      = str(_get(_cfg, "telegram", "enabled",         fallback_env="TELEGRAM_ENABLED",   default=False)).lower() == "true"
-    TELEGRAM_BOT_TOKEN    = _get(_cfg, "telegram", "bot_token",           fallback_env="TELEGRAM_BOT_TOKEN", default="")
+    TELEGRAM_BOT_TOKEN    = _decrypt_secret(_get(_cfg, "telegram", "bot_token",           fallback_env="TELEGRAM_BOT_TOKEN", default=""))
     TELEGRAM_CHAT_ID      = _get(_cfg, "telegram", "chat_id",             fallback_env="TELEGRAM_CHAT_ID",   default="")
     TELEGRAM_NOTIFY_START = str(_get(_cfg, "telegram", "notify_on_start", default=True)).lower() != "false"
 
@@ -102,7 +130,7 @@ class Config:
     WATCHDOG_INTERVAL       = int(_get(_cfg, "watchdog", "check_interval",      fallback_env="WATCHDOG_INTERVAL",       default=30))
     WATCHDOG_MAX_RETRIES    = int(_get(_cfg, "watchdog", "restart_max_retries",                                         default=3))
     WATCHDOG_ALERT_TG       = str(_get(_cfg, "watchdog", "alert_telegram",      default=True)).lower() != "false"
-    WATCHDOG_BOT_TOKEN      = _get(_cfg, "watchdog", "bot_token",               fallback_env="WATCHDOG_BOT_TOKEN",      default="")
+    WATCHDOG_BOT_TOKEN      = _decrypt_secret(_get(_cfg, "watchdog", "bot_token",               fallback_env="WATCHDOG_BOT_TOKEN",      default=""))
     WATCHDOG_CHAT_ID        = _get(_cfg, "watchdog", "chat_id",                 fallback_env="WATCHDOG_CHAT_ID",        default="")
     WATCHDOG_CPU_ALERT      = float(_get(_cfg, "watchdog", "cpu_alert",         fallback_env="WATCHDOG_CPU_ALERT",      default=85))
     WATCHDOG_RAM_ALERT      = float(_get(_cfg, "watchdog", "ram_alert",         fallback_env="WATCHDOG_RAM_ALERT",      default=85))
@@ -122,7 +150,7 @@ class Config:
     # ── Home Assistant ────────────────────────────────────────────────────
     HA_ENABLED  = str(_get(_cfg, "home_assistant", "enabled", fallback_env="HA_ENABLED", default=False)).lower() == "true"
     HA_URL      = _get(_cfg, "home_assistant", "url",   fallback_env="HA_URL",   default="http://homeassistant.local:8123")
-    HA_TOKEN    = _get(_cfg, "home_assistant", "token", fallback_env="HA_TOKEN", default="")
+    HA_TOKEN    = _decrypt_secret(_get(_cfg, "home_assistant", "token", fallback_env="HA_TOKEN", default=""))
     HA_TIMEOUT  = float(_get(_cfg, "home_assistant", "timeout", fallback_env="HA_TIMEOUT", default=10.0))
 
     # ── Code Agent ────────────────────────────────────────────────────────
@@ -133,8 +161,8 @@ class Config:
 
     # ── Twilio ────────────────────────────────────────────────────────────
     TWILIO_ENABLED     = str(_get(_cfg, "twilio", "enabled",     default=False)).lower() == "true"
-    TWILIO_ACCOUNT_SID = _get(_cfg, "twilio", "account_sid",     default="")
-    TWILIO_AUTH_TOKEN  = _get(_cfg, "twilio", "auth_token",      default="")
+    TWILIO_ACCOUNT_SID = _decrypt_secret(_get(_cfg, "twilio", "account_sid",     default=""))
+    TWILIO_AUTH_TOKEN  = _decrypt_secret(_get(_cfg, "twilio", "auth_token",      default=""))
     TWILIO_FROM        = _get(_cfg, "twilio", "from_number",     default="")
     TWILIO_TO          = _get(_cfg, "twilio", "to_number",       default="")
 
