@@ -12,6 +12,7 @@ import httpx
 from core.agents.base_agent import BaseAgent, AgentResult
 from core.world_model.publisher import publish
 from core.config import settings
+from core.utils import normalize_text
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -44,8 +45,8 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
 # ── Helpers de parsing ────────────────────────────────────────────────────────
 
 def _normalize(text: str) -> str:
-    text = unicodedata.normalize("NFD", text.lower().strip())
-    return "".join(c for c in text if unicodedata.category(c) != "Mn")
+    """Legacy function - use core.utils.normalize_text instead"""
+    return normalize_text(text)
 
 
 def _detect_domain(query_norm: str) -> str | None:

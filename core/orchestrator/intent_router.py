@@ -14,6 +14,7 @@ from core.constants import (
     TIME_KEYWORDS,
     WEB_KEYWORDS,
 )
+from core.utils import normalize_text
 
 logger = get_logger(__name__)
 
@@ -37,9 +38,8 @@ class IntentResult:
 
 
 def _normalize(text: str) -> str:
-    """Normalise : minuscules + suppression des accents."""
-    n = unicodedata.normalize("NFD", text.lower().strip())
-    return "".join(c for c in n if unicodedata.category(c) != "Mn")
+    """Legacy function - use core.utils.normalize_text instead"""
+    return normalize_text(text)
 
 
 class IntentRouter:

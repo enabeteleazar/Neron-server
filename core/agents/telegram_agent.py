@@ -20,12 +20,7 @@ from telegram.ext import (
     filters,
 )
 
-from core.constants import CODE_KEYWORDS
-from core.agents.base_agent import get_logger
-from core.world_model.publisher import publish
-from core.agents.watchdog_agent import get_anomalies, get_health_score, get_status
-from core.config import settings
-from core.tools.twilio_tool import call as twilio_call
+from core.utils import normalize_text
 
 logger = get_logger("telegram_agent")
 
@@ -60,8 +55,9 @@ async def unauthorized(update: Update) -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _normalize(text: str) -> str:
-    n = unicodedata.normalize("NFD", text.lower())
-    return "".join(c for c in n if unicodedata.category(c) != "Mn")
+    """Legacy function - use core.utils.normalize_text instead"""
+    from core.utils import normalize_text
+    return normalize_text(text)
 
 async def _post_text(client: httpx.AsyncClient, text: str) -> dict:
     """Envoie une requête /input/text à Néron."""

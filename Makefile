@@ -42,6 +42,8 @@ help:
 	@echo ""
 	@echo "[Diagnostic]"
 	@echo "  make test       -- tester l'API et les agents"
+	@echo "  make quality    -- vérifier qualité du code (lint, type, format)"
+	@echo "  make coverage   -- rapport de couverture des tests"
 	@echo "  make neron      -- afficher la config active"
 	@echo ""
 	@echo "[Intégration]"
@@ -190,6 +192,35 @@ neron:
 	@grep -E "^[a-z_]+:" $(BASE_DIR)/neron.yaml | \
 		grep -v "token\|TOKEN\|key\|KEY\|password\|PASSWORD" | \
 		sed 's/^/  /'
+	@echo ""
+
+quality:
+	@echo ""
+	@echo "  🔍 Vérification qualité du code"
+	@echo ""
+	@echo "── Linting (ruff) ──────────────────────────"
+	@ruff check core/ || echo "  ❌ Erreurs de linting"
+	@echo ""
+	@echo "── Format (black) ──────────────────────────"
+	@black --check --quiet core/ && echo "  ✔ Code formaté" || echo "  ❌ Code mal formaté"
+	@echo ""
+	@echo "── Types (mypy) ────────────────────────────"
+	@mypy core/ --config-file mypy.ini || echo "  ❌ Erreurs de types"
+	@echo ""
+
+coverage:
+	@echo ""
+	@echo "  📊 Couverture des tests"
+	@echo ""
+	@pytest --cov=core --cov-report=term-missing --cov-report=html
+	@echo ""
+	@echo "Rapport HTML: file://$(BASE_DIR)/htmlcov/index.html"
+
+test:
+	@echo ""
+	@echo "  🧪 Tests unitaires"
+	@echo ""
+	@pytest tests/ -v --tb=short
 	@echo ""
 
 version:
