@@ -115,10 +115,6 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception as e:
         await update.message.reply_text(f"❌ Erreur: {e}")
 
-# Autres commandes: /ha_reload, /call, /fix, /review, /status, /workspace, /run
-# → restent identiques à ta version initiale, en utilisant _agents local
-# (j’ai vérifié: pas d’import _agents depuis ailleurs, plus de circular import)
-
 # ── Handler messages texte ────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):

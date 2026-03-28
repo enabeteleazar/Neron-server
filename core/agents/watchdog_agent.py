@@ -1,5 +1,5 @@
-# agents/watchdog_agent.py
-# Neron Core - Watchdog natif v2 avec détecteur d'anomalies
+# core/agents/watchdog_agent.py
+# Neron Core - Watchdog natif v2 avec World Model intégré
 
 from __future__ import annotations
 
@@ -9,11 +9,10 @@ import logging
 import os
 import sqlite3
 import time
-
 from collections import Counter, defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 import psutil
 from telegram import Update as TGUpdate
@@ -27,157 +26,53 @@ from core.agents.base_agent import get_logger
 from core.config import settings
 from core.modules.world_model import WorldModel
 
-# Instance uniqe du Word Model
-world_model = WorldModel()
-
-# Stockage des agents
-_agents: Dict[str, Any] = {}
-
-# Callback optionnel
-_notify_fn = None
-
-# ==========
-#  SETUP
-# ==========
-
-def set_agents(agents: dict) -> None:
-    global _agents
-    _agents = agents
-
-def set_notify_fn(fn) -> None:
-    global _notify_fn
-    _notify_fn = fn
-
-# ============
-# CHECK AGENT
-# ============
-
-def check_agents():
-    for name, agent in _agents.items():
-        status = "online" if agent else "offline"
-        
-        data = {
-            "status": status,
-            "timestamp": time.time()
-        }
-
-        world_model.update("agents", name, data)
-
-# =============
-#  CHECK SYSTEM
-# =============
-
-def check_system():
-    try:
-        data = {
-            "cpu": psutil.cpu_percent(interval=1),
-            "ram": psutil.virtual_memory().percent,
-            "disk": psutil.disk_usage("/").percent,
-            "timestamp": time.time(),
-        }
-        world_model.update("system", "resources", data)
-    except Exception as e:
-        world_model.update("system", "error", str(e))
-
-
-# ==========
-# ALERT SIMPLE
-# ==========
-
-def check_alert():
-    system = world_model.get_category("system")
-
-    resources = system.get("resources", {})
-
-    if not resources:
-        return
-
-    ram = resources.get("ram", 0)
-
-    if ram > 80:
-        alert = f"RAM usage high: {ram}%"
-        world_model.update("alerts", "ram", {"message": alert, "timestamp": time.time()})
-        if _notify_fn:
-            asyncio.create_task(_notify_fn(alert, "warning", key="ram_alert"))      
-
-    cpu = resources.get("cpu", 0)
-
-    if cpu > 80:
-        alert = f"CPU usage high: {cpu}%"
-        world_model.update("alerts", "cpu", {"message": alert, "timestamp": time.time()})
-        if _notify_fn:
-            asyncio.create_task(_notify_fn(alert, "warning", key="cpu_alert"))
-
-
-# ==========
-# LOOP PRINCIPALE
-# ==========
-
-async def watchdog_loop():
-    while True:
-        try:
-            check_agents()
-            check_system()
-            check_alert()
-            await asyncio.sleep(60)
-        
-        except Exception as e:
-            logger.error("Error in watchdog loop: %s", e)
-            print(f"[WATCHDOG ERROR] {e}")
-
-        await asyncio.sleep(10)
-
-# ==========
-# START
-# ==========
-
-async def start_watchdog():
-    logger.info("Starting watchdog loop...")
-    asyncio.create_task(watchdog_loop())
-
-
-
-
 logger = get_logger("watchdog_agent")
+
+# ── Instance World Model ──────────────────────────────────────────────────────
+# Instance unique partagée avec app.py via l'import
 world_model = WorldModel()
-_agents = {}
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
-CHECK_INTERVAL  = settings.WATCHDOG_INTERVAL
-CPU_ALERT_PCT   = settings.WATCHDOG_CPU_ALERT
-RAM_ALERT_PCT   = settings.WATCHDOG_RAM_ALERT
-DISK_ALERT_PCT  = settings.WATCHDOG_DISK_ALERT
-ALERT_COOLDOWN  = 300
+CHECK_INTERVAL        = settings.WATCHDOG_INTERVAL
+CPU_ALERT_PCT         = settings.WATCHDOG_CPU_ALERT
+RAM_ALERT_PCT         = settings.WATCHDOG_RAM_ALERT
+DISK_ALERT_PCT        = settings.WATCHDOG_DISK_ALERT
+CPU_TEMP_ALERT_C      = settings.WATCHDOG_CPU_TEMP_ALERT
+ALERT_COOLDOWN        = 300
+RAM_PROCESS_ALERT_MB  = 500
+OLLAMA_SILENT_MINUTES = 10
+NERON_SILENT_HOURS    = 24
+CPU_HIGH_CONSECUTIVE  = 3
+AUTO_RESTART_WINDOW   = 300
+AUTO_RESTART_THRESHOLD = 3
 
 DB_PATH            = str(settings.MEMORY_DB_PATH)
 WATCHDOG_BOT_TOKEN = settings.WATCHDOG_BOT_TOKEN
 WATCHDOG_CHAT_ID   = settings.WATCHDOG_CHAT_ID
-
-RAM_PROCESS_ALERT_MB  = 500
-CPU_TEMP_ALERT_C      = settings.WATCHDOG_CPU_TEMP_ALERT
-OLLAMA_SILENT_MINUTES = 10
-NERON_SILENT_HOURS    = 24
-CPU_HIGH_CONSECUTIVE  = 3
-# FIX: AUTO_RESTART_WINDOW déclaré une seule fois
-AUTO_RESTART_WINDOW   = 300
-AUTO_RESTART_THRESHOLD = 3
+WATCHDOG_ALLOWED   = set(settings.WATCHDOG_CHAT_ID.split(","))
 
 # ── État global ───────────────────────────────────────────────────────────────
 
-_agents:            dict                  = {}
-_notify_fn                                = None
-_watchdog_bot_app:  TGApplication | None  = None
-_task:              asyncio.Task | None   = None
-_last_alert:        dict                  = {}
-_alerted_anomalies: set                   = set()
-_agent_failures:    dict                  = {}
-_pending_confirm:   dict                  = {}
-_last_ollama_ok:    float                 = 0.0
-_last_conversation: float                 = 0.0
-_cpu_high_count:    int                   = 0
-_mute_until:        float                 = 0.0
-_start_time:        float                 = time.monotonic()
+_agents:            dict                 = {}
+_notify_fn                               = None
+_watchdog_bot_app:  TGApplication | None = None
+_task:              asyncio.Task | None  = None
+_last_alert:        dict                 = {}
+_alerted_anomalies: set                  = set()
+_agent_failures:    dict                 = {}
+_pending_confirm:   dict                 = {}
+_mute_until:        float                = 0.0
+_start_time:        float                = time.monotonic()
+_last_conversation: float                = 0.0
+
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
+
+def setup(agents: dict, notify_fn) -> None:
+    global _agents, _notify_fn
+    _agents    = agents
+    _notify_fn = notify_fn
 
 
 # ── DB Events ─────────────────────────────────────────────────────────────────
@@ -193,7 +88,7 @@ def get_db():
 
 
 def log_event(
-    type_: str,
+    type_:   str,
     service: str | None  = None,
     message: str | None  = None,
     data:    dict | None = None,
@@ -232,20 +127,11 @@ def read_events(days: int = 7) -> List[Dict]:
         return []
 
 
-# ── Setup ─────────────────────────────────────────────────────────────────────
-
-def setup(agents: dict, notify_fn) -> None:
-    global _agents, _notify_fn
-    _agents    = agents
-    _notify_fn = notify_fn
-
-
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 async def _notify(msg: str, level: str = "warning", key: str | None = None) -> None:
-    # FIX: _mute_until vérifié — la commande /mute est maintenant effective
     if _mute_until > time.monotonic():
-        logger.debug("Notification muette (mute actif) : %s", msg[:60])
+        logger.debug("Notification muette : %s", msg[:60])
         return
 
     if key:
@@ -274,7 +160,138 @@ async def _notify(msg: str, level: str = "warning", key: str | None = None) -> N
             logger.error("Erreur notification fallback : %s", e)
 
 
-# ── Checks système ────────────────────────────────────────────────────────────
+# ── Checks World Model ────────────────────────────────────────────────────────
+
+def check_system() -> None:
+    """Collecte les métriques système et les injecte dans le World Model."""
+    try:
+        cpu  = psutil.cpu_percent(interval=1)
+        ram  = psutil.virtual_memory().percent
+        disk = psutil.disk_usage("/").percent
+        proc = psutil.Process(os.getpid())
+
+        data = {
+            "cpu":        round(cpu, 1),
+            "ram":        round(ram, 1),
+            "disk":       round(disk, 1),
+            "proc_ram_mb": round(proc.memory_info().rss / 1024 / 1024),
+            "timestamp":  time.time(),
+        }
+        world_model.update("system", "resources", data)
+        log_event("check", message="system_stats", data=data)
+    except Exception as e:
+        logger.error("check_system error : %s", e)
+        world_model.update("system", "error", str(e))
+
+
+def check_agents() -> None:
+    """Met à jour l'état de chaque agent dans le World Model."""
+    for name, agent in _agents.items():
+        status = "online" if agent is not None else "offline"
+        world_model.update("agents", name, {
+            "status":    status,
+            "timestamp": time.time(),
+        })
+
+
+async def check_ollama() -> None:
+    """Vérifie la connectivité Ollama et met à jour le World Model."""
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r  = await client.get(f"{settings.OLLAMA_HOST}/api/tags")
+            ok = r.status_code == 200
+    except Exception:
+        ok = False
+
+    world_model.update("modules", "ollama", {
+        "status":    "online" if ok else "offline",
+        "timestamp": time.time(),
+    })
+
+    if not ok:
+        await _notify("🔴 Ollama inaccessible", "alert", key="ollama_offline")
+
+
+async def check_alerts() -> None:
+    """Génère des alertes si les seuils sont dépassés."""
+    resources = world_model.get_category("system").get("resources", {})
+    if not resources:
+        return
+
+    cpu  = resources.get("cpu",  0)
+    ram  = resources.get("ram",  0)
+    disk = resources.get("disk", 0)
+
+    if cpu > CPU_ALERT_PCT:
+        alert = f"⚠️ CPU élevé : {cpu}%"
+        world_model.update("alerts", "cpu", {"message": alert, "timestamp": time.time()})
+        await _notify(alert, "warning", key="cpu")
+        log_event("instability", service="system", message=f"CPU élevé {cpu}%")
+
+    if ram > RAM_ALERT_PCT:
+        alert = f"⚠️ RAM élevée : {ram}%"
+        world_model.update("alerts", "ram", {"message": alert, "timestamp": time.time()})
+        await _notify(alert, "warning", key="ram")
+        log_event("instability", service="system", message=f"RAM élevée {ram}%")
+
+    if disk > DISK_ALERT_PCT:
+        alert = f"🔴 Disque plein : {disk}%"
+        world_model.update("alerts", "disk", {"message": alert, "timestamp": time.time()})
+        await _notify(alert, "alert", key="disk")
+        log_event("instability", service="system", message=f"Disque plein {disk}%")
+
+
+# ── Check agents connectivité (LLM) ──────────────────────────────────────────
+
+async def _check_agents() -> List[str]:
+    """Vérifie la connectivité des agents et auto-restart si nécessaire."""
+    issues = []
+    checks = {"llm": ("LLM (Ollama)", "check_connection")}
+
+    for key, (label, method) in checks.items():
+        if key not in _agents:
+            continue
+        try:
+            ok = await getattr(_agents[key], method)()
+            status = "online" if ok else "offline"
+            world_model.update("agents", key, {"status": status, "timestamp": time.time()})
+            if not ok:
+                issues.append(label)
+                log_event("crash", service=label, message=f"{label} inaccessible")
+        except Exception as e:
+            issues.append(label)
+            log_event("crash", service=label, message=str(e))
+
+    if issues:
+        await _notify("🔴 Agents en erreur : " + ", ".join(issues), "alert",
+                      key="agents_" + "_".join(issues))
+
+    for issue in issues:
+        key = issue.split()[0].lower()
+        now = time.monotonic()
+        _agent_failures.setdefault(key, [])
+        _agent_failures[key].append(now)
+        _agent_failures[key] = [t for t in _agent_failures[key] if now - t < AUTO_RESTART_WINDOW]
+        if len(_agent_failures[key]) >= AUTO_RESTART_THRESHOLD:
+            agent = _agents.get(key)
+            if agent:
+                logger.warning("Auto-restart %s", key)
+                try:
+                    ok = (await agent.reload() if asyncio.iscoroutinefunction(agent.reload)
+                          else agent.reload())
+                    status = "✅ réussi" if ok else "⚠️ incertain"
+                    log_event("recovery", service=key, message=f"auto-restart {status}")
+                    await _notify(f"🔄 Auto-restart {key} — {status}", "info",
+                                  key=f"auto_restart_{key}")
+                except Exception as e:
+                    logger.error("Auto-restart %s échoué : %s", key, e)
+                _agent_failures[key] = []
+
+    return issues
+
+
+# ── Température CPU ───────────────────────────────────────────────────────────
 
 def _get_cpu_temp() -> float:
     try:
@@ -291,93 +308,6 @@ def _get_cpu_temp() -> float:
     return 0.0
 
 
-async def _check_system() -> dict:
-    cpu  = psutil.cpu_percent(interval=1)
-    ram  = psutil.virtual_memory().percent
-    disk = psutil.disk_usage("/").percent
-    proc = psutil.Process(os.getpid())
-    proc_ram = round(proc.memory_info().rss / 1024 / 1024)
-
-    stats = {"cpu": cpu, "ram": ram, "disk": disk, "proc_ram_mb": proc_ram}
-    log_event("check", message="system_stats", data=stats)
-
-    if cpu  > CPU_ALERT_PCT:
-        await _notify(f"⚠️ CPU élevé : {cpu}%",    "warning", key="cpu")
-        log_event("instability", service="system", message=f"CPU élevé {cpu}%")
-    if ram  > RAM_ALERT_PCT:
-        await _notify(f"⚠️ RAM élevée : {ram}%",   "warning", key="ram")
-        log_event("instability", service="system", message=f"RAM élevée {ram}%")
-    if disk > DISK_ALERT_PCT:
-        await _notify(f"🔴 Disque plein : {disk}%", "alert",   key="disk")
-        log_event("instability", service="system", message=f"Disque plein {disk}%")
-
-    return stats
-
-
-async def _check_agents() -> List[str]:
-    issues = []
-    # FIX: STT/TTS retirés des checks — désactivés avec la suppression de NEXUS
-    checks = {
-        "llm": ("LLM (Ollama)", "check_connection"),
-    }
-    for key, (label, method) in checks.items():
-        if key not in _agents:
-            continue
-        try:
-            ok = await getattr(_agents[key], method)()
-            if not ok:
-                issues.append(label)
-                log_event("crash", service=label, message=f"{label} inaccessible")
-        except Exception as e:
-            issues.append(label)
-            log_event("crash", service=label, message=str(e))
-
-    if issues:
-        msg = "🔴 Agents en erreur : " + ", ".join(issues)
-        await _notify(msg, "alert", key="agents_" + "_".join(issues))
-
-    for issue in issues:
-        key = issue.split()[0].lower()
-        now = time.monotonic()
-        _agent_failures.setdefault(key, [])
-        _agent_failures[key].append(now)
-        _agent_failures[key] = [
-            t for t in _agent_failures[key] if now - t < AUTO_RESTART_WINDOW
-        ]
-        if len(_agent_failures[key]) >= AUTO_RESTART_THRESHOLD:
-            agent = _agents.get(key)
-            if agent:
-                logger.warning(
-                    "Auto-restart %s (%d échecs en %ds)",
-                    key, AUTO_RESTART_THRESHOLD, AUTO_RESTART_WINDOW,
-                )
-                try:
-                    ok = (
-                        await agent.reload()
-                        if asyncio.iscoroutinefunction(agent.reload)
-                        else agent.reload()
-                    )
-                    status = "✅ réussi" if ok else "⚠️ incertain"
-                    log_event("recovery", service=key, message=f"auto-restart {status}")
-                    await _notify(
-                        f"🔄 Auto-restart {key} — {status}", "info",
-                        key=f"auto_restart_{key}",
-                    )
-                except Exception as e:
-                    logger.error("Auto-restart %s échoué : %s", key, e)
-                _agent_failures[key] = []
-
-    return issues
-
-    def check_agents():
-        for name, agent in _agents.items():
-            status = "online" if agent else "offline"
-            data = {
-                "status": status,
-                "timestamp": time.time()
-            }
-            world_model.update("agents", name, data)
-            
 # ── Détecteur d'anomalies ─────────────────────────────────────────────────────
 
 class AnomalyDetector:
@@ -385,7 +315,7 @@ class AnomalyDetector:
     def detect_recurring_crash(self, entries: list) -> List[Dict]:
         anomalies  = []
         crashes    = [e for e in entries if e.get("type") == "crash"]
-        by_service = defaultdict(list)
+        by_service: dict = defaultdict(list)
         for c in crashes:
             try:
                 ts = datetime.strptime(c["timestamp"][:19], "%Y-%m-%d %H:%M:%S")
@@ -406,10 +336,8 @@ class AnomalyDetector:
 
     def detect_cascade(self, entries: list) -> List[Dict]:
         anomalies = []
-        crashes   = sorted(
-            [e for e in entries if e.get("type") == "crash"],
-            key=lambda x: x["timestamp"],
-        )
+        crashes   = sorted([e for e in entries if e.get("type") == "crash"],
+                           key=lambda x: x["timestamp"])
         i = 0
         while i < len(crashes):
             window = [crashes[i]]
@@ -423,8 +351,7 @@ class AnomalyDetector:
                 try:
                     tj = datetime.strptime(crashes[j]["timestamp"][:19], "%Y-%m-%d %H:%M:%S")
                     if (tj - t0).total_seconds() <= 60:
-                        window.append(crashes[j])
-                        j += 1
+                        window.append(crashes[j]); j += 1
                     else:
                         break
                 except Exception:
@@ -432,9 +359,9 @@ class AnomalyDetector:
             if len(window) >= 3:
                 services = list({e["service"] for e in window if e.get("service")})
                 anomalies.append({
-                    "type":     "cascade",
+                    "type":    "cascade",
                     "services": services,
-                    "message":  f"Cascade : {len(services)} agents tombés en 60s ({', '.join(services)})",
+                    "message": f"Cascade : {len(services)} agents tombés en 60s ({', '.join(services)})",
                 })
                 i = j
             else:
@@ -461,7 +388,7 @@ class AnomalyDetector:
                         anomalies.append({
                             "type":    "crash_after_restart",
                             "service": service,
-                            "message": f"{service} retombé {round(delta)}s après recovery (instabilité)",
+                            "message": f"{service} retombé {round(delta)}s après recovery",
                         })
                 except Exception:
                     continue
@@ -470,7 +397,7 @@ class AnomalyDetector:
     def detect_increasing_frequency(self, entries: list) -> List[Dict]:
         anomalies  = []
         crashes    = [e for e in entries if e.get("type") == "crash"]
-        by_service = defaultdict(list)
+        by_service: dict = defaultdict(list)
         for c in crashes:
             try:
                 ts = datetime.strptime(c["timestamp"][:19], "%Y-%m-%d %H:%M:%S")
@@ -481,10 +408,8 @@ class AnomalyDetector:
             if len(timestamps) < 4:
                 continue
             timestamps.sort()
-            intervals = [
-                (timestamps[i + 1] - timestamps[i]).total_seconds()
-                for i in range(len(timestamps) - 1)
-            ]
+            intervals = [(timestamps[i+1] - timestamps[i]).total_seconds()
+                         for i in range(len(timestamps)-1)]
             if len(intervals) < 3:
                 continue
             mid        = len(intervals) // 2
@@ -494,21 +419,16 @@ class AnomalyDetector:
                 anomalies.append({
                     "type":    "increasing_frequency",
                     "service": service,
-                    "message": (
-                        f"{service} crashe de + en + vite "
-                        f"({avg_first / 60:.1f}min → {avg_second / 60:.1f}min)"
-                    ),
+                    "message": (f"{service} crashe de + en + vite "
+                                f"({avg_first/60:.1f}min → {avg_second/60:.1f}min)"),
                 })
         return anomalies
 
     def detect_memory_leak(self, entries: list) -> List[Dict]:
         anomalies  = []
         checks     = [e for e in entries if e.get("type") == "check"]
-        ram_values = [
-            c.get("data", {}).get("proc_ram_mb", 0)
-            for c in checks
-            if c.get("data", {}).get("proc_ram_mb", 0) > 0
-        ]
+        ram_values = [c.get("data", {}).get("proc_ram_mb", 0)
+                      for c in checks if c.get("data", {}).get("proc_ram_mb", 0) > 0]
         if len(ram_values) < 10:
             return anomalies
         mid        = len(ram_values) // 2
@@ -518,10 +438,7 @@ class AnomalyDetector:
             anomalies.append({
                 "type":    "memory_leak_pattern",
                 "service": "neron_core",
-                "message": (
-                    f"RAM process en hausse "
-                    f"{avg_first:.0f}MB → {avg_second:.0f}MB (possible memory leak)"
-                ),
+                "message": f"RAM process en hausse {avg_first:.0f}MB → {avg_second:.0f}MB",
             })
         return anomalies
 
@@ -530,19 +447,16 @@ class AnomalyDetector:
         manual        = [e for e in entries if e.get("type") == "manual_required"]
         instabilities = [e for e in entries if e.get("type") == "instability"]
         recoveries    = [e for e in entries if e.get("type") == "recovery"]
-
         score  = 100.0
         score -= len(crashes)       * 2
         score -= len(manual)        * 15
         score -= len(instabilities) * 5
         score += len(recoveries)    * 1
         score  = max(0.0, min(100.0, score))
-
         if   score >= 90: level = "🟢 Excellent"
         elif score >= 75: level = "🟡 Bon"
         elif score >= 50: level = "🟠 Dégradé"
         else:             level = "🔴 Critique"
-
         return {
             "score":                round(score, 1),
             "level":                level,
@@ -554,10 +468,8 @@ class AnomalyDetector:
         entries       = read_events(days=days)
         all_anomalies = []
         for detector in [
-            self.detect_recurring_crash,
-            self.detect_cascade,
-            self.detect_crash_after_restart,
-            self.detect_increasing_frequency,
+            self.detect_recurring_crash, self.detect_cascade,
+            self.detect_crash_after_restart, self.detect_increasing_frequency,
             self.detect_memory_leak,
         ]:
             try:
@@ -566,148 +478,61 @@ class AnomalyDetector:
                 logger.error("Détecteur %s : %s", detector.__name__, e)
 
         for anomaly in all_anomalies:
-            key = (
-                f"{anomaly['type']}_{anomaly.get('service','')}"
-                f"_{anomaly.get('message','')[:30]}"
-            )
+            key = f"{anomaly['type']}_{anomaly.get('service','')}_{anomaly.get('message','')[:30]}"
             if key not in _alerted_anomalies:
                 _alerted_anomalies.add(key)
                 logger.warning("Anomalie : %s", anomaly["message"])
                 if notify_fn:
-                    await notify_fn(
-                        f"🔍 <b>Anomalie</b>\n{anomaly['message']}", "warning"
-                    )
+                    await notify_fn(f"🔍 <b>Anomalie</b>\n{anomaly['message']}", "warning")
         return all_anomalies
 
-
-# ── Boucle principale ─────────────────────────────────────────────────────────
 
 _detector = AnomalyDetector()
 
 
-async def _send_daily_report() -> None:
-    if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
-        return
-    try:
-        sys_    = get_status()
-        score   = get_health_score()
-        entries = read_events(days=1)
-        crashes = len([e for e in entries if e.get("type") == "crash"])
-        elapsed = time.monotonic() - _start_time
-        h = int(elapsed // 3600)
-        m = int((elapsed % 3600) // 60)
+# ── Boucle principale ─────────────────────────────────────────────────────────
 
-        await _watchdog_bot_app.bot.send_message(
-            chat_id=WATCHDOG_CHAT_ID,
-            text=(
-                f"📊 <b>Rapport quotidien Néron</b>\n\n"
-                f"{score['level']} — Score: {score['score']}/100\n"
-                f"Uptime: {h}h {m}m\n"
-                f"Crashs 24h: {crashes}\n"
-                f"CPU: {sys_.get('cpu_pct')}% | RAM: {sys_.get('ram_pct')}%\n"
-                f"Process: {sys_.get('process_ram_mb')}MB"
-            ),
-            parse_mode="HTML",
-        )
-        log_event("check", message="rapport_quotidien")
-    except Exception as e:
-        logger.error("Rapport quotidien erreur : %s", e)
-
-
-async def _send_weekly_report() -> None:
-    if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
-        return
-    try:
-        entries      = read_events(days=7)
-        crashes      = [e for e in entries if e.get("type") == "crash"]
-        recoveries   = [e for e in entries if e.get("type") == "recovery"]
-        manuals      = [e for e in entries if e.get("type") == "manual_required"]
-        instab       = [e for e in entries if e.get("type") == "instability"]
-        auto_rst     = [e for e in recoveries if "auto-restart" in e.get("message", "")]
-        score        = get_health_score()
-        elapsed      = time.monotonic() - _start_time
-        days_up      = int(elapsed // 86400)
-        hours_up     = int((elapsed % 86400) // 3600)
-
-        crash_by_agent = {}
-        for e in crashes:
-            svc = e.get("service", "inconnu")
-            crash_by_agent[svc] = crash_by_agent.get(svc, 0) + 1
-        top_crashes = sorted(crash_by_agent.items(), key=lambda x: x[1], reverse=True)
-
-        lines = [
-            "📊 <b>Rapport hebdomadaire Néron</b>",
-            f"Semaine du {(datetime.now() - timedelta(days=7)).strftime('%d/%m')} "
-            f"au {datetime.now().strftime('%d/%m/%Y')}",
-            "",
-            f"{score['level']} <b>Score santé : {score['score']}/100</b>",
-            "",
-            f"⏱ Uptime : {days_up}j {hours_up}h",
-            f"🔴 Crashs : {len(crashes)}",
-            f"✅ Recoveries : {len(recoveries)}",
-            f"🔄 Auto-restarts : {len(auto_rst)}",
-            f"🔧 Interventions manuelles : {len(manuals)}",
-            f"⚠️ Instabilités : {len(instab)}",
-        ]
-
-        if top_crashes:
-            lines += ["", "📋 <b>Agents touchés :</b>"]
-            for agent, count in top_crashes[:3]:
-                lines.append(f"  • {agent} : {count} crash(s)")
-
-        # FIX: comparaison par date au lieu de référence d'objet
-        week_cutoff    = datetime.now() - timedelta(days=7)
-        entries_14     = read_events(days=14)
-        last_week_crashes = len([
-            e for e in entries_14
-            if e.get("type") == "crash"
-            and datetime.strptime(e["timestamp"][:19], "%Y-%m-%d %H:%M:%S") < week_cutoff
-        ])
-        if last_week_crashes > 0:
-            diff  = len(crashes) - last_week_crashes
-            trend = f"📈 +{diff}" if diff > 0 else f"📉 {diff}" if diff < 0 else "➡️ stable"
-            lines += ["", f"📈 Tendance crashs : {trend} vs semaine précédente"]
-
-        lines += ["", "━━━━━━━━━━━━━━━━━━", "Bonne semaine ! 🚀"]
-
-        await _watchdog_bot_app.bot.send_message(
-            chat_id=WATCHDOG_CHAT_ID,
-            text="\n".join(lines),
-            parse_mode="HTML",
-        )
-        log_event("check", message="rapport_hebdomadaire")
-        logger.info("Rapport hebdomadaire envoyé")
-    except Exception as e:
-        logger.error("Rapport hebdomadaire erreur : %s", e)
-
-
-async def _watchdog_loop():
+async def watchdog_loop() -> None:
+    """Boucle principale du watchdog — met à jour le World Model en continu."""
     logger.info("Watchdog démarré — intervalle %ds", CHECK_INTERVAL)
+    await asyncio.sleep(10)
+    cycle = 0
+
     while True:
         try:
             check_system()
             check_agents()
-            check_alert()
+            await check_ollama()
+            await check_alerts()
+            await _check_agents()
+
+            cycle += 1
+            if cycle % 10 == 0:
+                await _detector.run_analysis(_notify_fn)
+
+            now = datetime.now()
+            if now.hour == 8 and now.minute == 0 and now.second < CHECK_INTERVAL:
+                await _send_daily_report()
+                if now.weekday() == 0:
+                    await _send_weekly_report()
+
         except Exception as e:
-            logger.error("Watchdog check error : %s", e)
-            world_model.update("system", "error", str(e))
-        await asyncio.sleep(WATCHDOG_INTERVAL)
+            logger.error("Watchdog loop error : %s", e)
+            world_model.update("system", "watchdog_error", str(e))
+
+        await asyncio.sleep(CHECK_INTERVAL)
+
 
 # ── API publique ──────────────────────────────────────────────────────────────
 
 async def send_watchdog_notification(message: str, level: str = "info") -> None:
-    """
-    Envoie une notification sur le bot watchdog dédié.
-    Utilisé comme notify_fn central pour le scheduler et app.py.
-    Fallback sur _notify_fn si le bot watchdog n'est pas démarré.
-    """
     await _notify(message, level)
 
 
 async def start_watchdog() -> None:
     global _task, _start_time
     _start_time = time.monotonic()
-    _task       = asyncio.create_task(_watchdog_loop())
+    _task       = asyncio.create_task(watchdog_loop())
     logger.info("Watchdog task créée")
 
 
@@ -731,7 +556,6 @@ def get_status() -> dict:
             "ram_used_mb":    round(psutil.virtual_memory().used / 1024 / 1024),
             "disk_pct":       psutil.disk_usage("/").percent,
             "process_ram_mb": round(proc.memory_info().rss / 1024 / 1024),
-            # FIX: elapsed depuis _start_time, pas depuis le boot système
             "uptime_s":       round(time.monotonic() - _start_time),
         }
     except Exception as e:
@@ -739,18 +563,15 @@ def get_status() -> dict:
 
 
 def get_health_score() -> dict:
-    entries = read_events(days=7)
-    return _detector.compute_health_score(entries)
+    return _detector.compute_health_score(read_events(days=7))
 
 
 def get_anomalies(days: int = 7) -> list:
     entries = read_events(days=days)
     results = []
     for detector in [
-        _detector.detect_recurring_crash,
-        _detector.detect_cascade,
-        _detector.detect_crash_after_restart,
-        _detector.detect_increasing_frequency,
+        _detector.detect_recurring_crash, _detector.detect_cascade,
+        _detector.detect_crash_after_restart, _detector.detect_increasing_frequency,
         _detector.detect_memory_leak,
     ]:
         try:
@@ -760,10 +581,88 @@ def get_anomalies(days: int = 7) -> list:
     return results
 
 
+# ── Rapports ──────────────────────────────────────────────────────────────────
+
+async def _send_daily_report() -> None:
+    if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
+        return
+    try:
+        sys_    = get_status()
+        score   = get_health_score()
+        entries = read_events(days=1)
+        crashes = len([e for e in entries if e.get("type") == "crash"])
+        elapsed = time.monotonic() - _start_time
+        h = int(elapsed // 3600)
+        m = int((elapsed % 3600) // 60)
+        await _watchdog_bot_app.bot.send_message(
+            chat_id=WATCHDOG_CHAT_ID,
+            text=(
+                f"📊 <b>Rapport quotidien Néron</b>\n\n"
+                f"{score['level']} — Score: {score['score']}/100\n"
+                f"Uptime: {h}h {m}m\n"
+                f"Crashs 24h: {crashes}\n"
+                f"CPU: {sys_.get('cpu_pct')}% | RAM: {sys_.get('ram_pct')}%\n"
+                f"Process: {sys_.get('process_ram_mb')}MB"
+            ),
+            parse_mode="HTML",
+        )
+        log_event("check", message="rapport_quotidien")
+    except Exception as e:
+        logger.error("Rapport quotidien erreur : %s", e)
+
+
+async def _send_weekly_report() -> None:
+    if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
+        return
+    try:
+        entries    = read_events(days=7)
+        crashes    = [e for e in entries if e.get("type") == "crash"]
+        recoveries = [e for e in entries if e.get("type") == "recovery"]
+        manuals    = [e for e in entries if e.get("type") == "manual_required"]
+        instab     = [e for e in entries if e.get("type") == "instability"]
+        auto_rst   = [e for e in recoveries if "auto-restart" in e.get("message", "")]
+        score      = get_health_score()
+        elapsed    = time.monotonic() - _start_time
+        days_up    = int(elapsed // 86400)
+        hours_up   = int((elapsed % 86400) // 3600)
+
+        lines = [
+            "📊 <b>Rapport hebdomadaire Néron</b>",
+            f"Semaine du {(datetime.now() - timedelta(days=7)).strftime('%d/%m')} "
+            f"au {datetime.now().strftime('%d/%m/%Y')}",
+            "",
+            f"{score['level']} <b>Score : {score['score']}/100</b>",
+            "",
+            f"⏱ Uptime : {days_up}j {hours_up}h",
+            f"🔴 Crashs : {len(crashes)}",
+            f"✅ Recoveries : {len(recoveries)}",
+            f"🔄 Auto-restarts : {len(auto_rst)}",
+            f"🔧 Interventions : {len(manuals)}",
+            f"⚠️ Instabilités : {len(instab)}",
+        ]
+
+        week_cutoff      = datetime.now() - timedelta(days=7)
+        entries_14       = read_events(days=14)
+        last_week_crashes = len([
+            e for e in entries_14
+            if e.get("type") == "crash"
+            and datetime.strptime(e["timestamp"][:19], "%Y-%m-%d %H:%M:%S") < week_cutoff
+        ])
+        if last_week_crashes > 0:
+            diff  = len(crashes) - last_week_crashes
+            trend = f"📈 +{diff}" if diff > 0 else f"📉 {diff}" if diff < 0 else "➡️ stable"
+            lines += ["", f"Tendance crashs : {trend} vs semaine précédente"]
+
+        lines += ["", "━━━━━━━━━━━━━━━━━━", "Bonne semaine ! 🚀"]
+        await _watchdog_bot_app.bot.send_message(
+            chat_id=WATCHDOG_CHAT_ID, text="\n".join(lines), parse_mode="HTML",
+        )
+        log_event("check", message="rapport_hebdomadaire")
+    except Exception as e:
+        logger.error("Rapport hebdomadaire erreur : %s", e)
+
+
 # ── Bot Watchdog ──────────────────────────────────────────────────────────────
-
-WATCHDOG_ALLOWED = set(settings.WATCHDOG_CHAT_ID.split(","))
-
 
 def _wdog_authorized(update) -> bool:
     if not WATCHDOG_ALLOWED or WATCHDOG_ALLOWED == {""}:
@@ -772,24 +671,18 @@ def _wdog_authorized(update) -> bool:
 
 
 async def _wdog_cmd_status(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     try:
         import httpx as _httpx
-
-        sys_   = get_status()
-        score  = get_health_score()
-
-        ok_llm  = await _agents["llm"].check_connection() if "llm" in _agents else False
-        ok_core = True
-
+        sys_  = get_status()
+        score = get_health_score()
+        ok_llm = await _agents["llm"].check_connection() if "llm" in _agents else False
         try:
             async with _httpx.AsyncClient(timeout=3) as c:
-                r         = await c.get("http://localhost:11434/api/tags")
+                r = await c.get(f"{settings.OLLAMA_HOST}/api/tags")
                 ok_ollama = r.status_code == 200
         except Exception:
             ok_ollama = False
-
         try:
             conn = sqlite3.connect(DB_PATH)
             conn.execute("SELECT COUNT(*) FROM memory")
@@ -797,17 +690,14 @@ async def _wdog_cmd_status(update, context) -> None:
             ok_memory = True
         except Exception:
             ok_memory = False
-
         cpu_temp = _get_cpu_temp()
         temp_str = f" | 🌡️ {cpu_temp:.1f}°C" if cpu_temp > 0 else ""
-
-        # FIX: STT/TTS retirés du status — désactivés avec la suppression de NEXUS
         lines = [
             "📊 <b>Néron v2 — Watchdog</b>\n",
-            f"{'✅' if ok_core   else '🔴'} Core",
-            f"{'✅' if ok_ollama else '🔴'} Ollama",
-            f"{'✅' if ok_llm    else '🔴'} LLM",
-            f"{'✅' if ok_memory else '🔴'} Mémoire",
+            f"{'✅' if True       else '🔴'} Core",
+            f"{'✅' if ok_ollama  else '🔴'} Ollama",
+            f"{'✅' if ok_llm     else '🔴'} LLM",
+            f"{'✅' if ok_memory  else '🔴'} Mémoire",
             f"\n🖥 CPU: {sys_.get('cpu_pct')}%{temp_str} | RAM: {sys_.get('ram_pct')}%",
             f"💾 Disque: {sys_.get('disk_pct')}% | Process: {sys_.get('process_ram_mb')}MB",
             f"\n{score['level']} — Score: {score['score']}/100",
@@ -818,8 +708,7 @@ async def _wdog_cmd_status(update, context) -> None:
 
 
 async def _wdog_cmd_score(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     score = get_health_score()
     await update.message.reply_text(
         f"🏥 <b>Score santé</b>\n\n{score['level']} — {score['score']}/100\n"
@@ -829,8 +718,7 @@ async def _wdog_cmd_score(update, context) -> None:
 
 
 async def _wdog_cmd_anomalies(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     anomalies = get_anomalies(days=7)
     if not anomalies:
         await update.message.reply_text("✅ Aucune anomalie")
@@ -841,16 +729,42 @@ async def _wdog_cmd_anomalies(update, context) -> None:
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
+async def _wdog_cmd_worldmodel(update, context) -> None:
+    """Affiche un résumé du World Model."""
+    if not _wdog_authorized(update): return
+    wm   = world_model.get()
+    sys_ = wm.get("system", {}).get("resources", {})
+    agt  = wm.get("agents", {})
+    mod  = wm.get("modules", {})
+    alt  = wm.get("alerts", {})
+
+    lines = ["🌍 <b>World Model</b>\n"]
+    lines.append(f"🖥 CPU: {sys_.get('cpu')}% | RAM: {sys_.get('ram')}% | Disk: {sys_.get('disk')}%")
+    lines.append(f"⚙️ Process RAM: {sys_.get('proc_ram_mb')}MB\n")
+    lines.append("🤖 <b>Agents</b>")
+    for name, data in agt.items():
+        icon = "✅" if data.get("status") == "online" else "🔴"
+        lines.append(f"{icon} {name}")
+    lines.append("\n📦 <b>Modules</b>")
+    for name, data in mod.items():
+        icon = "✅" if data.get("status") == "online" else "🔴"
+        lines.append(f"{icon} {name}")
+    if alt:
+        lines.append("\n⚠️ <b>Alertes actives</b>")
+        for k, v in alt.items():
+            lines.append(f"• {v.get('message', k)}")
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
 async def _wdog_cmd_start(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     await update.message.reply_text(
         "🔍 <b>Néron Watchdog v2</b>\n\n"
-        "Commandes disponibles:\n"
-        "\n📊 <b>Monitoring</b>\n"
+        "📊 <b>Monitoring</b>\n"
         "/status — état complet\n"
         "/score — score de santé 7 jours\n"
         "/anomalies — anomalies détectées\n"
+        "/worldmodel — état du World Model\n"
         "/stats — CPU/RAM 24h\n"
         "/trend — tendance 7j vs 7j précédents\n"
         "/uptime — temps de fonctionnement\n"
@@ -861,74 +775,56 @@ async def _wdog_cmd_start(update, context) -> None:
         "/rapport — rapport quotidien immédiat\n"
         "/hebdo — rapport hebdomadaire immédiat\n"
         "\n🔧 <b>Actions</b>\n"
-        "/reload — recharger tous les agents sans redémarrer\n"
-        "/restart &lt;agent&gt; — recharger un agent (core, llm, memory)\n"
-        "/mute &lt;min&gt; — couper les alertes X minutes\n"
-        "/config [clé] [valeur] — voir/modifier les seuils\n"
-        "/clear — effacer l'historique events\n",
+        "/reload — recharger tous les agents\n"
+        "/restart <agent> — recharger un agent\n"
+        "/mute <min> — couper les alertes\n"
+        "/config [clé] [valeur] — seuils\n"
+        "/clear — effacer l'historique\n",
         parse_mode="HTML",
     )
 
 
 async def _wdog_cmd_uptime(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     elapsed = time.monotonic() - _start_time
-    h   = int(elapsed // 3600)
-    m   = int((elapsed % 3600) // 60)
-    s   = int(elapsed % 60)
+    h, m, s = int(elapsed//3600), int((elapsed%3600)//60), int(elapsed%60)
     sys_ = get_status()
     await update.message.reply_text(
         f"⏱ <b>Uptime</b>\n\nDémarré il y a {h}h {m}m {s}s\n"
         f"Process RAM: {sys_.get('process_ram_mb')}MB\n"
-        f"CPU: {sys_.get('cpu_pct')}% | RAM sys: {sys_.get('ram_pct')}%",
+        f"CPU: {sys_.get('cpu_pct')}% | RAM: {sys_.get('ram_pct')}%",
         parse_mode="HTML",
     )
 
 
 async def _wdog_cmd_history(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     service = context.args[0].lower() if context.args else None
     entries = read_events(days=7)
     if service:
         entries = [e for e in entries if e.get("service", "").lower() == service]
     if not entries:
-        await update.message.reply_text(
-            f"📭 Aucun event{' pour ' + service if service else ''}"
-        )
+        await update.message.reply_text(f"📭 Aucun event{' pour '+service if service else ''}")
         return
     icons = {"crash": "🔴", "recovery": "✅", "instability": "⚠️", "check": "📊"}
-    lines = [f"📋 <b>Historique{' — ' + service if service else ''}</b> ({len(entries)} events 7j)\n"]
+    lines = [f"📋 <b>Historique</b> ({len(entries)} events 7j)\n"]
     for e in entries[-10:]:
         icon = icons.get(e.get("type", ""), "•")
-        ts   = e.get("timestamp", "")[:16]
-        svc  = e.get("service", "") or ""
-        msg  = e.get("message", "")[:40]
-        lines.append(f"{icon} {ts} {svc} {msg}")
+        lines.append(f"{icon} {e.get('timestamp','')[:16]} {e.get('service','') or ''} {e.get('message','')[:40]}")
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
 async def _wdog_cmd_logs(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
-    # FIX: settings.LOG_NERON au lieu du chemin hardcodé
+    if not _wdog_authorized(update): return
     log_path = str(settings.LOGS_DIR / settings.LOG_NERON)
     try:
         n = min(int(context.args[0]) if context.args else 20, 50)
         with open(log_path) as f:
             lines = f.readlines()
-        last = [
-            l.strip() for l in lines[-n:]
-            if any(x in l for x in ["ERROR", "WARNING", "INFO"])
-        ]
+        last = [l.strip() for l in lines[-n:] if any(x in l for x in ["ERROR","WARNING","INFO"])]
         text = "\n".join(last[-20:])
-        if len(text) > 3500:
-            text = "..." + text[-3500:]
-        await update.message.reply_text(
-            f"📄 <b>Logs ({n} lignes)</b>\n\n<pre>{text}</pre>",
-            parse_mode="HTML",
-        )
+        if len(text) > 3500: text = "..." + text[-3500:]
+        await update.message.reply_text(f"📄 <b>Logs ({n} lignes)</b>\n\n<pre>{text}</pre>", parse_mode="HTML")
     except FileNotFoundError:
         await update.message.reply_text("❌ Fichier log introuvable")
     except Exception as e:
@@ -936,37 +832,30 @@ async def _wdog_cmd_logs(update, context) -> None:
 
 
 async def _wdog_cmd_stats(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     import re as _re
     try:
-        entries   = read_events(days=1)
-        checks    = [e for e in entries if e.get("type") == "check"]
+        entries = read_events(days=1)
+        checks  = [e for e in entries if e.get("type") == "check"]
         cpu_vals, ram_vals, labels = [], [], []
         for e in checks[-12:]:
             msg   = e.get("message", "")
             cpu_m = _re.search(r"CPU=([\d.]+)%", msg)
             ram_m = _re.search(r"RAM=([\d.]+)%", msg)
-            ts    = e.get("timestamp", "")[11:16]
             if cpu_m and ram_m:
                 cpu_vals.append(float(cpu_m.group(1)))
                 ram_vals.append(float(ram_m.group(1)))
-                labels.append(ts)
+                labels.append(e.get("timestamp","")[11:16])
         if len(cpu_vals) < 2:
             await update.message.reply_text("📊 Pas encore assez de données")
             return
-
         def bar(val, width=15):
             filled = int(val / 100 * width)
             return "█" * filled + "░" * (width - filled)
-
-        temp_now = _get_cpu_temp()
-        temp_str = f" | 🌡️ {temp_now:.1f}°C" if temp_now > 0 else ""
-        lines    = [f"📊 <b>Stats CPU / RAM (24h){temp_str}</b>\n<pre>"]
+        lines = ["📊 <b>Stats CPU / RAM (24h)</b>\n<pre>"]
         for ts, cpu, ram in zip(labels, cpu_vals, ram_vals):
             lines.append(f"{ts} CPU {bar(cpu)} {cpu:.1f}%")
-            lines.append(f"     RAM {bar(ram)} {ram:.1f}%")
-            lines.append("")
+            lines.append(f"     RAM {bar(ram)} {ram:.1f}%\n")
         lines.append("</pre>")
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
     except Exception as e:
@@ -974,28 +863,19 @@ async def _wdog_cmd_stats(update, context) -> None:
 
 
 async def _wdog_cmd_trend(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     try:
         entries_14 = read_events(days=14)
         now        = datetime.now()
         week_ago   = now - timedelta(days=7)
-        this_week  = [
-            e for e in entries_14
-            if datetime.strptime(e["timestamp"][:19], "%Y-%m-%d %H:%M:%S") >= week_ago
-        ]
-        last_week  = [
-            e for e in entries_14
-            if datetime.strptime(e["timestamp"][:19], "%Y-%m-%d %H:%M:%S") < week_ago
-        ]
-
-        def ct(lst, t):
-            return len([e for e in lst if e.get("type") == t])
-
+        this_week  = [e for e in entries_14
+                      if datetime.strptime(e["timestamp"][:19], "%Y-%m-%d %H:%M:%S") >= week_ago]
+        last_week  = [e for e in entries_14
+                      if datetime.strptime(e["timestamp"][:19], "%Y-%m-%d %H:%M:%S") < week_ago]
+        def ct(lst, t): return len([e for e in lst if e.get("type") == t])
         def ti(a, b):
             d = a - b
             return f"📈 +{d}" if d > 0 else f"📉 {d}" if d < 0 else "➡️ ="
-
         score = get_health_score()
         lines = [
             "📈 <b>Tendance 7j vs 7j précédents</b>\n",
@@ -1010,52 +890,31 @@ async def _wdog_cmd_trend(update, context) -> None:
 
 
 async def _wdog_cmd_rapport(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     await update.message.reply_text("📊 Génération du rapport...")
     await _send_daily_report()
 
 
 async def _wdog_cmd_rapport_hebdo(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     await update.message.reply_text("📊 Génération du rapport hebdomadaire...")
     await _send_weekly_report()
 
 
 async def _wdog_cmd_config(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     import sys as _sys
     mod        = _sys.modules[__name__]
     config_map = {
-        "cpu":      "CPU_ALERT_PCT",
-        "ram":      "RAM_ALERT_PCT",
-        "disk":     "DISK_ALERT_PCT",
-        "procram":  "RAM_PROCESS_ALERT_MB",
-        "ollama":   "OLLAMA_SILENT_MINUTES",
-        "silence":  "NERON_SILENT_HOURS",
-        "interval": "CHECK_INTERVAL",
-        "cooldown": "ALERT_COOLDOWN",
-        "temp":     "CPU_TEMP_ALERT_C",
+        "cpu": "CPU_ALERT_PCT", "ram": "RAM_ALERT_PCT", "disk": "DISK_ALERT_PCT",
+        "procram": "RAM_PROCESS_ALERT_MB", "interval": "CHECK_INTERVAL",
+        "cooldown": "ALERT_COOLDOWN", "temp": "CPU_TEMP_ALERT_C",
     }
     if not context.args:
-        descriptions = {
-            "cpu":      "% CPU système avant alerte",
-            "ram":      "% RAM système avant alerte",
-            "disk":     "% disque avant alerte",
-            "procram":  "MB RAM process Néron avant alerte",
-            "ollama":   "min sans réponse Ollama avant alerte",
-            "silence":  "h sans conversation avant alerte",
-            "interval": "s entre chaque check watchdog",
-            "cooldown": "s minimum entre 2 alertes identiques",
-            "temp":     "°C température CPU avant alerte",
-        }
         lines = ["⚙️ <b>Configuration Watchdog</b>\n"]
-        for k, desc in descriptions.items():
-            val = getattr(mod, config_map[k])
-            lines.append(f"<b>{k}</b> = {val}\n  └ {desc}")
-        lines.append("\n📝 Usage: /config &lt;clé&gt; &lt;valeur&gt;")
+        for k, var in config_map.items():
+            lines.append(f"<b>{k}</b> = {getattr(mod, var, '?')}")
+        lines.append("\n📝 Usage: /config <clé> <valeur>")
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
         return
     if len(context.args) < 2:
@@ -1063,15 +922,12 @@ async def _wdog_cmd_config(update, context) -> None:
         return
     key = context.args[0].lower()
     if key not in config_map:
-        await update.message.reply_text(
-            f"❌ Clé inconnue: {key}\nDisponibles: {', '.join(config_map)}"
-        )
+        await update.message.reply_text(f"❌ Clé inconnue: {key}")
         return
     try:
-        value   = float(context.args[1])
         var     = config_map[key]
         old_val = getattr(mod, var)
-        setattr(mod, var, type(old_val)(value))
+        setattr(mod, var, type(old_val)(float(context.args[1])))
         await update.message.reply_text(
             f"✅ <b>{var}</b>: {old_val} → {getattr(mod, var)}", parse_mode="HTML"
         )
@@ -1080,15 +936,12 @@ async def _wdog_cmd_config(update, context) -> None:
 
 
 async def _wdog_cmd_mute(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     global _mute_until
     if not context.args:
         if _mute_until > time.monotonic():
             rem = int((_mute_until - time.monotonic()) / 60)
-            await update.message.reply_text(
-                f"🔕 Alertes coupées encore {rem} min\n/mute 0 pour réactiver"
-            )
+            await update.message.reply_text(f"🔕 Alertes coupées encore {rem} min\n/mute 0 pour réactiver")
         else:
             await update.message.reply_text("🔔 Alertes actives\nUsage: /mute <minutes>")
         return
@@ -1106,23 +959,17 @@ async def _wdog_cmd_mute(update, context) -> None:
 
 
 async def _wdog_cmd_clear(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     chat_id = str(update.message.chat_id)
-    _pending_confirm[chat_id] = {
-        "action":  "clear_events",
-        "expires": time.monotonic() + 30,
-    }
+    _pending_confirm[chat_id] = {"action": "clear_events", "expires": time.monotonic() + 30}
     await update.message.reply_text(
-        "⚠️ <b>Effacer tous les events ?</b>\n\nIrréversible.\n"
-        "/confirm | /cancel\n<i>(expire 30s)</i>",
+        "⚠️ <b>Effacer tous les events ?</b>\n\nIrréversible.\n/confirm | /cancel\n<i>(expire 30s)</i>",
         parse_mode="HTML",
     )
 
 
 async def _wdog_cmd_cancel(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     chat_id = str(update.message.chat_id)
     if chat_id in _pending_confirm:
         del _pending_confirm[chat_id]
@@ -1132,8 +979,7 @@ async def _wdog_cmd_cancel(update, context) -> None:
 
 
 async def _wdog_cmd_confirm(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     chat_id = str(update.message.chat_id)
     pending = _pending_confirm.get(chat_id)
     if not pending:
@@ -1141,26 +987,21 @@ async def _wdog_cmd_confirm(update, context) -> None:
         return
     if time.monotonic() > pending["expires"]:
         del _pending_confirm[chat_id]
-        await update.message.reply_text("⏰ Confirmation expirée. Recommencez.")
+        await update.message.reply_text("⏰ Confirmation expirée.")
         return
     action = pending.pop("action")
     del _pending_confirm[chat_id]
-
     if action == "restart_core":
         await update.message.reply_text("🔄 Redémarrage de Néron Core via systemd...")
         log_event("restart", service="core", message="restart systemd via Telegram watchdog")
         await _notify("🔄 Redémarrage Core déclenché via Telegram", "warning")
-        # FIX: systemctl restart au lieu de os.execv — lifecycle propre via systemd
         proc = await asyncio.create_subprocess_exec(
             "sudo", "systemctl", "restart", "neron",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
-            await update.message.reply_text(
-                f"❌ Échec systemctl restart : {stderr.decode()[:200]}"
-            )
+            await update.message.reply_text(f"❌ Échec : {stderr.decode()[:200]}")
     elif action == "clear_events":
         try:
             conn = sqlite3.connect(DB_PATH)
@@ -1173,65 +1014,43 @@ async def _wdog_cmd_confirm(update, context) -> None:
 
 
 async def _wdog_cmd_reload(update, context) -> None:
-    """Recharge tous les agents sans redémarrer le process."""
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     await update.message.reply_text("🔄 Rechargement des agents en cours...")
-
     results = []
     for name, agent in _agents.items():
+        if agent is None:
+            continue
         try:
-            ok = (
-                await agent.reload()
-                if asyncio.iscoroutinefunction(agent.reload)
-                else agent.reload()
-            )
-            status = "✅" if ok else "⚠️"
-            results.append(f"{status} {name}")
+            ok = (await agent.reload() if asyncio.iscoroutinefunction(agent.reload)
+                  else agent.reload())
+            results.append(f"{'✅' if ok else '⚠️'} {name}")
             log_event("recovery", service=name, message="reload via /reload watchdog")
         except Exception as e:
             results.append(f"❌ {name} : {e}")
-            log_event("crash", service=name, message=f"reload échoué: {e}")
-
-    lines = ["🔄 <b>Reload terminé</b>\n"] + results
-    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
-    logger.info("Reload agents terminé : %s", results)
+    await update.message.reply_text("\n".join(["🔄 <b>Reload terminé</b>\n"] + results), parse_mode="HTML")
 
 
 async def _wdog_cmd_restart(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
+    if not _wdog_authorized(update): return
     if not context.args:
-        await update.message.reply_text(
-            "Usage: /restart <agent>\nAgents: core, llm, memory"
-        )
+        await update.message.reply_text("Usage: /restart <agent>\nAgents: core, llm, memory")
         return
     agent_name = context.args[0].lower()
     if agent_name == "core":
         chat_id = str(update.message.chat_id)
-        _pending_confirm[chat_id] = {
-            "action":  "restart_core",
-            "expires": time.monotonic() + 30,
-        }
+        _pending_confirm[chat_id] = {"action": "restart_core", "expires": time.monotonic() + 30}
         await update.message.reply_text(
-            "⚠️ <b>Redémarrage complet de Néron Core</b>\n\n"
-            "/confirm | /cancel\n<i>(expire dans 30s)</i>",
+            "⚠️ <b>Redémarrage complet de Néron Core</b>\n\n/confirm | /cancel\n<i>(expire dans 30s)</i>",
             parse_mode="HTML",
         )
         return
     agent = _agents.get(agent_name)
     if not agent:
-        await update.message.reply_text(
-            f"❌ Agent inconnu: {agent_name}\nDisponibles: core, llm, memory"
-        )
+        await update.message.reply_text(f"❌ Agent inconnu: {agent_name}")
         return
     await update.message.reply_text(f"🔄 Rechargement de {agent_name}...")
     try:
-        ok = (
-            await agent.reload()
-            if asyncio.iscoroutinefunction(agent.reload)
-            else agent.reload()
-        )
+        ok = (await agent.reload() if asyncio.iscoroutinefunction(agent.reload) else agent.reload())
         if ok:
             log_event("recovery", service=agent_name, message="reload manuel via Telegram")
             await update.message.reply_text(f"✅ {agent_name} rechargé avec succès")
@@ -1250,36 +1069,33 @@ async def start_watchdog_bot() -> None:
     if not token:
         logger.warning("WATCHDOG_BOT_TOKEN non défini — bot watchdog désactivé")
         return
-
     _watchdog_bot_app = TGApplication.builder().token(token).build()
-
     for cmd, handler in [
-        ("start",     _wdog_cmd_start),
-        ("help",      _wdog_cmd_start),
-        ("status",    _wdog_cmd_status),
-        ("score",     _wdog_cmd_score),
-        ("anomalies", _wdog_cmd_anomalies),
-        ("reload",    _wdog_cmd_reload),
-        ("restart",   _wdog_cmd_restart),
-        ("confirm",   _wdog_cmd_confirm),
-        ("cancel",    _wdog_cmd_cancel),
-        ("config",    _wdog_cmd_config),
-        ("mute",      _wdog_cmd_mute),
-        ("clear",     _wdog_cmd_clear),
-        ("uptime",    _wdog_cmd_uptime),
-        ("logs",      _wdog_cmd_logs),
-        ("stats",     _wdog_cmd_stats),
-        ("trend",     _wdog_cmd_trend),
-        ("rapport",   _wdog_cmd_rapport),
-        ("hebdo",     _wdog_cmd_rapport_hebdo),
-        ("history",   _wdog_cmd_history),
+        ("start",      _wdog_cmd_start),
+        ("help",       _wdog_cmd_start),
+        ("status",     _wdog_cmd_status),
+        ("score",      _wdog_cmd_score),
+        ("anomalies",  _wdog_cmd_anomalies),
+        ("worldmodel", _wdog_cmd_worldmodel),
+        ("reload",     _wdog_cmd_reload),
+        ("restart",    _wdog_cmd_restart),
+        ("confirm",    _wdog_cmd_confirm),
+        ("cancel",     _wdog_cmd_cancel),
+        ("config",     _wdog_cmd_config),
+        ("mute",       _wdog_cmd_mute),
+        ("clear",      _wdog_cmd_clear),
+        ("uptime",     _wdog_cmd_uptime),
+        ("logs",       _wdog_cmd_logs),
+        ("stats",      _wdog_cmd_stats),
+        ("trend",      _wdog_cmd_trend),
+        ("rapport",    _wdog_cmd_rapport),
+        ("hebdo",      _wdog_cmd_rapport_hebdo),
+        ("history",    _wdog_cmd_history),
     ]:
         _watchdog_bot_app.add_handler(TGCommandHandler(cmd, handler))
-
     await _watchdog_bot_app.initialize()
     await _watchdog_bot_app.start()
     await _watchdog_bot_app.updater.start_polling()
-
     if WATCHDOG_CHAT_ID:
         try:
             await _watchdog_bot_app.bot.send_message(
@@ -1289,20 +1105,16 @@ async def start_watchdog_bot() -> None:
             )
         except Exception:
             pass
-
     logger.info("Bot Watchdog démarré")
 
 
 async def stop_watchdog_bot() -> None:
     global _watchdog_bot_app
-    if not _watchdog_bot_app:
-        return
+    if not _watchdog_bot_app: return
     try:
         if WATCHDOG_CHAT_ID:
             await _watchdog_bot_app.bot.send_message(
-                chat_id=WATCHDOG_CHAT_ID,
-                text="🔴 <b>Néron v2 arrêté</b>",
-                parse_mode="HTML",
+                chat_id=WATCHDOG_CHAT_ID, text="🔴 <b>Néron v2 arrêté</b>", parse_mode="HTML",
             )
     except Exception:
         pass
@@ -1315,32 +1127,3 @@ async def stop_watchdog_bot() -> None:
         logger.error("Erreur stop_watchdog_bot : %s", e)
     finally:
         _watchdog_bot_app = None
-
-WATCHDOG_INTERVAL = 10  # secondes entre chaque check
-CPU_ALERT_PCT = 90.0   # % CPU système avant alerte
-RAM_ALERT_PCT = 90.0   # % RAM système avant alerte
-DISK_ALERT_PCT = 90.0  # % disque avant alerte
-RAM_PROCESS_ALERT_MB = 500.0  # MB RAM process Néron avant alerte
-OLLAMA_SILENT_MINUTES = 5  # minutes sans réponse Ollama avant alerte
-NERON_SILENT_HOURS = 4      # heures sans conversation avant alerte
-ALERT_COOLDOWN = 3600      # secondes minimum entre 2 alertes identiques
-CPU_TEMP_ALERT_C = 85.0    # °C température CPU avant alerte      
-
-async def watchdog_loop() -> None:
-    logger.info("Watchdog démarré — intervalle %ds", WATCHDOG_INTERVAL)
-    await asyncio.sleep(10)
-    cycle = 0
-
-    while True:
-        try:
-            check_agents()  # update l'etat des agents dans WM
-            check_system()  # update le status système dans WM
-            check_ollama()  # update le status d'Ollama dans WM
-            check_alerts()  # envoie les alertes si seuils dépassés
-        except Exception as e:
-            # on logue l'erreur mais on continue le loop pour ne pas perdre les alertes suivantes
-            logger.error("Watchdog loop error : %s", e)
-            world_model.update("system", "watchdog_error", str(e))
-        await asyncio.sleep(WATCHDOG_INTERVAL)  # petit sleep pour laisser le temps aux checks de mettre à jour le WM
-
-
