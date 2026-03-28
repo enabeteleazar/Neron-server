@@ -28,7 +28,7 @@ CODE_KEYWORDS: list[str] = [
     "inspecte le fichier",
     "qualité du code", "qualite du code",
     # Lecture
-    "lis le fichier", "montre le code", "affiche le fichier",
+    "lis le fichier", "montre le code", "affiche le fichier", "liste",
     # Revue / rollback
     "self review", "auto review", "revue de code",
     "passe en revue", "rollback", "restaure le fichier",

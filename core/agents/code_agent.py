@@ -243,6 +243,8 @@ class CodeAgent(BaseAgent):
                 return await self._analyze(path, start)
             elif action == "read":
                 return await self._read(path, start)
+            elif action == "list_workspace":
+                return await self._list_workspace(start)
             elif action == "self_review":
                 return await self._self_review(start)
             elif action == "rollback":
@@ -411,6 +413,45 @@ class CodeAgent(BaseAgent):
             latency_ms=self._elapsed_ms(start),
         )
 
+    async def _list_workspace(self, start: float) -> AgentResult:
+        """Liste tous les fichiers du workspace."""
+        try:
+            if not _WORKSPACE.exists():
+                return self._failure(
+                    f"Workspace introuvable : {_WORKSPACE}",
+                    latency_ms=self._elapsed_ms(start),
+                )
+
+            files = []
+            for item in sorted(_WORKSPACE.rglob("*")):
+                if item.is_file() and not any(excl in item.parts for excl in _EXCLUDE_DIRS):
+                    try:
+                        rel_path = item.relative_to(_WORKSPACE)
+                        size = item.stat().st_size
+                        files.append(f"{rel_path} ({size} bytes)")
+                    except Exception:
+                        files.append(str(item.relative_to(_WORKSPACE)))
+
+            if not files:
+                return self._success(
+                    f"📁 **Workspace vide**\n\nAucun fichier trouvé dans {_WORKSPACE}",
+                    latency_ms=self._elapsed_ms(start),
+                )
+
+            content = "\n".join(f"📄 {f}" for f in files[:100])  # Limite à 100 fichiers
+            if len(files) > 100:
+                content += f"\n\n... et {len(files) - 100} autres fichiers"
+
+            return self._success(
+                f"📁 **Workspace : {_WORKSPACE}**\n\n{content}",
+                latency_ms=self._elapsed_ms(start),
+            )
+        except Exception as e:
+            return self._failure(
+                f"Erreur listage workspace : {e}",
+                latency_ms=self._elapsed_ms(start),
+            )
+
     async def _self_review(self, start: float) -> AgentResult:
         """
         Passe en revue tous les fichiers Python de Néron.
@@ -517,6 +558,8 @@ class CodeAgent(BaseAgent):
             return "rollback"
         if any(w in q for w in ("lis le fichier", "montre le fichier", "affiche le fichier")):
             return "read"
+        if any(w in q for w in ("liste", "workspace", "répertoire", "dossier")):
+            return "list_workspace"
         return "generate"
 
     async def _write_code(self, path: str, code: str) -> dict:
