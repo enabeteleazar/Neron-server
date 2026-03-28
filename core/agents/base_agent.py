@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -18,7 +19,6 @@ from typing import Any, Dict, Literal, Optional
 
 
 class ColorFormatter(logging.Formatter):
-    # FIX: préfixe \033 ajouté — sans lui les codes s'affichaient en texte brut
     COLORS = {
         "DEBUG":    "\033[36m",
         "INFO":     "\033[32m",
@@ -48,12 +48,6 @@ class ColorFormatter(logging.Formatter):
 
 
 def get_logger(name: str, level: int | None = None) -> logging.Logger:
-    """
-    Retourne un logger nommé avec formatter coloré.
-
-    FIX: niveau de log configurable via le paramètre 'level'
-    ou la variable d'env NERON_LOG_LEVEL (défaut : INFO).
-    """
     logger = logging.getLogger(name)
     if not logger.handlers:
         use_color = (
@@ -65,7 +59,6 @@ def get_logger(name: str, level: int | None = None) -> logging.Logger:
         logger.addHandler(handler)
         logger.propagate = False
 
-        # FIX: niveau défini explicitement — sans ça DEBUG/INFO sont silencieux
         if level is not None:
             logger.setLevel(level)
         else:
@@ -79,7 +72,6 @@ def get_logger(name: str, level: int | None = None) -> logging.Logger:
 # AgentResult
 # ──────────────────────────────────────────────────────────────────────────────
 
-# FIX: confidence typé Literal au lieu de str libre
 ConfidenceLevel = Literal["low", "medium", "high"]
 
 
@@ -102,17 +94,69 @@ class AgentResult:
 
 class BaseAgent(ABC):
     def __init__(self, name: str) -> None:
-        self.name   = name
-        self.logger = get_logger(f"agent.{name}")
+        self.name    = name
+        self.logger  = get_logger(f"agent.{name}")
+        self._running = False
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
 
     async def on_start(self) -> None:
-        """Hook de démarrage — override dans les agents si besoin."""
+        """Hook appelé une fois avant la boucle principale. Override si besoin."""
         pass
+
+    async def on_stop(self) -> None:
+        """Hook appelé à l'arrêt. Override si besoin."""
+        pass
+
+    async def run(self) -> None:
+        """
+        Boucle principale de l'agent.
+        Par défaut : attend indéfiniment (agent passif/event-driven).
+        Override pour les agents avec une boucle active (polling, scheduling…).
+        """
+        await asyncio.Event().wait()
+
+    async def start(self) -> None:
+        """
+        Point d'entrée du process agent.
+        Appelé par app.py via _run_agent_class().
+        Séquence : on_start() → run() → on_stop()
+        """
+        self._running = True
+        self.logger.info("Démarrage de l'agent %s", self.name)
+        try:
+            await self.on_start()
+            await self.run()
+        except asyncio.CancelledError:
+            self.logger.info("Agent %s annulé", self.name)
+        except Exception as e:
+            self.logger.exception("Agent %s — exception non gérée : %s", self.name, e)
+            raise
+        finally:
+            self._running = False
+            try:
+                await self.on_stop()
+            except Exception as e:
+                self.logger.error("Agent %s — erreur on_stop : %s", self.name, e)
+            self.logger.info("Agent %s arrêté", self.name)
+
+    async def reload(self) -> bool:
+        """
+        Rechargement à chaud de l'agent (appelé par le Watchdog).
+        Override dans les agents qui supportent le reload.
+        Par défaut : no-op, retourne True.
+        """
+        self.logger.info("reload() non implémenté pour %s — no-op", self.name)
+        return True
+
+    # ── Helpers execute ───────────────────────────────────────────────────────
 
     @abstractmethod
     async def execute(self, query: str, **kwargs: Any) -> AgentResult:
-        """Point d'entrée principal de l'agent."""
+        """Point d'entrée principal de l'agent pour traiter une requête."""
         ...
+
+    # ── Helpers résultats ─────────────────────────────────────────────────────
 
     def _success(
         self,
@@ -135,7 +179,6 @@ class BaseAgent(ABC):
         error:      str,
         latency_ms: float | None = None,
     ) -> AgentResult:
-        # FIX: log simplifié — le nom de l'agent est déjà dans le nom du logger
         self.logger.error("Echec : %s", error)
         return AgentResult(
             success    = False,
@@ -146,28 +189,25 @@ class BaseAgent(ABC):
         )
 
     def _timer(self) -> float:
-        """Retourne le timestamp de départ pour mesure de latence."""
         return time.monotonic()
 
     def _elapsed_ms(self, start: float) -> float:
-        """Retourne le temps écoulé en millisecondes depuis start."""
         return round((time.monotonic() - start) * 1000, 2)
 
-# ─────────────────────────────────────────────────────────────
-# Ajouter en bas du fichier, après la classe BaseAgent
-# ─────────────────────────────────────────────────────────────
 
-from typing import Dict
+# ──────────────────────────────────────────────────────────────────────────────
+# Registre global des agents
+# ──────────────────────────────────────────────────────────────────────────────
 
-# dictionnaire global de tous les agents instanciés
 _agents: Dict[str, BaseAgent] = {}
 
+
 def register_agent(agent: BaseAgent) -> None:
-    """Enregistre un agent globalement, accessible depuis Telegram et Watchdog"""
-    global _agents
+    """Enregistre un agent globalement, accessible depuis Telegram et Watchdog."""
     _agents[agent.name] = agent
     agent.logger.info("Agent enregistré globalement")
 
+
 def get_agents() -> Dict[str, BaseAgent]:
-    """Retourne tous les agents enregistrés"""
+    """Retourne tous les agents enregistrés."""
     return _agents

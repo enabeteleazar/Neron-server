@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 
 from core.agents.base_agent import BaseAgent, AgentResult
+from core.world_model.publisher import publish
 from core.config import settings
 
 # ── Constantes ────────────────────────────────────────────────────────────────
@@ -187,6 +188,10 @@ class HAAgent(BaseAgent):
         self._ha_states = await self.get_states()
         self.logger.info("HA states chargés : %d entités", len(self._ha_states))
 
+        publish("ha_agent", {
+            "status":         "online" if self._ha_states else "disabled",
+            "entities_count": len(self._ha_states),
+        })
         self._refresh_task = asyncio.create_task(self._refresh_loop())
         self.logger.info(
             "HA refresh loop démarrée — intervalle : %d min", HA_REFRESH_INTERVAL

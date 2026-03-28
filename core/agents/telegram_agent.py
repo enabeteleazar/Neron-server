@@ -22,6 +22,7 @@ from telegram.ext import (
 
 from core.constants import CODE_KEYWORDS
 from core.agents.base_agent import get_logger
+from core.world_model.publisher import publish
 from core.agents.watchdog_agent import get_anomalies, get_health_score, get_status
 from core.config import settings
 from core.tools.twilio_tool import call as twilio_call
@@ -206,6 +207,10 @@ async def start_bot() -> None:
     await _telegram_app.start()
     await _telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("Bot Telegram démarré")
+    publish("telegram_agent", {"status": "online", "bot": "telegram"})
+
+    # Maintient le bot actif jusqu'à un arrêt externe
+    await asyncio.Event().wait()
 
 async def stop_bot() -> None:
     global _telegram_app
@@ -219,4 +224,5 @@ async def stop_bot() -> None:
     except Exception as e:
         logger.error("Erreur stop_bot : %s", e)
     finally:
+
         _telegram_app = None

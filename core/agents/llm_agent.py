@@ -14,6 +14,7 @@ from typing import AsyncIterator
 import httpx
 
 from core.agents.base_agent import BaseAgent, AgentResult
+from core.world_model.publisher import publish
 from core.config import settings
 
 # ── Constantes ────────────────────────────────────────────────────────────────
@@ -129,6 +130,7 @@ class LLMAgent(BaseAgent):
                 data = response.json()
 
         except httpx.TimeoutException:
+            publish("llm_agent", {"status": "offline", "error": "timeout"})
             return self._failure("ollama timeout", latency_ms=self._elapsed_ms(start))
         except httpx.ConnectError:
             return self._failure(
@@ -155,6 +157,14 @@ class LLMAgent(BaseAgent):
         content = data.get("message", {}).get("content", "").strip()
         if not content:
             return self._failure("réponse Ollama vide", latency_ms=latency)
+
+        publish("llm_agent", {
+            "status":     "online",
+            "last_query": query[:80],
+            "latency_ms": round(latency, 1),
+            "model":      OLLAMA_MODEL,
+            "success":    True,
+        })
 
         return self._success(
             content=content,

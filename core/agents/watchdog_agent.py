@@ -25,6 +25,7 @@ from telegram.ext import (
 from core.agents.base_agent import get_logger
 from core.config import settings
 from core.modules.world_model import WorldModel
+from core.world_model.publisher import publish
 
 logger = get_logger("watchdog_agent")
 
@@ -179,6 +180,13 @@ def check_system() -> None:
         }
         world_model.update("system", "resources", data)
         log_event("check", message="system_stats", data=data)
+        publish("watchdog", {
+            "status":      "online",
+            "cpu":         data["cpu"],
+            "ram":         data["ram"],
+            "disk":        data["disk"],
+            "proc_ram_mb": data["proc_ram_mb"],
+        })
     except Exception as e:
         logger.error("check_system error : %s", e)
         world_model.update("system", "error", str(e))
@@ -213,6 +221,8 @@ async def check_ollama() -> None:
         await _notify("🔴 Ollama inaccessible", "alert", key="ollama_offline")
 
 
+#  --  ALERT --
+
 async def check_alerts() -> None:
     """Génère des alertes si les seuils sont dépassés."""
     resources = world_model.get_category("system").get("resources", {})
@@ -241,6 +251,19 @@ async def check_alerts() -> None:
         await _notify(alert, "alert", key="disk")
         log_event("instability", service="system", message=f"Disque plein {disk}%")
 
+#  --  Boucle Async Watchdog --
+WATCHDOG_INTERVAL = settings.WATCHDOG_INTERVAL
+
+async def start_watchdog_agent():
+    while True:
+        try:
+            check_system()
+            check_agents()
+            check_alerts()
+        except Exception as e:
+            world_model.update("system", "watchdog_error", str(e))
+
+        await asyncio.sleep(WATCHDOG_INTERVAL)
 
 # ── Check agents connectivité (LLM) ──────────────────────────────────────────
 

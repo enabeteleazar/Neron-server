@@ -5,6 +5,7 @@ from __future__ import annotations
 import httpx
 
 from core.agents.base_agent import BaseAgent, AgentResult
+from core.world_model.publisher import publish
 from core.config import settings
 
 SEARXNG_URL         = settings.SEARXNG_URL
@@ -70,6 +71,12 @@ class WebAgent(BaseAgent):
 
         top     = results[:SEARXNG_MAX_RESULTS]
         content = self._format(query, top)
+
+        publish("web_agent", {
+            "status":        "online" if results else "no_results",
+            "last_query":    query[:80],
+            "sources_count": len(results),
+        })
 
         return self._success(
             content=content,
