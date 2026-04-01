@@ -1,5 +1,4 @@
 # core/agents/telegram_agent.py
-# Neron Core - Bot Telegram intégré (sans port séparé)
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ import asyncio
 import json
 import os
 import time
-import unicodedata
 from pathlib import Path
 
 import httpx
@@ -24,26 +22,26 @@ from core.utils import normalize_text
 
 logger = get_logger("telegram_agent")
 
-# ── Constantes ────────────────────────────────────────────────────────────────
+# ── Config ────────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN   = settings.TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID = settings.TELEGRAM_CHAT_ID
 NERON_CORE_URL   = f"http://localhost:{settings.SERVER_PORT}"
 NERON_API_KEY    = settings.API_KEY
 ALLOWED_CHAT_IDS = set(settings.TELEGRAM_CHAT_ID.split(","))
 
+PIPELINE_MODE = True  # 🔥 active pipeline par défaut
+
 _WORKSPACE = Path(os.getenv("NERON_WORKSPACE", "/mnt/usb-storage/neron/workspace"))
 
-# ── État global ───────────────────────────────────────────────────────────────
 _agents: dict = {}
 _telegram_app: Application | None = None
 
-# ── Gestion des agents ─────────────────────────────────────────────────────────
+# ── Agents ────────────────────────────────────────────────────────────────
 def set_agents(agents: dict) -> None:
-    """Injecte les agents depuis le code principal"""
     global _agents
     _agents = agents
 
-# ── Auth ──────────────────────────────────────────────────────────────────────
+# ── Auth ─────────────────────────────────────────────────────────────────
 def is_authorized(update: Update) -> bool:
     if not ALLOWED_CHAT_IDS or ALLOWED_CHAT_IDS == {""}:
         return True
@@ -51,315 +49,112 @@ def is_authorized(update: Update) -> bool:
 
 async def unauthorized(update: Update) -> None:
     await update.message.reply_text("⛔ Accès non autorisé")
-    logger.warning("Accès refusé: chat_id=%s", update.message.chat_id)
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-def _normalize(text: str) -> str:
-    """Legacy function - use core.utils.normalize_text instead"""
-    from core.utils import normalize_text
-    return normalize_text(text)
-
-async def _post_text(client: httpx.AsyncClient, text: str) -> dict:
-    """Envoie une requête /input/text à Néron."""
+# ── HTTP helper ──────────────────────────────────────────────────────────
+async def _post(client, payload: dict):
     resp = await client.post(
         f"{NERON_CORE_URL}/input/text",
-        json={"text": text},
+        json=payload,
         headers={"X-API-Key": NERON_API_KEY},
     )
-    resp.raise_for_status()  # Lève une exception si le status n'est pas 2xx
+    resp.raise_for_status()
     return resp.json()
 
-# ── Commandes Telegram ─────────────────────────────────────────────────────────
-async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    await update.message.reply_text(
-        "🤖 <b>Néron — Commandes disponibles</b>\n\n"
-        "💬 Conversation: envoyez un message pour parler à Néron\n\n"
-        "🔧 Code:\n"
-        "/fix <fichier.py> — améliore un fichier\n"
-        "/review — auto-review de tout le code\n"
-        "/run <fichier.py> — exécute un script du workspace\n"
-        "/workspace — liste les fichiers du workspace\n\n"
-        "🧠 Mémoire:\n"
-        "/memory — 5 derniers échanges\n\n"
-        "🏠 Home Assistant:\n"
-        "/ha_reload — recharge les entités HA\n\n"
-        "📊 Système:\n"
-        "/status — CPU, RAM, disque, tâches planifiées\n\n"
-        "📞 Téléphonie:\n"
-        "/call [message] — appel vocal via Twilio\n\n"
-        "❓ /help — cette aide",
-        parse_mode="HTML",
-    )
+# ── Commandes Pipeline ───────────────────────────────────────────────────
 
-async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        mem_agent = _agents.get("memory")
-        if not mem_agent:
-            await update.message.reply_text("❌ Agent mémoire non disponible")
-            return
-        entries = mem_agent.retrieve(limit=5)
-        if not entries:
-            await update.message.reply_text("📭 Mémoire vide")
-            return
-        lines = ["🧠 <b>Derniers échanges</b>\n"]
-        for e in reversed(entries):
-            lines.append(f"👤 {e['input'][:60]}")
-            lines.append(f"🤖 {e['response'][:80]}\n")
-        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur: {e}")
-
-async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(
-                f"{NERON_CORE_URL}/system/status",
-                headers={"X-API-Key": NERON_API_KEY},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            response = data.get("response", "❌ Pas de réponse")
-            await update.message.reply_text(f"📊 <b>Status système</b>\n\n{response}", parse_mode="HTML")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur status: {e}")
-
-async def cmd_ha_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            resp = await client.post(
-                f"{NERON_CORE_URL}/ha/reload",
-                headers={"X-API-Key": NERON_API_KEY},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            entities = data.get("entities", 0)
-            await update.message.reply_text(f"🏠 <b>Home Assistant rechargé</b>\n\n{entities} entités mises à jour", parse_mode="HTML")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur HA reload: {e}")
-
-async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        message = " ".join(context.args) if context.args else ""
-        if not message:
-            await update.message.reply_text("📞 Usage: /call [message]\nExemple: /call Rappelle-moi dans 5 minutes")
-            return
-        
-        result = await call(message)
-        if result.get("success"):
-            await update.message.reply_text(f"📞 <b>Appel lancé</b>\n\n{result.get('message', 'Appel en cours...')}", parse_mode="HTML")
-        else:
-            await update.message.reply_text(f"❌ Erreur appel: {result.get('error', 'Erreur inconnue')}")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur appel: {e}")
-
-async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        if not context.args:
-            await update.message.reply_text("🔧 Usage: /fix <fichier.py>\nExemple: /fix mon_script.py")
-            return
-        
-        filename = context.args[0]
-        await update.message.reply_text("🔧 <b>Amélioration en cours...</b>", parse_mode="HTML")
-        
-        # Utiliser l'endpoint text avec un message formaté
-        message = f"Améliore le fichier {filename}"
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            data = await _post_text(client, message)
-            if data.get("error"):
-                response = f"❌ Erreur: {data['error']}"
-            else:
-                response = data.get("response", "❌ Pas de réponse")
-            await update.message.reply_text(f"🔧 <b>Résultat</b>\n\n{response[:4000]}", parse_mode=None)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur fix: {e}")
-
-async def cmd_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        await update.message.reply_text("🔍 <b>Review automatique en cours...</b>", parse_mode="HTML")
-        
-        # Utiliser l'endpoint text avec un message formaté
-        message = "Fais un auto-review de tout le code"
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            data = await _post_text(client, message)
-            if data.get("error"):
-                response = f"❌ Erreur: {data['error']}"
-            else:
-                response = data.get("response", "❌ Pas de réponse")
-            await update.message.reply_text(f"🔍 <b>Review terminé</b>\n\n{response[:4000]}", parse_mode=None)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur review: {e}")
-
-async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        if not context.args:
-            await update.message.reply_text("▶️ Usage: /run <fichier.py>\nExemple: /run test.py")
-            return
-        
-        filename = context.args[0]
-        await update.message.reply_text("▶️ <b>Exécution en cours...</b>", parse_mode="HTML")
-        
-        # Utiliser l'endpoint text avec un message formaté
-        message = f"Exécute le script {filename} du workspace"
-        async with httpx.AsyncClient(timeout=600.0) as client:
-            data = await _post_text(client, message)
-            if data.get("error"):
-                response = f"❌ Erreur: {data['error']}"
-            else:
-                response = data.get("response", "❌ Pas de réponse")
-            await update.message.reply_text(f"▶️ <b>Résultat</b>\n\n{response[:4000]}", parse_mode=None)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur run: {e}")
-
-async def cmd_workspace(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if not is_authorized(update):
-        return await unauthorized(update)
-    try:
-        # Utiliser l'endpoint text avec un message formaté
-        message = "Liste les fichiers du workspace"
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            data = await _post_text(client, message)
-            if data.get("error"):
-                response = f"❌ Erreur: {data['error']}"
-            else:
-                response = data.get("response", "❌ Pas de réponse")
-            await update.message.reply_text(f"📁 <b>Workspace</b>\n\n{response[:4000]}", parse_mode=None)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Erreur workspace: {e}")
-
-# ── Handler messages texte ────────────────────────────────────────────────────
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def cmd_plan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_authorized(update):
         return await unauthorized(update)
 
-    try:
-        import core.agents.watchdog_agent as _wdog_mod
-        _wdog_mod._last_conversation = time.monotonic()
-    except Exception:
-        pass
+    query = " ".join(context.args)
+    if not query:
+        return await update.message.reply_text("Usage: /plan <tâche>")
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        data = await _post(client, {
+            "text": query,
+            "mode": "plan"
+        })
+
+    await update.message.reply_text(data.get("response", "❌"))
+
+async def cmd_autopilot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    query = " ".join(context.args)
+    if not query:
+        return await update.message.reply_text("Usage: /autopilot <tâche>")
+
+    await update.message.reply_text("🤖 Mode autonome lancé...")
+
+    async with httpx.AsyncClient(timeout=600.0) as client:
+        data = await _post(client, {
+            "text": query,
+            "mode": "autopilot"
+        })
+
+    await update.message.reply_text(data.get("response", "❌"))
+
+# ── Handler principal ────────────────────────────────────────────────────
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not is_authorized(update):
+        return await unauthorized(update)
 
     user_message = update.message.text
-    await update.message.chat.send_action("typing")
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
 
-    q = _normalize(user_message)
-    is_code = any(_normalize(kw) in q for kw in CODE_KEYWORDS)
-
     try:
-        if is_code:
-            async with httpx.AsyncClient(timeout=600.0) as client:
-                data = await _post_text(client, user_message)
-                if data.get("error"):
-                    accumulated = f"❌ Erreur: {data['error']}"
-                else:
-                    accumulated = data.get("response", "❌ Pas de réponse")
-                await sent.edit_text(accumulated[:4096], parse_mode=None)
-        else:
-            accumulated = ""
-            last_edit   = ""
-            last_update = time.time()
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                async with client.stream(
-                    "POST",
-                    f"{NERON_CORE_URL}/input/stream",
-                    json={"text": user_message},
-                    headers={"X-API-Key": NERON_API_KEY},
-                ) as resp:
-                    resp.raise_for_status()  # Vérifier le status avant de streamer
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        try:
-                            data = json.loads(line[6:])
-                        except json.JSONDecodeError:
-                            continue
-                        token = data.get("token", "")
-                        done = data.get("done", False)
-                        accumulated += token
-                        now = time.time()
-                        if (now - last_update > 2.0 or done) and accumulated != last_edit:
-                            try:
-                                await sent.edit_text(accumulated or "⏳")
-                                last_edit = accumulated
-                                last_update = now
-                            except Exception:
-                                pass
-                        if done:
-                            break
-            if not accumulated:
-                await sent.edit_text("❌ Pas de réponse")
+        async with httpx.AsyncClient(timeout=300.0) as client:
+
+            payload = {
+                "text": user_message,
+                "mode": "pipeline" if PIPELINE_MODE else "standard"
+            }
+
+            data = await _post(client, payload)
+
+            response = data.get("response", "❌ Pas de réponse")
+
+            await sent.edit_text(response[:4096])
+
     except Exception as e:
         await sent.edit_text(f"❌ Erreur: {e}")
 
-# ── Notifications ─────────────────────────────────────────────────────────────
-async def send_notification(message: str, level: str = "info") -> None:
-    if not _telegram_app or not TELEGRAM_CHAT_ID:
-        return
-    icons = {"info": "ℹ️", "warning": "⚠️", "alert": "🔴"}
-    icon = icons.get(level, "📢")
-    try:
-        await _telegram_app.bot.send_message(
-            chat_id=TELEGRAM_CHAT_ID,
-            text=f"{icon} {message}",
-            parse_mode="HTML",
-        )
-    except Exception as e:
-        logger.error("Erreur notification Telegram : %s", e)
-
-# ── Lifecycle ─────────────────────────────────────────────────────────────────
+# ── Lifecycle ────────────────────────────────────────────────────────────
 async def start_bot() -> None:
     global _telegram_app
+
     if not TELEGRAM_TOKEN:
-        logger.warning("TELEGRAM_BOT_TOKEN manquant — bot désactivé")
+        logger.warning("TOKEN Telegram manquant")
         return
 
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    _telegram_app.add_handler(CommandHandler("help", cmd_help))
-    _telegram_app.add_handler(CommandHandler("memory", cmd_memory))
-    _telegram_app.add_handler(CommandHandler("status", cmd_status))
-    _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
-    _telegram_app.add_handler(CommandHandler("call", cmd_call))
-    _telegram_app.add_handler(CommandHandler("fix", cmd_fix))
-    _telegram_app.add_handler(CommandHandler("review", cmd_review))
-    _telegram_app.add_handler(CommandHandler("run", cmd_run))
-    _telegram_app.add_handler(CommandHandler("workspace", cmd_workspace))
-    _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+    _telegram_app.add_handler(CommandHandler("plan", cmd_plan))
+    _telegram_app.add_handler(CommandHandler("autopilot", cmd_autopilot))
+
+    _telegram_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
     await _telegram_app.initialize()
     await _telegram_app.start()
-    await _telegram_app.updater.start_polling(allowed_updates=None)
-    logger.info("Bot Telegram démarré")
-    publish("telegram_agent", {"status": "online", "bot": "telegram"})
+    await _telegram_app.updater.start_polling()
 
-    # Maintient le bot actif jusqu'à un arrêt externe
+    logger.info("Bot Telegram démarré")
+
     await asyncio.Event().wait()
 
 async def stop_bot() -> None:
     global _telegram_app
+
     if not _telegram_app:
         return
-    try:
-        await _telegram_app.updater.stop()
-        await _telegram_app.stop()
-        await _telegram_app.shutdown()
-        logger.info("Bot Telegram arrêté")
-    except Exception as e:
-        logger.error("Erreur stop_bot : %s", e)
-    finally:
 
-        _telegram_app = None
+    await _telegram_app.updater.stop()
+    await _telegram_app.stop()
+    await _telegram_app.shutdown()
+
+    _telegram_app = None

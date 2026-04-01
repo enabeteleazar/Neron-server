@@ -1,8 +1,7 @@
-# agents/memory_agent.py
-# Neron Core - Memory direct SQLite (sans neron_memory intermédiaire)
+# core/agents/memory_agent.py
+# Néron Core - Memory direct SQLite (avec support planner_tasks)
 
 from __future__ import annotations
-
 import json
 import logging
 import sqlite3
@@ -14,12 +13,9 @@ from core.config import settings
 logger = logging.getLogger("memory_agent")
 
 DB_PATH = str(settings.MEMORY_DB_PATH)
-
-# Limite haute de la table memory (rotation automatique au-delà)
 _MAX_MEMORY_ROWS = int(getattr(settings, "MEMORY_MAX_ROWS", 10_000))
 
-
-# ── Connexion ─────────────────────────────────────────────────────────────────
+# ── Connexion ────────────────────────────────────────────────
 
 @contextmanager
 def get_db():
@@ -31,12 +27,13 @@ def get_db():
         conn.close()
 
 
-# ── Init ──────────────────────────────────────────────────────────────────────
+# ── Init ────────────────────────────────────────────────────
 
 def init_db() -> None:
-    """Initialise la base de données (appelé au démarrage de core)."""
+    """Initialise la base de données et toutes les tables."""
     logger.info("Memory DB init : %s", DB_PATH)
     with get_db() as conn:
+        # Table échanges classiques
         conn.execute("""
             CREATE TABLE IF NOT EXISTS memory (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,9 +43,24 @@ def init_db() -> None:
                 timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_timestamp ON memory(timestamp)"
-        )
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_timestamp ON memory(timestamp)")
+
+        # Table planner tasks
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS planner_tasks (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                name      TEXT NOT NULL,
+                agent     TEXT NOT NULL,
+                payload   TEXT,
+                state     TEXT,
+                result    TEXT,
+                error     TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_timestamp ON planner_tasks(timestamp)")
+
+        # Table events
         conn.execute("""
             CREATE TABLE IF NOT EXISTS events (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,23 +75,23 @@ def init_db() -> None:
     logger.info("Memory DB prête")
 
 
-# ── Agent ─────────────────────────────────────────────────────────────────────
+# ── MemoryAgent ─────────────────────────────────────────────
 
 class MemoryAgent:
-    """Accès direct SQLite — remplace les appels HTTP à neron_memory:8002."""
+    """Accès direct SQLite — remplace les appels HTTP à neron_memory."""
 
     def reload(self) -> bool:
-        """Réinitialise la connexion SQLite."""
+        """Réinitialise la base SQLite."""
         try:
             init_db()
             return True
         except Exception as e:
-            # FIX: exception loggée au lieu d'être silencieuse
             logger.error("Memory reload error : %s", e)
             return False
 
+    # ── Mémoire générale ─────────────────────────────
+
     def store(self, input_text: str, response: str, metadata: dict | None = None) -> int:
-        """Persiste un échange en mémoire. Retourne l'id inséré ou -1."""
         try:
             with get_db() as conn:
                 cursor = conn.execute(
@@ -93,12 +105,11 @@ class MemoryAgent:
             return -1
 
     def retrieve(self, limit: int = 3) -> List[Dict]:
-        """Retourne les N derniers échanges."""
         try:
             with get_db() as conn:
                 rows = conn.execute(
-                    "SELECT id, input, response, metadata, timestamp "
-                    "FROM memory ORDER BY id DESC LIMIT ?",
+                    "SELECT id, input, response, metadata, timestamp FROM memory "
+                    "ORDER BY id DESC LIMIT ?",
                     (limit,),
                 ).fetchall()
                 return [self._row_to_dict(r) for r in rows]
@@ -107,7 +118,6 @@ class MemoryAgent:
             return []
 
     def search(self, query: str, limit: int = 3) -> List[Dict]:
-        """Recherche plein texte dans les échanges."""
         try:
             with get_db() as conn:
                 rows = conn.execute(
@@ -122,28 +132,16 @@ class MemoryAgent:
             return []
 
     def cleanup(self, days: int = 30) -> int:
-        """
-        FIX: méthode manquante — appelée par le scheduler chaque lundi.
-        Supprime les entrées plus anciennes que `days` jours.
-        Applique aussi une rotation si la table dépasse _MAX_MEMORY_ROWS.
-        Retourne le nombre d'entrées supprimées.
-        """
         deleted = 0
         try:
             with get_db() as conn:
-                # Suppression par ancienneté
                 cursor = conn.execute(
-                    "DELETE FROM memory "
-                    "WHERE timestamp < datetime('now', ? )",
+                    "DELETE FROM memory WHERE timestamp < datetime('now', ? )",
                     (f"-{days} days",),
                 )
                 deleted += cursor.rowcount
 
-                # Rotation si dépassement du plafond
-                count = conn.execute(
-                    "SELECT COUNT(*) FROM memory"
-                ).fetchone()[0]
-
+                count = conn.execute("SELECT COUNT(*) FROM memory").fetchone()[0]
                 if count > _MAX_MEMORY_ROWS:
                     overflow = count - _MAX_MEMORY_ROWS
                     cursor = conn.execute(
@@ -152,7 +150,6 @@ class MemoryAgent:
                         (overflow,),
                     )
                     deleted += cursor.rowcount
-
                 conn.commit()
             logger.info("Memory cleanup : %d entrées supprimées", deleted)
         except Exception as e:
@@ -160,15 +157,64 @@ class MemoryAgent:
         return deleted
 
     def count(self) -> int:
-        """Retourne le nombre total d'entrées en mémoire."""
         try:
             with get_db() as conn:
-                return conn.execute(
-                    "SELECT COUNT(*) FROM memory"
-                ).fetchone()[0]
+                return conn.execute("SELECT COUNT(*) FROM memory").fetchone()[0]
         except Exception as e:
             logger.error("Memory count error : %s", e)
             return 0
+
+    # ── Planner tasks ────────────────────────────────
+
+    def store_task(self, task: dict) -> int:
+        """Persiste une tâche du planner."""
+        try:
+            with get_db() as conn:
+                cursor = conn.execute(
+                    "INSERT INTO planner_tasks (name, agent, payload, state, result, error) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        task.get("name"),
+                        task.get("agent"),
+                        json.dumps(task.get("payload", {})),
+                        task.get("state"),
+                        task.get("result"),
+                        task.get("error"),
+                    ),
+                )
+                conn.commit()
+                return cursor.lastrowid
+        except Exception as e:
+            logger.error("Planner store_task error : %s", e)
+            return -1
+
+    def get_tasks_history(self, limit: int = 50) -> List[Dict]:
+        try:
+            with get_db() as conn:
+                rows = conn.execute(
+                    "SELECT * FROM planner_tasks ORDER BY id DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+                return [self._task_row_to_dict(r) for r in rows]
+        except Exception as e:
+            logger.error("Planner get_tasks_history error : %s", e)
+            return []
+
+    def _task_row_to_dict(self, row) -> Dict:
+        try:
+            payload = json.loads(row["payload"]) if row["payload"] else {}
+        except Exception:
+            payload = {}
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "agent": row["agent"],
+            "payload": payload,
+            "state": row["state"],
+            "result": row["result"],
+            "error": row["error"],
+            "timestamp": row["timestamp"]
+        }
 
     def _row_to_dict(self, row) -> Dict:
         try:
@@ -176,9 +222,9 @@ class MemoryAgent:
         except Exception:
             metadata = {}
         return {
-            "id":        row["id"],
-            "input":     row["input"],
-            "response":  row["response"],
-            "metadata":  metadata,
+            "id": row["id"],
+            "input": row["input"],
+            "response": row["response"],
+            "metadata": metadata,
             "timestamp": row["timestamp"],
         }
