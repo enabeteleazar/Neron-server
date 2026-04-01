@@ -15,14 +15,23 @@ try:
 except ImportError:
     yaml = None  # type: ignore[assignment]
 
+logger = logging.getLogger(__name__)
+
 try:
     from cryptography.fernet import Fernet
-    _cipher = Fernet(os.getenv("NERON_CIPHER_KEY", "default_key_not_secure").encode())
+    cipher_key = os.getenv("NERON_CIPHER_KEY", "default_key_not_secure")
+    if cipher_key == "default_key_not_secure":
+        _cipher = None
+    elif cipher_key is None:
+        _cipher = None
+    else:
+        _cipher = Fernet(cipher_key.encode())
 except ImportError:
     Fernet = None
     _cipher = None
-
-logger = logging.getLogger(__name__)
+except Exception:
+    logger.warning("Invalid NERON_CIPHER_KEY, disabling encryption")
+    _cipher = None
 
 NERON_DIR = Path(os.getenv("NERON_DIR", Path(__file__).parent.parent))
 YAML_PATH = NERON_DIR / "neron.yaml"
@@ -32,6 +41,8 @@ def _decrypt_secret(encrypted_value: str) -> str:
     if not _cipher or not encrypted_value:
         logger.warning("Cryptography non disponible ou valeur vide — retourne valeur brute")
         return encrypted_value
+    if encrypted_value is None:
+        return encrypted_value
     try:
         return _cipher.decrypt(encrypted_value.encode()).decode()
     except Exception as e:
@@ -40,6 +51,9 @@ def _decrypt_secret(encrypted_value: str) -> str:
 
 def _verify_api_key(api_key: str) -> bool:
     """Vérifie l'API key avec hash SHA256."""
+    if api_key is None:
+        logger.warning("API key est None — validation échouée")
+        return False
     expected_hash = os.getenv("NERON_API_KEY_HASH")
     if not expected_hash:
         logger.warning("NERON_API_KEY_HASH non défini — accepte toute clé")
@@ -81,13 +95,17 @@ def _get(cfg: dict, *keys: str, fallback_env: str = "", default: Any = None) -> 
 _cfg = _load_yaml()
 
 
+_VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+
 class Config:
     # ── General ───────────────────────────────────────────────────────────
     VERSION  = _get(_cfg, "neron", "version",   fallback_env="NERON_VERSION",  default="2.1.0")
     
     # API_KEY sécurisée avec hash SHA256
     _raw_api_key = _get(_cfg, "neron", "api_key", fallback_env="NERON_API_KEY", default="changez_moi")
-    API_KEY = _raw_api_key if _verify_api_key(_raw_api_key) else None
+    # Désactiver l'API key si elle n'est pas correctement configurée (development mode)
+    # Pour activer: mettre NERON_API_KEY_HASH en variable d'environnement
+    API_KEY = _raw_api_key if _verify_api_key(_raw_api_key) and os.getenv("NERON_API_KEY_HASH") else None
 
     # FIX: validation du log_level — avertit si valeur invalide (ex: "LOGGER")
     _raw_log_level = str(_get(_cfg, "neron", "log_level", fallback_env="LOG_LEVEL", default="INFO")).upper()

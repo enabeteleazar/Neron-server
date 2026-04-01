@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import AsyncIterator
 
@@ -22,6 +23,11 @@ from core.config import settings
 OLLAMA_HOST  = settings.OLLAMA_HOST
 LLM_TIMEOUT  = settings.LLM_TIMEOUT
 OLLAMA_MODEL = settings.OLLAMA_MODEL
+
+# Retry configuration pour gérer les rate limits
+MAX_RETRIES = 3
+RETRY_BACKOFF_BASE = 2  # secondes
+RETRY_BACKOFF_MAX = 30  # secondes max entre retries
 
 _STATIC_SYSTEM_PROMPT = settings.SYSTEM_PROMPT
 
@@ -123,11 +129,32 @@ class LLMAgent(BaseAgent):
                     connect=5.0, read=LLM_TIMEOUT, write=5.0, pool=5.0
                 )
             ) as client:
-                response = await client.post(
-                    f"{OLLAMA_HOST}/api/chat", json=payload
-                )
-                response.raise_for_status()
-                data = response.json()
+                # Retry logic pour gérer les rate limits (HTTP 429)
+                for attempt in range(MAX_RETRIES + 1):
+                    try:
+                        response = await client.post(
+                            f"{OLLAMA_HOST}/api/chat", json=payload
+                        )
+                        response.raise_for_status()
+                        data = response.json()
+                        break  # Success, exit retry loop
+                        
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 429 and attempt < MAX_RETRIES:
+                            # Rate limit - attendre avec backoff exponentiel
+                            backoff_time = min(
+                                RETRY_BACKOFF_BASE ** attempt, 
+                                RETRY_BACKOFF_MAX
+                            )
+                            self.logger.warning(
+                                "Rate limit Ollama (429), retry %d/%d dans %.1fs", 
+                                attempt + 1, MAX_RETRIES, backoff_time
+                            )
+                            await asyncio.sleep(backoff_time)
+                            continue
+                        else:
+                            # Autre erreur HTTP ou dernier retry
+                            raise
 
         except httpx.TimeoutException:
             publish("llm_agent", {"status": "offline", "error": "timeout"})
@@ -197,22 +224,42 @@ class LLMAgent(BaseAgent):
                     connect=5.0, read=LLM_TIMEOUT, write=5.0, pool=5.0
                 )
             ) as client:
-                async with client.stream(
-                    "POST", f"{OLLAMA_HOST}/api/chat", json=payload
-                ) as response:
-                    response.raise_for_status()
-                    async for line in response.aiter_lines():
-                        if not line:
+                # Retry logic pour le streaming aussi
+                for attempt in range(MAX_RETRIES + 1):
+                    try:
+                        async with client.stream(
+                            "POST", f"{OLLAMA_HOST}/api/chat", json=payload
+                        ) as response:
+                            response.raise_for_status()
+                            
+                            async for line in response.aiter_lines():
+                                if not line:
+                                    continue
+                                try:
+                                    data  = json.loads(line)
+                                    token = data.get("message", {}).get("content", "")
+                                    if token:
+                                        yield token
+                                    if data.get("done"):
+                                        return  # Success, exit function
+                                except json.JSONDecodeError:
+                                    continue
+                            break  # Success, exit retry loop
+                            
+                    except httpx.HTTPStatusError as e:
+                        if e.response.status_code == 429 and attempt < MAX_RETRIES:
+                            backoff_time = min(
+                                RETRY_BACKOFF_BASE ** attempt, 
+                                RETRY_BACKOFF_MAX
+                            )
+                            self.logger.warning(
+                                "Stream rate limit Ollama (429), retry %d/%d dans %.1fs", 
+                                attempt + 1, MAX_RETRIES, backoff_time
+                            )
+                            await asyncio.sleep(backoff_time)
                             continue
-                        try:
-                            data  = json.loads(line)
-                            token = data.get("message", {}).get("content", "")
-                            if token:
-                                yield token
-                            if data.get("done"):
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                        else:
+                            raise
 
         except httpx.TimeoutException:
             self.logger.warning("stream : ollama timeout")

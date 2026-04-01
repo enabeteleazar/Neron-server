@@ -1088,6 +1088,9 @@ async def _wdog_cmd_restart(update, context) -> None:
 
 async def start_watchdog_bot() -> None:
     global _watchdog_bot_app
+    if not settings.WATCHDOG_ENABLED:
+        logger.info("Watchdog bot désactivé (watchdog.enabled: false)")
+        return
     token = settings.WATCHDOG_BOT_TOKEN
     if not token:
         logger.warning("WATCHDOG_BOT_TOKEN non défini — bot watchdog désactivé")

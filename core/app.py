@@ -1,9 +1,10 @@
 # core/app.py
-# Néron v2 - Launcher multi-process supervisé
+# Néron v2.1.0 - Launcher multi-process supervisé
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import signal
@@ -11,20 +12,33 @@ import sys
 import time
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from multiprocessing import Process
 from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from core.config import settings
+
 # == Logging ==
+settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
+_log_file = settings.LOGS_DIR / settings.LOG_NERON
+_file_handler = logging.FileHandler(_log_file)
+_file_handler.setLevel(settings.LOG_LEVEL)
+_file_handler.setFormatter(
+    logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+)
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=settings.LOG_LEVEL,
     format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=[logging.StreamHandler(sys.stdout), _file_handler],
 )
 
 logger = logging.getLogger("Néron Launcher")
+
+VERSION = "2.1.0"
 
 # == Configuration ==
 MAX_RESTARTS = 5
@@ -38,9 +52,25 @@ RESTART_CHECK_INTERVAL = 5
 # 🔥 NEW : Pipeline global toggle
 PIPELINE_ENABLED = os.getenv("NERON_PIPELINE", "1") == "1"
 
+# ── Utils ──────────────────────────────────────────────────────────────
+
+def utc_now_iso() -> str:
+    """Retourne la timestamp UTC au format ISO."""
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _personality_available() -> bool:
+    """Vérifie si le module personality est disponible."""
+    try:
+        import personality  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
 
 # == Helpers async ==
 def _run_async(coro_fn: Callable) -> None:
+    """Exécute une coroutine dans sa propre boucle d'événements isolée."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 
@@ -50,14 +80,19 @@ def _run_async(coro_fn: Callable) -> None:
     try:
         loop.run_until_complete(coro_fn())
     except Exception as e:
-        logger.error(f"Error in async function: {e}")
+        logger.error(f"Error in async function: {e}", exc_info=True)
     finally:
         loop.close()
 
 
 def _run_agent_class(agent_class) -> None:
-    agent = agent_class()
-    _run_async(agent.start)
+    """Instancie et démarre un agent BaseAgent."""
+    try:
+        agent = agent_class()
+        _run_async(agent.start)
+    except Exception as e:
+        logger.error(f"Error initializing {agent_class.__name__}: {e}", exc_info=True)
+        raise
 
 
 # == Agent Descriptor ==
@@ -133,6 +168,12 @@ class Supervisor:
     def start_all(self) -> None:
         logger.info("Starting all agents...")
         logger.info(f"Pipeline mode: {'ENABLED' if PIPELINE_ENABLED else 'DISABLED'}")
+        logger.info(json.dumps({
+            "event": "startup",
+            "version": VERSION,
+            "pipeline": PIPELINE_ENABLED,
+            "agents": [a.name for a in self.agents],
+        }))
 
         for agent in self.agents:
             self._spawn(agent)
@@ -221,12 +262,15 @@ class Supervisor:
                     p.kill()
 
         logger.info("All agents stopped.")
+        logger.info(json.dumps({"event": "shutdown", "version": VERSION}))
 
 
 # == Signals ==
 def _install_signal_handlers(supervisor: Supervisor) -> None:
     def handler(sig, frame):
-        logger.info(f"Signal {sig} received")
+        sig_name = signal.Signals(sig).name
+        logger.info(f"Signal {sig_name} ({sig}) received")
+        logger.info(json.dumps({"event": "signal_received", "signal": sig_name}))
         supervisor.stop_all()
         sys.exit(0)
 
@@ -236,8 +280,27 @@ def _install_signal_handlers(supervisor: Supervisor) -> None:
 
 # == Entry point ==
 if __name__ == "__main__":
-    supervisor = Supervisor(AGENTS)
-    _install_signal_handlers(supervisor)
+    try:
+        logger.info(json.dumps({
+            "event": "launcher_start",
+            "version": VERSION,
+            "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "pid": os.getpid(),
+            "timestamp": utc_now_iso(),
+        }))
+        
+        supervisor = Supervisor(AGENTS)
+        _install_signal_handlers(supervisor)
 
-    supervisor.start_all()
-    supervisor.run()
+        supervisor.start_all()
+        supervisor.run()
+    except KeyboardInterrupt:
+        logger.info("Interrupted by user")
+        sys.exit(0)
+    except Exception as e:
+        logger.critical(json.dumps({
+            "event": "launcher_error",
+            "error": str(e),
+            "timestamp": utc_now_iso(),
+        }), exc_info=True)
+        sys.exit(1)
