@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import psutil
-from core.agents.watchdog_agent import get_health_score, get_status as _get_status
+from agents.watchdog_agent import get_health_score, get_status as _get_status
 from modules.scheduler import get_jobs
 
 

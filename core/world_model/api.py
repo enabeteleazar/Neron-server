@@ -11,7 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security.api_key import APIKeyHeader
 
-from core.config import settings
+from config import settings
 from .builder import build_world_model
 from .store   import WorldModelStore
 

@@ -9,7 +9,7 @@ import sqlite3
 from contextlib import contextmanager
 from typing import Dict, List, Optional
 
-from core.config import settings
+from config import settings
 
 logger = logging.getLogger("memory_agent")
 

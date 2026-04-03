@@ -23,9 +23,9 @@ from telegram.ext import (
     ContextTypes as TGContextTypes,
 )
 
-from core.agents.base_agent import get_logger
-from core.config import settings
-from core.modules.world_model import WorldModel
+from agents.base_agent import get_logger
+from config import settings
+from modules.world_model import WorldModel
 
 # Instance uniqe du Word Model
 world_model = WorldModel()

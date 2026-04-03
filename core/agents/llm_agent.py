@@ -13,8 +13,8 @@ from typing import AsyncIterator
 
 import httpx
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.config import settings
+from agents.base_agent import BaseAgent, AgentResult
+from config import settings
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 

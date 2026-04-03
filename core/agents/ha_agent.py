@@ -1,3 +1,4 @@
+
 # agents/ha_agent.py
 # Neron Core - Agent Home Assistant (REST API directe)
 
@@ -9,8 +10,8 @@ from typing import Any
 
 import httpx
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.config import settings
+from agents.base_agent import BaseAgent, AgentResult
+from config import settings
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 

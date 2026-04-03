@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from core.agents.base_agent import get_logger
+from agents.base_agent import get_logger
 
 logger = get_logger("system_agent")
 
@@ -15,7 +15,7 @@ async def handle_system_status(query: str) -> str:
     au lieu d'appels HTTP vers un service externe supprimé.
     """
     # Import ici pour éviter les imports circulaires
-    from core.agents.watchdog_agent import get_status, get_health_score, get_anomalies
+    from agents.watchdog_agent import get_status, get_health_score, get_anomalies
 
     q = query.lower()
     try:

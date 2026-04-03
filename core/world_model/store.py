@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from core.config import settings
+from config import settings
 
 logger = logging.getLogger("world_model.store")
 
