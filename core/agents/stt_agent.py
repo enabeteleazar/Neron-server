@@ -3,7 +3,7 @@
 
 import logging
 import os
-from config import settings
+from core.config import settings
 import tempfile
 import time
 import wave
@@ -11,7 +11,7 @@ import struct
 from pathlib import Path
 from typing import Optional
 
-from agents.base_agent import AgentResult, get_logger
+from core.agents.base_agent import AgentResult, get_logger
 
 logger = get_logger("stt_agent")
 

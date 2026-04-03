@@ -10,8 +10,8 @@ from typing import Any
 
 import httpx
 
-from agents.base_agent import BaseAgent, AgentResult
-from config import settings
+from core.agents.base_agent import BaseAgent, AgentResult
+from core.config import settings
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 

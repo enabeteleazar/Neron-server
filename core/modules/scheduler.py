@@ -3,7 +3,7 @@ import logging
 from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from config import settings
+from core.config import settings
 
 logger = logging.getLogger("scheduler")
 
