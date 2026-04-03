@@ -1,7 +1,7 @@
 #  Néron AI v2.0 — Makefile
 # ============================================
 
-BASE_DIR  := /mnt/usb-storage/neron/server
+BASE_DIR  := /etc/neron/server
 VENV      := $(BASE_DIR)/venv
 PYTHON    := $(VENV)/bin/python3
 PIP       := $(VENV)/bin/pip
