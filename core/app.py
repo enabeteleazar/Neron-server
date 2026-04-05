@@ -31,6 +31,7 @@ from pydantic import BaseModel
 
 from core.agents.base_agent import get_logger
 from core.agents.code_agent import CodeAgent
+from core.agents.code_audit_agent import CodeAuditAgent
 from core.agents.ha_agent import HAAgent
 from core.agents.llm_agent import LLMAgent
 from core.agents.memory_agent import MemoryAgent, init_db as memory_init_db
@@ -45,7 +46,6 @@ from core.agents.watchdog_agent import (
     stop_watchdog,
     stop_watchdog_bot,
     world_model,
-    watchdog_loop,
 )
 from core.agents.web_agent import WebAgent
 from core.config import settings
@@ -86,6 +86,7 @@ stt_agent:     STTAgent      | None = None
 tts_agent:                    None  = None
 ha_agent:      HAAgent       | None = None
 code_agent:    CodeAgent     | None = None
+code_audit_agent: CodeAuditAgent | None = None
 router:        IntentRouter  | None = None
 time_provider: TimeProvider  | None = None
 
@@ -199,7 +200,7 @@ metrics = Metrics()
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
     global router, time_provider, _startup_time, memory_agent
-    global code_agent, _gateway_task
+    global code_agent, code_audit_agent, _gateway_task
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
@@ -210,7 +211,8 @@ async def lifespan(app: FastAPI):
     memory_init_db()
     memory_agent = MemoryAgent()
     ha_agent     = HAAgent()
-    code_agent   = CodeAgent()
+    code_agent       = CodeAgent()
+    code_audit_agent = CodeAuditAgent()
 
     await ha_agent.on_start()
     router        = IntentRouter(llm_agent=llm_agent)
@@ -273,12 +275,13 @@ async def lifespan(app: FastAPI):
         logger.warning("Gateway WebSocket non demarre : %s", e)
 
     set_agents({
-        "llm":    llm_agent,
-        "stt":    stt_agent,
-        "tts":    tts_agent,
-        "memory": memory_agent,
-        "ha":     ha_agent,
-        "code":   code_agent,
+        "llm":        llm_agent,
+        "stt":        stt_agent,
+        "tts":        tts_agent,
+        "memory":     memory_agent,
+        "ha":         ha_agent,
+        "code":       code_agent,
+        "code_audit": code_audit_agent,
     })
 
     telegram_enabled = getattr(settings, "TELEGRAM_ENABLED", False)
@@ -340,14 +343,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("startup")
-async def startup_event():
-    # Lancement de la boucle de surveillance système (watchdog)
-    if getattr(settings, "WATCHDOG_ENABLED", False):
-        asyncio.create_task(watchdog_loop())    
-    else:
-        logger.info("Watchdog desactive, aucune surveillance systeme active")   
 
 # ── Models ────────────────────────────────────────────────────────────────────
 
@@ -482,6 +477,8 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             return await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:
             return await _handle_ha_action(query, intent_result, metadata, start)
+        elif intent_result.intent == Intent.CODE_AUDIT:
+            return await _handle_code_audit(intent_result, metadata, start)
         elif intent_result.intent == Intent.CODE:
             return await _handle_code(query, intent_result, metadata, start)
         else:
@@ -645,7 +642,7 @@ def _handle_time_query(intent_result, metadata, start, query="") -> CoreResponse
     want_heure = any(k in q for k in heure_keys)
     want_date  = any(k in q for k in date_keys)
     n = time_provider.now()
-    from neron_time.time_provider import JOURS, MOIS
+    from core.neron_time.time_provider import JOURS, MOIS
     jour = JOURS[n.weekday()]
     mois = MOIS[n.month - 1]
     if want_heure and not want_date:
@@ -749,6 +746,50 @@ async def _handle_ha_action(query, intent_result, metadata, start) -> CoreRespon
     )
 
 
+async def _handle_code_audit(intent_result, metadata, start) -> CoreResponse:
+    elapsed = round((time.monotonic() - start) * 1000, 2)
+    if not code_audit_agent:
+        return CoreResponse(
+            response="Agent d'audit non disponible.",
+            intent="code_audit", agent="code_audit_agent",
+            confidence=intent_result.confidence, timestamp=utc_now_iso(),
+            execution_time_ms=elapsed, metadata=metadata,
+        )
+    result = await code_audit_agent.execute("", action="audit_all")
+    if result.success:
+        meta    = result.metadata
+        score   = meta.get("avg_score", "?")
+        files   = meta.get("files_count", "?")
+        issues  = meta.get("total_issues", "?")
+        reports = meta.get("reports", [])
+        weak    = [
+            r for r in reports
+            if isinstance(r.get("quality_score"), (int, float)) and r["quality_score"] < 70
+        ]
+        detail = ""
+        if weak:
+            detail = "\n\nFichiers à améliorer :\n" + "\n".join(
+                f"- {r['file']} ({r.get('quality_score','?')}/100) : "
+                + ", ".join(r.get("issues", [])[:2])
+                for r in weak[:5]
+            )
+        response = (
+            f"Voici mon auto-audit :\n"
+            f"- {files} fichiers analysés\n"
+            f"- Score moyen : {score}/100\n"
+            f"- Issues détectées : {issues}"
+            f"{detail}"
+        )
+    else:
+        response = f"Erreur lors de l'auto-audit : {result.error}"
+    return CoreResponse(
+        response=response, intent="code_audit", agent="code_audit_agent",
+        confidence=intent_result.confidence, timestamp=utc_now_iso(),
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+        metadata={**metadata, **(result.metadata if result.success else {})},
+    )
+
+
 async def _handle_code(query, intent_result, metadata, start) -> CoreResponse:
     path_match = re.search(r"(\S+\.py)", query)
     path       = path_match.group(1) if path_match else ""
@@ -785,3 +826,4 @@ async def _handle_code(query, intent_result, metadata, start) -> CoreResponse:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=settings.SERVER_HOST, port=settings.SERVER_PORT)
+

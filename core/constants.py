@@ -34,6 +34,17 @@ CODE_KEYWORDS: list[str] = [
     "passe en revue", "rollback", "restaure le fichier",
 ]
 
+# ── Mots-clés auto-audit Néron ────────────────────────────────────────────────
+
+CODE_AUDIT_KEYWORDS: list[str] = [
+    "analyse ton code", "analyse toi", "analyse-toi",
+    "inspecte ton code", "inspecte toi", "audite toi",
+    "audite ton code", "auto audit", "auto-audit",
+    "analyse ton propre code", "inspecte ton propre code",
+    "qualite de ton code", "analyse le code de neron",
+    "inspecte le code de neron", "review de ton code",
+]
+
 # ── Mots-clés Home Assistant ──────────────────────────────────────────────────
 
 HA_KEYWORDS: list[str] = [
@@ -77,3 +88,4 @@ PERSONALITY_KEYWORDS: list[str] = [
     "sois positif", "bonne humeur", "optimiste",
     "mode focus", "concentration", "sois sérieux",
 ]
+

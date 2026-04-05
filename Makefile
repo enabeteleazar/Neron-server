@@ -21,12 +21,16 @@ help:
 	@echo "  make clean      -- nettoyer venv et logs"
 	@echo "  make version    -- versions Neron / Python / Ollama"
 	@echo ""
-	@echo "[Services]"
+	@echo "[Server]"
 	@echo "  make start      -- demarrer le service"
 	@echo "  make stop       -- arreter le service"
 	@echo "  make restart    -- redemarrer le service"
 	@echo "  make status     -- etat du service"
 	@echo "  make logs       -- logs en direct"
+	@echo ""
+	@echo "[Client]"
+	@echo "  install-client  -- installation de la webapp"
+	@echo "  start-client	 -- demarrer l'application"
 	@echo ""
 	@echo "[Sauvegarde]"
 	@echo "  make backup     -- sauvegarder DB + neron.yaml"
@@ -177,6 +181,14 @@ version:
 		}'
 	@echo "  Service  : $$(systemctl is-active neron 2>/dev/null || echo 'inactif')"
 	@echo ""
+
+.PHONY: start-client install-client
+
+install-client:
+	cd ../client && npm install
+
+start-client:
+	cd ../client && npm run dev
 
 ollama:
 	@echo ""

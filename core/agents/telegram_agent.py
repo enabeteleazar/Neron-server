@@ -31,25 +31,24 @@ logger = get_logger("telegram_agent")
 # ── Constantes ────────────────────────────────────────────────────────────────
 TELEGRAM_TOKEN   = settings.TELEGRAM_BOT_TOKEN
 TELEGRAM_CHAT_ID = settings.TELEGRAM_CHAT_ID
-NERON_CORE_URL   = f"http://{settings.SERVER_HOST}:{settings.SERVER_PORT}"
+NERON_CORE_URL   = f"http://127.0.0.1:{settings.SERVER_PORT}"
 NERON_API_KEY    = settings.API_KEY
-ALLOWED_CHAT_IDS = set(settings.TELEGRAM_CHAT_ID.split(","))
+ALLOWED_CHAT_IDS = set(filter(None, settings.TELEGRAM_CHAT_ID.split(",")))
 
-_WORKSPACE = Path(os.getenv("NERON_WORKSPACE", "/mnt/usb-storage/neron/workspace"))
+_WORKSPACE = Path(os.getenv("NERON_WORKSPACE", str(Path(__file__).parent.parent.parent / "workspace")))
 
 # ── État global ───────────────────────────────────────────────────────────────
-_agents: dict = {}
+_agents: dict              = {}
 _telegram_app: Application | None = None
 
-# ── Gestion des agents ─────────────────────────────────────────────────────────
+# ── Gestion des agents ────────────────────────────────────────────────────────
 def set_agents(agents: dict) -> None:
-    """Injecte les agents depuis le code principal"""
     global _agents
     _agents = agents
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
 def is_authorized(update: Update) -> bool:
-    if not ALLOWED_CHAT_IDS or ALLOWED_CHAT_IDS == {""}:
+    if not ALLOWED_CHAT_IDS:
         return True
     return str(update.message.chat_id) in ALLOWED_CHAT_IDS
 
@@ -63,37 +62,76 @@ def _normalize(text: str) -> str:
     return "".join(c for c in n if unicodedata.category(c) != "Mn")
 
 async def _post_text(client: httpx.AsyncClient, text: str) -> dict:
-    """Envoie une requête /input/text à Néron."""
     resp = await client.post(
         f"{NERON_CORE_URL}/input/text",
         json={"text": text},
         headers={"X-API-Key": NERON_API_KEY},
     )
+    resp.raise_for_status()
     return resp.json()
 
-# ── Commandes Telegram ─────────────────────────────────────────────────────────
+# ── Commandes ─────────────────────────────────────────────────────────────────
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    await update.message.reply_text(
+        "👋 Bonjour ! Je suis <b>Néron</b>, ton assistant IA personnel.\n"
+        "Tape /help pour voir les commandes disponibles.",
+        parse_mode="HTML",
+    )
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
         return await unauthorized(update)
     await update.message.reply_text(
         "🤖 <b>Néron — Commandes disponibles</b>\n\n"
-        "💬 Conversation: envoyez un message pour parler à Néron\n\n"
-        "🔧 Code:\n"
-        "/fix <fichier.py> — améliore un fichier\n"
-        "/review — auto-review de tout le code\n"
-        "/run <fichier.py> — exécute un script du workspace\n"
-        "/workspace — liste les fichiers du workspace\n\n"
-        "🧠 Mémoire:\n"
-        "/memory — 5 derniers échanges\n\n"
-        "🏠 Home Assistant:\n"
-        "/ha_reload — recharge les entités HA\n\n"
-        "📊 Système:\n"
-        "/status — CPU, RAM, disque, tâches planifiées\n\n"
-        "📞 Téléphonie:\n"
-        "/call [message] — appel vocal via Twilio\n\n"
+        "💬 <b>Conversation</b>\n"
+        "  Envoyez n'importe quel message pour parler à Néron\n\n"
+        "🔧 <b>Code</b>\n"
+        "  /fix &lt;fichier.py&gt; — améliore un fichier\n"
+        "  /review — auto-review du code\n"
+        "  /run &lt;fichier.py&gt; — exécute un script du workspace\n"
+        "  /workspace — liste les fichiers du workspace\n\n"
+        "🧠 <b>Mémoire</b>\n"
+        "  /memory — 5 derniers échanges\n\n"
+        "🏠 <b>Home Assistant</b>\n"
+        "  /ha_reload — recharge les entités HA\n\n"
+        "📊 <b>Système</b>\n"
+        "  /status — CPU, RAM, disque, uptime\n\n"
+        "📞 <b>Téléphonie</b>\n"
+        "  /call [message] — appel vocal via Twilio\n\n"
         "❓ /help — cette aide",
         parse_mode="HTML",
     )
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    try:
+        st     = get_status()
+        if "error" in st:
+            await update.message.reply_text(f"❌ Erreur système : {st['error']}")
+            return
+        uptime_min = st.get("uptime_s", 0) // 60
+        health     = get_health_score()
+        score      = health.get("score", "N/A")
+        from core.modules.scheduler import get_jobs
+        jobs      = get_jobs()
+        jobs_text = "\n".join(f"  • {j['name']} — {j['next_run']}" for j in jobs) or "  Aucune"
+        await update.message.reply_text(
+            f"📊 <b>État Néron</b>\n\n"
+            f"🖥 CPU     : {st.get('cpu_pct', '?')}%\n"
+            f"💾 RAM     : {st.get('ram_pct', '?')}% ({st.get('ram_used_mb', '?')} MB)\n"
+            f"💿 Disque  : {st.get('disk_pct', '?')}%\n"
+            f"🧠 Process : {st.get('process_ram_mb', '?')} MB\n"
+            f"⏱ Uptime  : {uptime_min} min\n"
+            f"❤ Santé   : {score}/100\n\n"
+            f"📅 <b>Tâches planifiées</b>\n{jobs_text}",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur: {e}")
 
 async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
@@ -115,9 +153,103 @@ async def cmd_memory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     except Exception as e:
         await update.message.reply_text(f"❌ Erreur: {e}")
 
-# Autres commandes: /ha_reload, /call, /fix, /review, /status, /workspace, /run
-# → restent identiques à ta version initiale, en utilisant _agents local
-# (j’ai vérifié: pas d’import _agents depuis ailleurs, plus de circular import)
+async def cmd_ha_reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    ha_agent = _agents.get("ha")
+    if not ha_agent:
+        await update.message.reply_text("❌ Agent Home Assistant non disponible")
+        return
+    sent = await update.message.reply_text("🔄 Rechargement des entités HA...")
+    try:
+        count = await ha_agent.reload()
+        await sent.edit_text(f"✅ {count} entités HA rechargées")
+    except Exception as e:
+        await sent.edit_text(f"❌ Erreur HA : {e}")
+
+async def cmd_call(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    if not settings.TWILIO_ENABLED:
+        await update.message.reply_text("❌ Twilio non activé (TWILIO_ENABLED=false)")
+        return
+    message = " ".join(context.args) if context.args else "Appel depuis Néron."
+    sent    = await update.message.reply_text("📞 Appel en cours...")
+    try:
+        result = twilio_call(message)
+        await sent.edit_text(f"✅ Appel passé : {result}")
+    except Exception as e:
+        await sent.edit_text(f"❌ Erreur appel : {e}")
+
+async def cmd_workspace(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    try:
+        if not _WORKSPACE.exists():
+            await update.message.reply_text(f"📁 Workspace vide ou inexistant : {_WORKSPACE}")
+            return
+        files = sorted(_WORKSPACE.rglob("*.py"))[:30]
+        if not files:
+            await update.message.reply_text("📁 Aucun fichier .py dans le workspace")
+            return
+        lines = [f"📁 <b>Workspace</b> ({len(files)} fichiers)\n"]
+        for f in files:
+            lines.append(f"  • {f.relative_to(_WORKSPACE)}")
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Erreur workspace : {e}")
+
+async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    if not context.args:
+        await update.message.reply_text("Usage : /fix <fichier.py>")
+        return
+    filename = context.args[0]
+    sent     = await update.message.reply_text(f"🔧 Analyse de {filename}...")
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            data = await _post_text(client, f"améliore et corrige le fichier {filename}")
+            await sent.edit_text(data.get("response", "❌ Pas de réponse")[:4096])
+    except Exception as e:
+        await sent.edit_text(f"❌ Erreur fix : {e}")
+
+async def cmd_review(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    sent = await update.message.reply_text("🔍 Auto-review en cours...")
+    try:
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            data = await _post_text(client, "lance un auto-review complet du code")
+            await sent.edit_text(data.get("response", "❌ Pas de réponse")[:4096])
+    except Exception as e:
+        await sent.edit_text(f"❌ Erreur review : {e}")
+
+async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+    if not context.args:
+        await update.message.reply_text("Usage : /run <fichier.py>")
+        return
+    filename = context.args[0]
+    target   = _WORKSPACE / filename
+    if not target.exists():
+        await update.message.reply_text(f"❌ Fichier introuvable : {filename}")
+        return
+    sent = await update.message.reply_text(f"▶ Exécution de {filename}...")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "python3", str(target),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        output    = stdout.decode("utf-8", errors="replace")[:3000] or "(aucune sortie)"
+        await sent.edit_text(f"<pre>{output}</pre>", parse_mode="HTML")
+    except asyncio.TimeoutError:
+        await sent.edit_text("⏱ Timeout — script interrompu après 30s")
+    except Exception as e:
+        await sent.edit_text(f"❌ Erreur exécution : {e}")
 
 # ── Handler messages texte ────────────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -125,7 +257,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await unauthorized(update)
 
     try:
-        import agents.watchdog_agent as _wdog_mod
+        import core.agents.watchdog_agent as _wdog_mod
         _wdog_mod._last_conversation = time.monotonic()
     except Exception:
         pass
@@ -134,15 +266,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.chat.send_action("typing")
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
 
-    q = _normalize(user_message)
+    q       = _normalize(user_message)
     is_code = any(_normalize(kw) in q for kw in CODE_KEYWORDS)
 
     try:
         if is_code:
             async with httpx.AsyncClient(timeout=600.0) as client:
-                data = await _post_text(client, user_message)
-                accumulated = data.get("response", "❌ Pas de réponse")
-                await sent.edit_text(accumulated[:4096], parse_mode=None)
+                data     = await _post_text(client, user_message)
+                response = data.get("response", "❌ Pas de réponse")
+                await sent.edit_text(response[:4096], parse_mode=None)
         else:
             accumulated = ""
             last_edit   = ""
@@ -162,29 +294,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                         except json.JSONDecodeError:
                             continue
                         token = data.get("token", "")
-                        done = data.get("done", False)
+                        done  = data.get("done", False)
                         accumulated += token
                         now = time.time()
                         if (now - last_update > 2.0 or done) and accumulated != last_edit:
                             try:
                                 await sent.edit_text(accumulated or "⏳")
-                                last_edit = accumulated
+                                last_edit   = accumulated
                                 last_update = now
                             except Exception:
                                 pass
                         if done:
                             break
             if not accumulated:
-                await sent.edit_text("❌ Pas de réponse")
+                await sent.edit_text("❌ Pas de réponse du LLM")
     except Exception as e:
+        logger.exception("handle_message error : %s", e)
         await sent.edit_text(f"❌ Erreur: {e}")
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 async def send_notification(message: str, level: str = "info") -> None:
     if not _telegram_app or not TELEGRAM_CHAT_ID:
         return
-    icons = {"info": "ℹ️", "warning": "⚠️", "alert": "🔴"}
-    icon = icons.get(level, "📢")
+    icons = {"info": "ℹ", "warning": "⚠", "alert": "🔴", "error": "❌"}
+    icon  = icons.get(level, "📢")
     try:
         await _telegram_app.bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -202,14 +335,23 @@ async def start_bot() -> None:
         return
 
     _telegram_app = Application.builder().token(TELEGRAM_TOKEN).build()
-    _telegram_app.add_handler(CommandHandler("help", cmd_help))
-    _telegram_app.add_handler(CommandHandler("memory", cmd_memory))
+
+    _telegram_app.add_handler(CommandHandler("start",     cmd_start))
+    _telegram_app.add_handler(CommandHandler("help",      cmd_help))
+    _telegram_app.add_handler(CommandHandler("status",    cmd_status))
+    _telegram_app.add_handler(CommandHandler("memory",    cmd_memory))
+    _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
+    _telegram_app.add_handler(CommandHandler("call",      cmd_call))
+    _telegram_app.add_handler(CommandHandler("workspace", cmd_workspace))
+    _telegram_app.add_handler(CommandHandler("fix",       cmd_fix))
+    _telegram_app.add_handler(CommandHandler("review",    cmd_review))
+    _telegram_app.add_handler(CommandHandler("run",       cmd_run))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()
     await _telegram_app.start()
     await _telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-    logger.info("Bot Telegram démarré")
+    logger.info("Bot Telegram démarré — 10 commandes enregistrées")
 
 async def stop_bot() -> None:
     global _telegram_app
@@ -224,3 +366,4 @@ async def stop_bot() -> None:
         logger.error("Erreur stop_bot : %s", e)
     finally:
         _telegram_app = None
+

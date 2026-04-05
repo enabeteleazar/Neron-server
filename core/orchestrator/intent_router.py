@@ -9,6 +9,7 @@ from enum import Enum
 from core.agents.base_agent import get_logger
 from core.constants import (
     CODE_KEYWORDS,
+    CODE_AUDIT_KEYWORDS,
     HA_KEYWORDS,
     PERSONALITY_KEYWORDS,
     TIME_KEYWORDS,
@@ -24,7 +25,8 @@ class Intent(str, Enum):
     HA_ACTION            = "ha_action"
     TIME_QUERY           = "time_query"
     PERSONALITY_FEEDBACK = "personality_feedback"
-    CODE                 = "code"  # FIX: tabulation mixte supprimée
+    CODE                 = "code"
+    CODE_AUDIT           = "code_audit"
 
 
 @dataclass
@@ -57,6 +59,12 @@ class IntentRouter:
                     intent=Intent.PERSONALITY_FEEDBACK,
                     confidence="high",
                 )
+
+        # ── Auto-audit Néron (priorité avant CODE générique) ─────────────
+        for kw in CODE_AUDIT_KEYWORDS:
+            if _normalize(kw) in q_norm:
+                logger.info("[ROUTER] intent=code_audit — déclencheur: %r", kw)
+                return IntentResult(intent=Intent.CODE_AUDIT, confidence="high")
 
         # ── Code / développement ──────────────────────────────────────────
         for kw in CODE_KEYWORDS:
@@ -91,3 +99,4 @@ class IntentRouter:
 
         # ── Conversation générale (défaut) ────────────────────────────────
         return IntentResult(intent=Intent.CONVERSATION, confidence="medium")
+
