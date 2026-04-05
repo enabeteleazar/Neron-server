@@ -214,6 +214,23 @@ async def lifespan(app: FastAPI):
     code_agent       = CodeAgent()
     code_audit_agent = CodeAuditAgent()
 
+    # STT/TTS — initialisation explicite (load_model / load_engine)
+    stt_agent = STTAgent()
+    try:
+        stt_load_model()
+        logger.info("STT model loaded OK")
+    except Exception as e:
+        logger.warning("STT model load failed : %s — STT disabled", e)
+        stt_agent = None
+
+    tts_agent = TTSAgent()
+    try:
+        tts_load_engine()
+        logger.info("TTS engine loaded OK")
+    except Exception as e:
+        logger.warning("TTS engine load failed : %s — TTS disabled", e)
+        tts_agent = None
+
     await ha_agent.on_start()
     router        = IntentRouter(llm_agent=llm_agent)
     time_provider = TimeProvider()
@@ -260,7 +277,8 @@ async def lifespan(app: FastAPI):
         )
         gw_config = GatewayConfig(
             host=settings.SERVER_HOST,
-            port=18789,
+            port=settings.SERVER_PORT,  # depuis neron.yaml ou env
+            max_connections=getattr(settings, 'GATEWAY_MAX_CONNECTIONS', 64),
             token=settings.API_KEY or None,
         )
         _gw = NeronGateway(
@@ -339,9 +357,15 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True,
 )
 
 # ── Models ────────────────────────────────────────────────────────────────────

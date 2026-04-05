@@ -7,6 +7,7 @@ import time
 import httpx
 from core.agents.telegram_agent import _agents, _normalize, _post_text
 from core.agents.base_agent import get_logger
+from core.config import settings  # noqa: F401
 from core.tools.twilio_tool import call as twilio_call
 
 logger = get_logger("webapi")
