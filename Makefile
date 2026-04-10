@@ -18,34 +18,34 @@ SERVICE := neron
 help:
 	@echo ""
 	@echo "[Installation / Maintenance]"
-	@echo "  make install    -- installer Neron"
-	@echo "  make update     -- git pull + restart"
-	@echo "  make clean      -- nettoyer venv et logs"
-	@echo "  make version    -- versions Neron / Python / Ollama"
+	@echo "  make install    	-- installer Neron"
+	@echo "  make update     	-- git pull + restart"
+	@echo "  make clean      	-- nettoyer venv et logs"
+	@echo "  make version    	-- versions Neron / Python / Ollama"
 	@echo ""
 	@echo "[Server]"
-	@echo "  make start      -- demarrer le service"
-	@echo "  make stop       -- arreter le service"
-	@echo "  make restart    -- redemarrer le service"
-	@echo "  make status     -- etat du service"
-	@echo "  make logs       -- logs en direct"
+	@echo "  make start      	-- demarrer le service"
+	@echo "  make stop       	-- arreter le service"
+	@echo "  make restart    	-- redemarrer le service"
+	@echo "  make status     	-- etat du service"
+	@echo "  make logs       	-- logs en direct"
 	@echo ""
 	@echo "[Client]"
-	@echo "  make install-client  -- installation de la webapp"
-	@echo "  make start-client    -- demarrer l'application"
+	@echo "  make start-client    	-- demarrer l'application"
+	@echo "  make stop-client	-- arreter l'application "
 	@echo ""
 	@echo "[Sauvegarde]"
-	@echo "  make backup     -- sauvegarder DB + neron.yaml"
-	@echo "  make restore    -- restaurer une sauvegarde"
+	@echo "  make backup     	-- sauvegarder DB + neron.yaml"
+	@echo "  make restore    	-- restaurer une sauvegarde"
 	@echo ""
 	@echo "[Diagnostic]"
-	@echo "  make test       -- tester l'API et Ollama"
-	@echo "  make neron      -- afficher la config active"
+	@echo "  make test       	-- tester l'API et Ollama"
+	@echo "  make neron      	-- afficher la config active"
 	@echo ""
 	@echo "[Integration]"
-	@echo "  make ollama     -- gerer le modele Ollama"
-	@echo "  make telegram   -- configurer les bots Telegram"
-	@echo "  make ha-config  -- configurer Home Assistant"
+	@echo "  make ollama     	-- gerer le modele Ollama"
+	@echo "  make telegram   	-- configurer les bots Telegram"
+	@echo "  make ha-config  	-- configurer Home Assistant"
 
 # ============================================
 # INSTALL
@@ -139,15 +139,18 @@ install-client:
 start-client:
 	@bash $(SERVER_DIR)/scripts/start-client.sh
 
+stop-client:
+	@bash $(SERVER_DIR)/scripts/stop-client.sh
+
 # ============================================
 # BACKUP / RESTORE
 # ============================================
 
 backup:
-	@bash $(SERVER_DIR)/scripts/backup.sh
+	@bash $(SERVER_DIR)/scripts/backup.sh backup
 
 restore:
-	@bash $(SERVER_DIR)/scripts/restore.sh
+	@bash $(SERVER_DIR)/scripts/backup.sh restore
 
 # ============================================
 # CONFIG DISPLAY
