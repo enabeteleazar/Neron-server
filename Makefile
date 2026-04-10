@@ -1,16 +1,15 @@
-# ============================================
+# ===================wsystem=========================
 # Néron AI v2.1 — Makefile propre
 # ============================================
 
 BASE_DIR   := /etc/neron
-REPO_DIR   := $(BASE_DIR)
+REPO_DIR   := $(BASE_DIR)/server
 VENV_DIR   := $(BASE_DIR)/server/venv
 PYTHON     := $(VENV_DIR)/bin/python3
 PIP        := $(VENV_DIR)/bin/pip
 SERVICE    := neron
 LOG_DIR    := $(BASE_DIR)/logs
 SYSTEMD    := /etc/systemd/system/neron.service
-TEMPLATE   := $(BASE_DIR)/templates/neron.service
 
 .PHONY: install install-core install-systemd start stop restart status logs update clean backup restore test version neron ollama telegram ha-agent help install-client start-client
 
@@ -44,7 +43,7 @@ help:
 install: install-core install-systemd
 	@echo ""
 	@echo "✔ Installation terminée"
-	@echo "👉 Config : nano $(BASE_DIR)/neron.yaml"
+	@echo "👉 Config : nano $(REPO_DIR)/neron.yaml"
 	@echo "👉 Start  : make start"
 
 install-core:
@@ -56,8 +55,8 @@ install-core:
 	@echo "🐍 Setup Python venv..."
 	@test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
 	@$(PIP) install --upgrade pip -q
-	@if [ -f $(BASE_DIR)/requirements.txt ]; then \
-		$(PIP) install -r $(BASE_DIR)/requirements.txt -q; \
+	@if [ -f $(REPO_DIR)/requirements.txt ]; then \
+		$(PIP) install -r $(REPO_DIR)/requirements.txt -q; \
 	fi
 
 	@mkdir -p $(LOG_DIR)
@@ -65,14 +64,14 @@ install-core:
 install-systemd:
 	@echo "⚙️  Installation systemd..."
 
-	@if [ ! -f $(TEMPLATE) ]; then \
-		echo "❌ Template systemd manquant: $(TEMPLATE)"; \
+	@if [ ! -f $(SYSTEMD) ]; then \
+		echo "❌ SYSTEMD systemd manquant: $(SYSTEMD)"; \
 		exit 1; \
 	fi
 
 	@sed -e "s|__NERON_DIR__|$(BASE_DIR)|g" \
 		-e "s|__NERON_USER__|$(shell whoami)|g" \
-		$(TEMPLATE) > /tmp/neron.service
+		$(SYSTEMD) > /tmp/neron.service
 
 	@sudo cp /tmp/neron.service $(SYSTEMD)
 	@rm -f /tmp/neron.service
@@ -179,10 +178,10 @@ start-client:
 # ============================================
 
 ollama:
-	@bash $(BASE_DIR)/scripts/ollama.sh
+	@bash $(REPO_DIR)/scripts/ollama.sh
 
 telegram:
-	@bash $(BASE_DIR)/scripts/telegram.sh
+	@bash $(REPO_DIR)/scripts/telegram.sh
 
 ha-agent:
-	@bash $(BASE_DIR)/scripts/ha.sh
+	@bash $(REPO_DIR)/scripts/ha.sh
