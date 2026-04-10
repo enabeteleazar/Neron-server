@@ -62,32 +62,30 @@ install-core:
 	@mkdir -p $(LOG_DIR)
 
 install-systemd:
-	@echo "⚙️  Installation systemd..."
+	@echo "⚙️ Installation systemd..."
 
 	@sudo mkdir -p /etc/systemd/system
+	@mkdir -p $(BASE_DIR)/templates
 
-	@if [ ! -f $(TEMPLATE_SYSTEMD) ]; then \
-		echo "⚠ template absent → génération automatique"; \
-		mkdir -p $(BASE_DIR)/templates; \
-		echo "[Unit]" > $(TEMPLATE_SYSTEMD); \
-		echo "Description=Néron AI" >> $(TEMPLATE_SYSTEMD); \
-		echo "After=network.target" >> $(TEMPLATE_SYSTEMD); \
-		echo "" >> $(TEMPLATE_SYSTEMD); \
-		echo "[Service]" >> $(TEMPLATE_SYSTEMD); \
-		echo "Type=simple" >> $(TEMPLATE_SYSTEMD); \
-		echo "WorkingDirectory=$(BASE_DIR)" >> $(TEMPLATE_SYSTEMD); \
-		echo "ExecStart=$(VENV_DIR)/bin/python $(BASE_DIR)/main.py" >> $(TEMPLATE_SYSTEMD); \
-		echo "Restart=always" >> $(TEMPLATE_SYSTEMD); \
-		echo "User=root" >> $(TEMPLATE_SYSTEMD); \
-		echo "Environment=PYTHONUNBUFFERED=1" >> $(TEMPLATE_SYSTEMD); \
-		echo "" >> $(TEMPLATE_SYSTEMD); \
-		echo "[Install]" >> $(TEMPLATE_SYSTEMD); \
-		echo "WantedBy=multi-user.target" >> $(TEMPLATE_SYSTEMD); \
-	fi
+	@echo "[Unit]" > $(BASE_DIR)/templates/neron.service
+	@echo "Description=Néron AI" >> $(BASE_DIR)/templates/neron.service
+	@echo "After=network.target" >> $(BASE_DIR)/templates/neron.service
+	@echo "" >> $(BASE_DIR)/templates/neron.service
+	@echo "[Service]" >> $(BASE_DIR)/templates/neron.service
+	@echo "Type=simple" >> $(BASE_DIR)/templates/neron.service
+	@echo "WorkingDirectory=$(BASE_DIR)" >> $(BASE_DIR)/templates/neron.service
+	@echo "ExecStart=$(VENV_DIR)/bin/python $(BASE_DIR)/main.py" >> $(BASE_DIR)/templates/neron.service
+	@echo "Restart=always" >> $(BASE_DIR)/templates/neron.service
+	@echo "User=root" >> $(BASE_DIR)/templates/neron.service
+	@echo "Environment=PYTHONUNBUFFERED=1" >> $(BASE_DIR)/templates/neron.service
+	@echo "" >> $(BASE_DIR)/templates/neron.service
+	@echo "[Install]" >> $(BASE_DIR)/templates/neron.service
+	@echo "WantedBy=multi-user.target" >> $(BASE_DIR)/templates/neron.service
 
-	@sudo cp $(TEMPLATE_SYSTEMD) $(SYSTEMD)
+	@sudo cp $(BASE_DIR)/templates/neron.service /etc/systemd/system/neron.service
+
 	@sudo systemctl daemon-reload
-	@sudo systemctl enable $(SERVICE)
+	@sudo systemctl enable neron
 
 	@echo "✔ systemd OK"
 
