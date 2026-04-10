@@ -155,7 +155,7 @@ restore:
 # ============================================
 
 neron:
-	@cat $(SERVER_DIR)/neron.yaml
+	@bash $(SERVER_DIR)/scripts/neron.sh
 
 # ============================================
 # EXTERNAL MODULES (CLEAN WRAPPERS)
