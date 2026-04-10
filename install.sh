@@ -18,7 +18,7 @@ INSTALL_DIR="${NERON_DIR:-/etc/neron}"
 if [ -f "${NERON_DIR:-/etc/neron}/.env" ]; then
     _BRANCH=$(grep "^NERON_BRANCH" "${NERON_DIR:-/etc/neron}/.env" 2>/dev/null | cut -d= -f2)
 fi
-BRANCH="${_BRANCH:-${NERON_BRANCH:-release}}"
+BRANCH="${_BRANCH:-${NERON_BRANCH:-release/v2.2.0}}"
 
 # --- Configuration Telegram ---
 setup_telegram() {
