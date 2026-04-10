@@ -14,7 +14,7 @@ NC='\033[0m'
 REPO_URL="https://github.com/enabeteleazar/Neron_AI.git"
 
 # --- Install dir ---
-INSTALL_DIR="${NERON_DIR:-/opt/neron}"
+INSTALL_DIR="${NERON_DIR:-/etc/neron}"
 
 # --- Default branch ---
 DEFAULT_BRANCH="release/v2.2.0"
