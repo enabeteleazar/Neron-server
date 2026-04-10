@@ -64,18 +64,28 @@ install-core:
 install-systemd:
 	@echo "⚙️  Installation systemd..."
 
-	@if [ ! -f $(SYSTEMD) ]; then \
-		echo "❌ SYSTEMD systemd manquant: $(SYSTEMD)"; \
-		exit 1; \
+	@sudo mkdir -p /etc/systemd/system
+
+	@if [ ! -f $(TEMPLATE_SYSTEMD) ]; then \
+		echo "⚠ template absent → génération automatique"; \
+		mkdir -p $(BASE_DIR)/templates; \
+		echo "[Unit]" > $(TEMPLATE_SYSTEMD); \
+		echo "Description=Néron AI" >> $(TEMPLATE_SYSTEMD); \
+		echo "After=network.target" >> $(TEMPLATE_SYSTEMD); \
+		echo "" >> $(TEMPLATE_SYSTEMD); \
+		echo "[Service]" >> $(TEMPLATE_SYSTEMD); \
+		echo "Type=simple" >> $(TEMPLATE_SYSTEMD); \
+		echo "WorkingDirectory=$(BASE_DIR)" >> $(TEMPLATE_SYSTEMD); \
+		echo "ExecStart=$(VENV_DIR)/bin/python $(BASE_DIR)/main.py" >> $(TEMPLATE_SYSTEMD); \
+		echo "Restart=always" >> $(TEMPLATE_SYSTEMD); \
+		echo "User=root" >> $(TEMPLATE_SYSTEMD); \
+		echo "Environment=PYTHONUNBUFFERED=1" >> $(TEMPLATE_SYSTEMD); \
+		echo "" >> $(TEMPLATE_SYSTEMD); \
+		echo "[Install]" >> $(TEMPLATE_SYSTEMD); \
+		echo "WantedBy=multi-user.target" >> $(TEMPLATE_SYSTEMD); \
 	fi
 
-	@sed -e "s|__NERON_DIR__|$(BASE_DIR)|g" \
-		-e "s|__NERON_USER__|$(shell whoami)|g" \
-		$(SYSTEMD) > /tmp/neron.service
-
-	@sudo cp /tmp/neron.service $(SYSTEMD)
-	@rm -f /tmp/neron.service
-
+	@sudo cp $(TEMPLATE_SYSTEMD) $(SYSTEMD)
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable $(SERVICE)
 
