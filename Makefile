@@ -1,17 +1,15 @@
-# ===================wsystem=========================
-# Néron AI v2.1 — Makefile propre
+# ============================================
+# NÉRON AI — CLEAN MAKEFILE (v3)
 # ============================================
 
-BASE_DIR   := /etc/neron
-REPO_DIR   := $(BASE_DIR)/server
-VENV_DIR   := $(BASE_DIR)/server/venv
-PYTHON     := $(VENV_DIR)/bin/python3
-PIP        := $(VENV_DIR)/bin/pip
-SERVICE    := neron
-LOG_DIR    := $(BASE_DIR)/logs
-SYSTEMD    := /etc/systemd/system/neron.service
+REPO_DIR := /etc/neron
+SERVER_DIR := $(REPO_DIR)/server
+VENV_DIR := $(SERVER_DIR)/venv
+PYTHON := $(VENV_DIR)/bin/python3
+PIP := $(VENV_DIR)/bin/pip
+SERVICE := neron
 
-.PHONY: install install-core install-systemd start stop restart status logs update clean backup restore test version neron ollama telegram ha-agent help install-client start-client
+.PHONY: help install install-core install-systemd start stop restart status logs update clean test version telegram ha-config ollama install-client start-client backup restore neron
 
 # ============================================
 # HELP
@@ -19,108 +17,92 @@ SYSTEMD    := /etc/systemd/system/neron.service
 
 help:
 	@echo ""
-	@echo "Néron AI - commandes disponibles"
+	@echo "[Installation / Maintenance]"
+	@echo "  make install    -- installer Neron"
+	@echo "  make update     -- git pull + restart"
+	@echo "  make clean      -- nettoyer venv et logs"
+	@echo "  make version    -- versions Neron / Python / Ollama"
 	@echo ""
-	@echo "  make install        installation complète"
-	@echo "  make update         mise à jour safe"
-	@echo "  make start          démarrer"
-	@echo "  make stop           arrêter"
-	@echo "  make restart        redémarrer"
-	@echo "  make status         état"
-	@echo "  make logs           logs systemd"
-	@echo "  make clean          reset venv"
+	@echo "[Server]"
+	@echo "  make start      -- demarrer le service"
+	@echo "  make stop       -- arreter le service"
+	@echo "  make restart    -- redemarrer le service"
+	@echo "  make status     -- etat du service"
+	@echo "  make logs       -- logs en direct"
 	@echo ""
-	@echo "  make backup         backup config"
-	@echo "  make restore        restore backup"
-	@echo "  make version        versions"
-	@echo "  make test           test API"
+	@echo "[Client]"
+	@echo "  make install-client  -- installation de la webapp"
+	@echo "  make start-client    -- demarrer l'application"
 	@echo ""
+	@echo "[Sauvegarde]"
+	@echo "  make backup     -- sauvegarder DB + neron.yaml"
+	@echo "  make restore    -- restaurer une sauvegarde"
+	@echo ""
+	@echo "[Diagnostic]"
+	@echo "  make test       -- tester l'API et Ollama"
+	@echo "  make neron      -- afficher la config active"
+	@echo ""
+	@echo "[Integration]"
+	@echo "  make ollama     -- gerer le modele Ollama"
+	@echo "  make telegram   -- configurer les bots Telegram"
+	@echo "  make ha-config  -- configurer Home Assistant"
 
 # ============================================
-# INSTALLATION
+# INSTALL
 # ============================================
 
 install: install-core install-systemd
-	@echo ""
 	@echo "✔ Installation terminée"
-	@echo "👉 Config : nano $(REPO_DIR)/neron.yaml"
-	@echo "👉 Start  : make start"
 
 install-core:
-	@echo "🔧 Installation Néron AI..."
+	@echo "🔧 Install dépendances..."
 	@sudo apt-get update -qq
-	@sudo apt-get install -y -qq \
-		espeak ffmpeg git curl nano make python3-venv
+	@sudo apt-get install -y -qq python3-venv git curl make
 
-	@echo "🐍 Setup Python venv..."
+	@echo "🐍 Setup venv..."
 	@test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
 	@$(PIP) install --upgrade pip -q
-	@if [ -f $(REPO_DIR)/requirements.txt ]; then \
-		$(PIP) install -r $(REPO_DIR)/requirements.txt -q; \
+
+	@if [ -f $(SERVER_DIR)/requirements.txt ]; then \
+		$(PIP) install -r $(SERVER_DIR)/requirements.txt -q; \
 	fi
 
-	@mkdir -p $(LOG_DIR)
-
 install-systemd:
-	@echo "⚙️ Installation systemd..."
-
-	@sudo mkdir -p /etc/systemd/system
-	@mkdir -p $(BASE_DIR)/templates
-
-	@echo "[Unit]" > $(BASE_DIR)/templates/neron.service
-	@echo "Description=Néron AI" >> $(BASE_DIR)/templates/neron.service
-	@echo "After=network.target" >> $(BASE_DIR)/templates/neron.service
-	@echo "" >> $(BASE_DIR)/templates/neron.service
-	@echo "[Service]" >> $(BASE_DIR)/templates/neron.service
-	@echo "Type=simple" >> $(BASE_DIR)/templates/neron.service
-	@echo "WorkingDirectory=$(BASE_DIR)" >> $(BASE_DIR)/templates/neron.service
-	@echo "ExecStart=$(VENV_DIR)/bin/python $(BASE_DIR)/main.py" >> $(BASE_DIR)/templates/neron.service
-	@echo "Restart=always" >> $(BASE_DIR)/templates/neron.service
-	@echo "User=root" >> $(BASE_DIR)/templates/neron.service
-	@echo "Environment=PYTHONUNBUFFERED=1" >> $(BASE_DIR)/templates/neron.service
-	@echo "" >> $(BASE_DIR)/templates/neron.service
-	@echo "[Install]" >> $(BASE_DIR)/templates/neron.service
-	@echo "WantedBy=multi-user.target" >> $(BASE_DIR)/templates/neron.service
-
-	@sudo cp $(BASE_DIR)/templates/neron.service /etc/systemd/system/neron.service
-
+	@echo "⚙️ systemd setup..."
+	@printf '[Unit]\nDescription=Néron AI\nAfter=network.target\n\n[Service]\nType=simple\nWorkingDirectory=%s\nExecStart=%s %s/main.py\nRestart=always\nUser=root\nEnvironment=PYTHONUNBUFFERED=1\n\n[Install]\nWantedBy=multi-user.target\n' \
+		"$(SERVER_DIR)" "$(PYTHON)" "$(SERVER_DIR)" \
+		| sudo tee /etc/systemd/system/neron.service > /dev/null
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable neron
-
 	@echo "✔ systemd OK"
 
 # ============================================
-# CONTROL SERVICE
+# SERVICE CONTROL
 # ============================================
 
 start:
 	@sudo systemctl start $(SERVICE)
-	@sleep 2
-	@sudo systemctl is-active --quiet $(SERVICE) && echo "✔ running" || (echo "❌ error" && exit 1)
 
 stop:
 	@sudo systemctl stop $(SERVICE)
-	@echo "✔ stopped"
 
 restart:
 	@sudo systemctl restart $(SERVICE)
-	@sleep 2
-	@sudo systemctl is-active --quiet $(SERVICE) && echo "✔ restarted" || (echo "❌ error" && exit 1)
 
 status:
-	@sudo systemctl status $(SERVICE) --no-pager
+	@systemctl status $(SERVICE) --no-pager
 
 logs:
-	@sudo journalctl -u $(SERVICE) -f
+	@journalctl -u $(SERVICE) -f
 
 # ============================================
-# UPDATE SAFE
+# UPDATE
 # ============================================
 
 update:
-	@echo "🔄 update Néron..."
-	@git -C $(REPO_DIR) pull origin $$(git -C $(REPO_DIR) branch --show-current)
-	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q
+	@echo "🔄 update..."
+	@git -C $(SERVER_DIR) pull
+	@$(PIP) install -r $(SERVER_DIR)/requirements.txt -q
 	@sudo systemctl restart $(SERVICE)
 	@echo "✔ updated"
 
@@ -129,67 +111,61 @@ update:
 # ============================================
 
 clean:
-	@echo "🧹 reset venv..."
 	@rm -rf $(VENV_DIR)
-	@rm -f $(LOG_DIR)/*.log
 	@echo "✔ clean done"
-
-# ============================================
-# BACKUP
-# ============================================
-
-backup:
-	@echo "💾 backup..."
-	@DIR=$(BASE_DIR)/backups/$$(date +%Y%m%d_%H%M%S) && \
-	mkdir -p $$DIR && \
-	cp $(BASE_DIR)/neron.yaml $$DIR/ 2>/dev/null || true && \
-	cp -r $(BASE_DIR)/data $$DIR/ 2>/dev/null || true && \
-	echo "✔ backup: $$DIR"
-
-restore:
-	@echo "📂 restore..."
-	@ls -lt $(BASE_DIR)/backups/ | head -n 10
-	@read -p "folder: " F && \
-	cp -r $(BASE_DIR)/backups/$$F/* $(BASE_DIR)/
 
 # ============================================
 # TEST
 # ============================================
 
 test:
-	@curl -sf http://localhost:8010/health && echo "✔ API OK" || echo "❌ API KO"
-	@curl -sf http://localhost:11434/api/tags && echo "✔ Ollama OK" || echo "❌ Ollama KO"
+	@curl -sf http://localhost:8010/health && echo "API OK" || echo "API FAIL"
+	@curl -sf http://localhost:11434/api/tags && echo "Ollama OK" || echo "Ollama FAIL"
 
 # ============================================
 # VERSION
 # ============================================
 
 version:
-	@echo ""
-	@echo "Néron AI"
-	@echo "Python : $$(python3 --version)"
-	@echo "Service: $$(systemctl is-active neron 2>/dev/null || echo 'inactive')"
-	@echo ""
+	@echo "Python: $$(python3 --version)"
+	@systemctl is-active $(SERVICE) > /dev/null 2>&1 && echo "Service: running" || echo "Service: stopped"
 
 # ============================================
 # CLIENT
 # ============================================
 
 install-client:
-	@cd ../client && npm install
+	@bash $(SERVER_DIR)/scripts/install-client.sh
 
 start-client:
-	@cd ../client && npm run dev
+	@bash $(SERVER_DIR)/scripts/start-client.sh
 
 # ============================================
-# OLLAMA / HA / TELEGRAM (hooks externes)
+# BACKUP / RESTORE
 # ============================================
 
-ollama:
-	@bash $(REPO_DIR)/scripts/ollama.sh
+backup:
+	@bash $(SERVER_DIR)/scripts/backup.sh
+
+restore:
+	@bash $(SERVER_DIR)/scripts/restore.sh
+
+# ============================================
+# CONFIG DISPLAY
+# ============================================
+
+neron:
+	@cat $(SERVER_DIR)/neron.yaml
+
+# ============================================
+# EXTERNAL MODULES (CLEAN WRAPPERS)
+# ============================================
 
 telegram:
-	@bash $(REPO_DIR)/scripts/telegram.sh
+	@bash $(SERVER_DIR)/scripts/telegram.sh
 
-ha-agent:
-	@bash $(REPO_DIR)/scripts/ha.sh
+ha-config:
+	@bash $(SERVER_DIR)/scripts/ha.sh
+
+ollama:
+	@bash $(SERVER_DIR)/scripts/ollama.sh

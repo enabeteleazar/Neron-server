@@ -1,0 +1,318 @@
+# ===================wsystem=========================
+# Néron AI v2.1 — Makefile propre
+# ============================================
+
+BASE_DIR   := /etc/neron
+REPO_DIR   := $(BASE_DIR)/server
+VENV_DIR   := $(BASE_DIR)/server/venv
+PYTHON     := $(VENV_DIR)/bin/python3
+PIP        := $(VENV_DIR)/bin/pip
+SERVICE    := neron
+LOG_DIR    := $(BASE_DIR)/logs
+SYSTEMD    := /etc/systemd/system/neron.service
+
+.PHONY: install install-core install-systemd start stop restart status logs update clean backup restore test version neron ollama telegram ha-config help install-client start-client
+
+# ============================================
+# HELP
+# ============================================
+
+help:
+	@echo ""
+	@echo "[Installation / Maintenance]"
+	@echo "  make install    -- installer Neron"
+	@echo "  make update     -- git pull + restart"
+	@echo "  make clean      -- nettoyer venv et logs"
+	@echo "  make version    -- versions Neron / Python / Ollama"
+	@echo ""
+	@echo "[Server]"
+	@echo "  make start      -- demarrer le service"
+	@echo "  make stop       -- arreter le service"
+	@echo "  make restart    -- redemarrer le service"
+	@echo "  make status     -- etat du service"
+	@echo "  make logs       -- logs en direct"
+	@echo ""
+	@echo "[Client]"
+	@echo "  install-client  -- installation de la webapp"
+	@echo "  start-client	 -- demarrer l'application"
+	@echo ""
+	@echo "[Sauvegarde]"
+	@echo "  make backup     -- sauvegarder DB + neron.yaml"
+	@echo "  make restore    -- restaurer une sauvegarde"
+	@echo ""
+	@echo "[Diagnostic]"
+	@echo "  make test       -- tester l'API et Ollama"
+	@echo "  make neron      -- afficher la config active"
+	@echo ""
+	@echo "[Integration]"
+	@echo "  make ollama     -- gerer le modele Ollama"
+	@echo "  make telegram   -- configurer les bots Telegram"
+	@echo "  make ha-config   -- configurer Home Assistant"
+
+
+# ============================================
+# INSTALLATION
+# ============================================
+
+install: install-core install-systemd
+	@echo ""
+	@echo "✔ Installation terminée"
+	@echo "👉 Config : nano $(REPO_DIR)/neron.yaml"
+	@echo "👉 Start  : make start"
+
+install-core:
+	@echo "🔧 Installation Néron AI..."
+	@sudo apt-get update -qq
+	@sudo apt-get install -y -qq \
+		espeak ffmpeg git curl nano make python3-venv
+
+	@echo "🐍 Setup Python venv..."
+	@test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
+	@$(PIP) install --upgrade pip -q
+	@if [ -f $(REPO_DIR)/requirements.txt ]; then \
+		$(PIP) install -r $(REPO_DIR)/requirements.txt -q; \
+	fi
+
+	@mkdir -p $(LOG_DIR)
+
+install-systemd:
+	@echo "⚙️ Installation systemd..."
+
+	@sudo mkdir -p /etc/systemd/system
+	@mkdir -p $(BASE_DIR)/templates
+
+	@echo "[Unit]" > $(BASE_DIR)/templates/neron.service
+	@echo "Description=Néron AI" >> $(BASE_DIR)/templates/neron.service
+	@echo "After=network.target" >> $(BASE_DIR)/templates/neron.service
+	@echo "" >> $(BASE_DIR)/templates/neron.service
+	@echo "[Service]" >> $(BASE_DIR)/templates/neron.service
+	@echo "Type=simple" >> $(BASE_DIR)/templates/neron.service
+	@echo "WorkingDirectory=$(BASE_DIR)" >> $(BASE_DIR)/templates/neron.service
+	@echo "ExecStart=$(VENV_DIR)/bin/python $(BASE_DIR)/main.py" >> $(BASE_DIR)/templates/neron.service
+	@echo "Restart=always" >> $(BASE_DIR)/templates/neron.service
+	@echo "User=root" >> $(BASE_DIR)/templates/neron.service
+	@echo "Environment=PYTHONUNBUFFERED=1" >> $(BASE_DIR)/templates/neron.service
+	@echo "" >> $(BASE_DIR)/templates/neron.service
+	@echo "[Install]" >> $(BASE_DIR)/templates/neron.service
+	@echo "WantedBy=multi-user.target" >> $(BASE_DIR)/templates/neron.service
+
+	@sudo cp $(BASE_DIR)/templates/neron.service /etc/systemd/system/neron.service
+
+	@sudo systemctl daemon-reload
+	@sudo systemctl enable neron
+
+	@echo "✔ systemd OK"
+
+# ============================================
+# CONTROL SERVICE
+# ============================================
+
+start:
+	@sudo systemctl start $(SERVICE)
+	@sleep 2
+	@sudo systemctl is-active --quiet $(SERVICE) && echo "✔ running" || (echo "❌ error" && exit 1)
+
+stop:
+	@sudo systemctl stop $(SERVICE)
+	@echo "✔ stopped"
+
+restart:
+	@sudo systemctl restart $(SERVICE)
+	@sleep 2
+	@sudo systemctl is-active --quiet $(SERVICE) && echo "✔ restarted" || (echo "❌ error" && exit 1)
+
+status:
+	@sudo systemctl status $(SERVICE) --no-pager
+
+logs:
+	@sudo journalctl -u $(SERVICE) -f
+
+# ============================================
+# UPDATE SAFE
+# ============================================
+
+update:
+	@echo "🔄 update Néron..."
+	@git -C $(REPO_DIR) pull origin $$(git -C $(REPO_DIR) branch --show-current)
+	@$(PIP) install -r $(BASE_DIR)/requirements.txt -q
+	@sudo systemctl restart $(SERVICE)
+	@echo "✔ updated"
+
+# ============================================
+# CLEAN
+# ============================================
+
+clean:
+	@echo "🧹 reset venv..."
+	@rm -rf $(VENV_DIR)
+	@rm -f $(LOG_DIR)/*.log
+	@echo "✔ clean done"
+
+# ============================================
+# BACKUP
+# ============================================
+
+backup:
+	@echo "💾 backup..."
+	@DIR=$(BASE_DIR)/backups/$$(date +%Y%m%d_%H%M%S) && \
+	mkdir -p $$DIR && \
+	cp $(BASE_DIR)/neron.yaml $$DIR/ 2>/dev/null || true && \
+	cp -r $(BASE_DIR)/data $$DIR/ 2>/dev/null || true && \
+	echo "✔ backup: $$DIR"
+
+restore:
+	@echo "📂 restore..."
+	@ls -lt $(BASE_DIR)/backups/ | head -n 10
+	@read -p "folder: " F && \
+	cp -r $(BASE_DIR)/backups/$$F/* $(BASE_DIR)/
+
+# ============================================
+# TEST
+# ============================================
+
+test:
+	@curl -sf http://localhost:8010/health && echo "✔ API OK" || echo "❌ API KO"
+	@curl -sf http://localhost:11434/api/tags && echo "✔ Ollama OK" || echo "❌ Ollama KO"
+
+# ============================================
+# VERSION
+# ============================================
+
+version:
+	@echo ""
+	@echo "Néron AI"
+	@echo "Python : $$(python3 --version)"
+	@echo "Service: $$(systemctl is-active neron 2>/dev/null || echo 'inactive')"
+	@echo ""
+
+# ============================================
+# CLIENT
+# ============================================
+
+install-client:
+	@cd ../client && npm install
+
+start-client:
+	@cd ../client && npm run dev
+
+# ============================================
+# OLLAMA / HA / TELEGRAM (hooks externes)
+# ============================================
+
+ollama:
+	@bash $(REPO_DIR)/scripts/ollama.sh
+
+telegram:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  📱 Configuration Telegram"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+
+	read -p "Voulez-vous utiliser Telegram ? [O/n] " USE_TG
+	if [ "$USE_TG" = "n" ]; then
+		@echo "👉 Configuration Telegram ignorée (make telegram pour plus tard)"
+		return
+	fi
+
+	@echo ""
+	read -p "Avez-vous un compte Telegram ? [O/n] " HAS_TG
+	if [ "$HAS_TG" = "n" ]; then
+		@echo ""
+		@echo "📲 Créez un compte sur https://telegram.org"
+		@echo "Puis relancez : make telegram"
+		return
+	fi
+
+	@echo ""
+	read -p "Avez-vous déjà un bot Telegram ? [O/n] " HAS_TOKEN
+
+	if [ "$HAS_TOKEN" = "n" ]; then
+		@echo ""
+		@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		@echo "Création d’un bot Telegram"
+		@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+		@echo ""
+		@echo "1. Ouvrir Telegram"
+		@echo "2. Rechercher @BotFather"
+		@echo "3. /newbot"
+		@echo "4. Nom + username (doit finir par bot)"
+		@echo "5. Copier le token fourni"
+		@echo ""
+		read -p "Appuyez sur Entrée quand vous avez le token..." _
+	fi
+
+	@echo ""
+	read -p "Token du bot : " BOT_TOKEN
+
+	if [ -z "$BOT_TOKEN" ]; then
+		@echo "❌ Token vide"
+		return
+	fi
+
+	@echo ""
+	@echo "Récupération automatique du Chat ID..."
+	@echo "Envoyez un message à votre bot puis appuyez sur Entrée"
+	read -p "Entrée pour continuer..." _
+
+	TG_RESPONSE=$(curl -s "https://api.telegram.org/bot${BOT_TOKEN}/getUpdates")
+
+	CHAT_ID=$(echo "$TG_RESPONSE" | python3 - << 'EOF'
+	import sys, json
+
+	try:
+    	data = json.load(sys.stdin)
+    	updates = data.get("result", [])
+    	if updates:
+		print(updates[-1]["message"]["chat"]["id"])
+    	else:
+		print("")
+	except:
+    	print("")
+	EOF
+	)
+
+	if [ -z "$CHAT_ID" ]; then
+		@echo "⚠ Impossible de récupérer automatiquement le Chat ID"
+		read -p "Entrez le Chat ID manuellement : " CHAT_ID
+	else
+		@echo "✔ Chat ID récupéré : $CHAT_ID"
+	fi
+
+ha-config:
+	@echo ""
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo "  🏠 Configuration Home Assistant"
+	@echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+	@echo ""
+
+	@CURRENT_URL=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(REPO_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('url','http://homeassistant.local:8123'))") ; \
+	CURRENT_ENABLED=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(REPO_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('enabled',False))") ; \
+	echo "État actuel : $$CURRENT_ENABLED" ; \
+	echo "URL actuelle : $$CURRENT_URL" ; \
+	echo "" ; \
+	read -p "URL Home Assistant [$$CURRENT_URL] : " HA_URL ; \
+	HA_URL=$${HA_URL:-$$CURRENT_URL} ; \
+	echo "" ; \
+	echo "👉 Token Home Assistant (long-lived access token)" ; \
+	read -p "Token (vide = conserver actuel) : " HA_TOKEN ; \
+	if [ -z "$$HA_TOKEN" ]; then \
+		HA_TOKEN=$$($(PYTHON) -c "import yaml; d=yaml.safe_load(open('$(REPO_DIR)/neron.yaml')); print(d.get('home_assistant',{}).get('token',''))") ; \
+	fi ; \
+	echo "" ; \
+	echo "Test connexion $$HA_URL ..." ; \
+	HTTP_CODE=$$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $$HA_TOKEN" $$HA_URL/api/) ; \
+	if [ "$$HTTP_CODE" != "200" ]; then \
+		echo "❌ Connexion échouée (HTTP $$HTTP_CODE)" ; \
+		exit 1 ; \
+	fi ; \
+	echo "✔ Connexion OK" ; \
+	$(PYTHON) $(REPO_DIR)/scripts/ha_setup.py $(REPO_DIR)/neron.yaml "$$HA_URL" "$$HA_TOKEN" ; \
+	echo "" ; \
+	read -p "Redémarrer Néron ? [O/n] : " RESTART ; \
+	if [ "$$RESTART" != "n" ]; then \
+		systemctl restart neron 2>/dev/null || true ; \
+		echo "✔ Néron redémarré" ; \
+	else \
+		echo "OK, redémarrage manuel : systemctl restart neron" ; \
+	fi
