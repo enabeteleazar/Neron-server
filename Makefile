@@ -33,6 +33,8 @@ help:
 	@echo "[Client]"
 	@echo "  make start-client    	-- demarrer l'application"
 	@echo "  make stop-client	-- arreter l'application "
+	@echo "  make restart-client	-- relance l'application"
+	@echo "  make status-client	-- etat de l'application"
 	@echo ""
 	@echo "[Sauvegarde]"
 	@echo "  make backup     	-- sauvegarder DB + neron.yaml"
@@ -133,14 +135,17 @@ version:
 # CLIENT
 # ============================================
 
-install-client:
-	@bash $(SERVER_DIR)/scripts/install-client.sh
-
 start-client:
-	@bash $(SERVER_DIR)/scripts/start-client.sh
+	@bash $(SERVER_DIR)/scripts/client.sh start
 
 stop-client:
-	@bash $(SERVER_DIR)/scripts/stop-client.sh
+	@bash $(SERVER_DIR)/scripts/client.sh stop
+
+restart-client:
+	@bash $(SERVER_DIR)/scripts/client.sh restart
+
+status-client:
+	@bash $(SERVER_DIR)/scripts/client.sh status
 
 # ============================================
 # BACKUP / RESTORE
