@@ -119,8 +119,7 @@ clean:
 # ============================================
 
 test:
-	@curl -sf http://localhost:8010/health && echo "API OK" || echo "API FAIL"
-	@curl -sf http://localhost:11434/api/tags && echo "Ollama OK" || echo "Ollama FAIL"
+	@bash $(SERVER_DIR)/scripts/test.sh
 
 # ============================================
 # VERSION

@@ -4,63 +4,101 @@ set -e
 
 SERVER_DIR="/etc/neron/server"
 
+BLUE="\033[34m"
+GREEN="\033[32m"
+YELLOW="\033[33m"
+RED="\033[31m"
+NC="\033[0m"
+
+FILE="$SERVER_DIR/neron.yaml"
+
 echo ""
 echo "============================================"
-echo "        CONFIG NERON (SAFE DISPLAY)"
+echo "           ⚙️ CONFIG NÉRON"
 echo "============================================"
 echo ""
+
+if [ ! -f "$FILE" ]; then
+    echo -e "${RED}❌ neron.yaml introuvable${NC}"
+    exit 1
+fi
 
 python3 - <<EOF
 import yaml
-from pathlib import Path
 
-file = Path("${SERVER_DIR}/neron.yaml")
+file = "$FILE"
 
-if not file.exists():
-    print("❌ neron.yaml introuvable")
-    exit(1)
+with open(file) as f:
+    data = yaml.safe_load(f)
 
-data = yaml.safe_load(file.read_text())
+def section(title):
+    print("\n" + title)
+    print("-" * len(title))
 
-SENSITIVE_KEYS = [
-    "token",
-    "api_key",
-    "apikey",
-    "secret",
-    "password",
-    "chat_id",
-    "authorization"
-]
+section("🤖 CORE NÉRON")
+core = data.get("neron", {})
+print(f"Version      : {core.get('version')}")
+print(f"Log level    : {core.get('log_level')}")
 
-def is_sensitive(key):
-    k = key.lower()
-    return any(s in k for s in SENSITIVE_KEYS)
+section("🧠 LLM")
+llm = data.get("llm", {})
+print(f"Host         : {llm.get('host')}")
+print(f"Model        : {llm.get('model')}")
+print(f"Max tokens   : {llm.get('max_tokens')}")
+print(f"Température  : {llm.get('temperature')}")
 
-def mask(value):
-    if value is None:
-        return value
-    s = str(value)
-    if len(s) <= 4:
-        return "****"
-    return "****" + s[-4:]
+section("🧩 CODE AGENT")
+ca = data.get("code_agent", {})
+print(f"Enabled      : {ca.get('enabled')}")
+print(f"Model        : {ca.get('model')}")
+print(f"Timeout      : {ca.get('sandbox_timeout')}s")
 
-def clean(obj):
-    if isinstance(obj, dict):
-        new = {}
-        for k, v in obj.items():
-            if is_sensitive(k):
-                new[k] = "[HIDDEN]"
-            else:
-                new[k] = clean(v)
-        return new
-    elif isinstance(obj, list):
-        return [clean(x) for x in obj]
-    else:
-        return obj
+section("💾 MEMORY")
+mem = data.get("memory", {})
+print(f"DB Path      : {mem.get('db_path')}")
+print(f"Retention    : {mem.get('retention_days')} days")
 
-cleaned = clean(data)
+section("📅 SCHEDULER")
+sch = data.get("scheduler", {})
+print(f"Enabled      : {sch.get('enabled')}")
+print(f"Report hour  : {sch.get('daily_report_hour')}")
+print(f"Cleanup days : {sch.get('memory_cleanup_days')}")
 
-print(yaml.dump(cleaned, sort_keys=False, allow_unicode=True))
+section("🌐 SYSTEM")
+srv = data.get("server", {})
+sys = data.get("system", {})
+print(f"Host         : {srv.get('host')}")
+print(f"Port         : {srv.get('port')}")
+print(f"Watchdog     : {sys.get('watchdog_url')}")
+
+section("🔌 INTEGRATIONS")
+
+ha = data.get("home_assistant", {})
+print("\nHome Assistant")
+print(f"  Enabled : {ha.get('enabled')}")
+print(f"  URL     : {ha.get('url')}")
+
+tg = data.get("telegram", {})
+print("\nTelegram")
+print(f"  Enabled : {tg.get('enabled')}")
+print(f"  Chat ID : {tg.get('chat_id')}")
+
+tw = data.get("twilio", {})
+print("\nTwilio")
+print(f"  Enabled : {tw.get('enabled')}")
+
+ws = data.get("watchdog", {})
+print("\nWatchdog")
+print(f"  Enabled    : {ws.get('enabled')}")
+print(f"  CPU alert  : {ws.get('cpu_alert')}%")
+print(f"  RAM alert  : {ws.get('ram_alert')}%")
+print(f"  Disk alert : {ws.get('disk_alert')}%")
+
+section("🔎 SEARCH")
+sea = data.get("searxng", {})
+print(f"URL          : {sea.get('url')}")
+print(f"Timeout      : {sea.get('timeout')}s")
+print(f"Max results  : {sea.get('max_results')}")
 EOF
 
 echo ""
