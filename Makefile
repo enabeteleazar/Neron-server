@@ -49,9 +49,13 @@ help:
 	@echo "  make ollama     	-- gerer le modele Ollama"
 	@echo "  make telegram   	-- configurer les bots Telegram"
 	@echo ""
+	@echo "[Home Assistant]"
+	@echo "  make ha-start		-- Demarrer Home Assistant"
+	@echo "  make ha-stop		-- Aretter Home Assistant "
+	@echo "  make ha-restart   	-- Redemarrer Home Assistant"
 	@echo "  make ha-install	-- installer Home Assistant"
 	@echo "  make ha-config  	-- configurer Home Assistant"
-	
+	@echo ""
 
 # ============================================
 # INSTALL
@@ -208,4 +212,4 @@ ha-logs:
 	bash /etc/neron/server/scripts/ha.sh logs
 
 ha-config:
-	bash /etc/neron/server/scripts/ha_config.sh
+	bash /etc/neron/server/scripts/ha.sh config
