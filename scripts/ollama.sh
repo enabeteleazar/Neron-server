@@ -55,6 +55,8 @@ CONFIG_FILE="$INSTALL_DIR/neron.yaml"
 # ------------------------------------------------------
 # [1/5] OLLAMA INSTALLATION
 # ------------------------------------------------------
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}[1/5] Vérification Ollama...${NC}"
 
 if ! command -v ollama >/dev/null 2>&1; then
@@ -70,6 +72,7 @@ fi
 # [2/5] SERVICE OLLAMA
 # ------------------------------------------------------
 echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}[2/5] Vérification du service...${NC}"
 
 if systemctl is-active --quiet ollama 2>/dev/null; then
@@ -91,6 +94,7 @@ fi
 # [3/5] LLMFIT + RECOMMANDATIONS
 # ------------------------------------------------------
 echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}[3/5] Analyse hardware + recommandations...${NC}"
 echo ""
 
@@ -141,6 +145,7 @@ declare -A MODEL_MAP=(
 # [4/5] CHOIX DU MODELE
 # ------------------------------------------------------
 echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}[4/5] Sélection du modèle...${NC}"
 
 if [ -z "$RAW_OUTPUT" ]; then
@@ -206,6 +211,7 @@ echo "🔄 Mapping modèle : $SELECTED_MODEL → $OLLAMA_MODEL"
 # [5/5] YAML UPDATE + SAFE PULL
 # ------------------------------------------------------
 echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}[5/5] Mise à jour configuration...${NC}"
 
 if [ -f "$CONFIG_FILE" ]; then

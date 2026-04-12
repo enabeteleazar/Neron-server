@@ -27,15 +27,11 @@ help:
 	@echo "  make start      	-- demarrer le service"
 	@echo "  make stop       	-- arreter le service"
 	@echo "  make restart    	-- redemarrer le service"
-	@echo "  make status     	-- etat du service"
-	@echo "  make logs       	-- logs en direct"
 	@echo ""
 	@echo "[Client]"
-	@echo "  make start-client    	-- demarrer l'application"
-	@echo "  make stop-client	-- arreter l'application "
-	@echo "  make restart-client	-- relance l'application"
-	@echo "  make status-client	-- etat de l'application"
-	@echo "  make logs-client	-- logs en direct"
+	@echo "  make client-start    	-- demarrer l'application"
+	@echo "  make client-stop	-- arreter l'application "
+	@echo "  make client-restart	-- relance l'application"
 	@echo ""
 	@echo "[Sauvegarde]"
 	@echo "  make backup     	-- sauvegarder DB + neron.yaml"
@@ -136,27 +132,21 @@ test:
 # ============================================
 
 version:
-	@echo "Python: $$(python3 --version)"
-	@systemctl is-active $(SERVICE) > /dev/null 2>&1 && echo "Service: running" || echo "Service: stopped"
+	@bash $(SERVER_DIR)/scripts/version.sh
 
 # ============================================
 # CLIENT
 # ============================================
 
-start-client:
-	@$(SERVER_DIR)/scripts/client.sh start
+client-start:
+	@bash $(SERVER_DIR)/scripts/client.sh start
 
-stop-client:
-	@$(SERVER_DIR)/scripts/client.sh stop
+client-stop:
+	@bash $(SERVER_DIR)/scripts/client.sh stop
 
-restart-client:
-	@$(SERVER_DIR)/scripts/client.sh restart
+client-restart:
+	@bash $(SERVER_DIR)/scripts/client.sh restart
 
-status-client:
-	@$(SERVER_DIR)/scripts/client.sh status
-
-logs-client:
-	@$(SERVER_DIR)/scripts/client.sh logs
 
 # ============================================
 # BACKUP / RESTORE
@@ -189,27 +179,23 @@ ollama:
 # HOME ASSISTANT
 # ============================================
 
-# =========================
-# HOME ASSISTANT
-# =========================
-
 ha-install:
-	bash /etc/neron/server/scripts/ha_install.sh
+	@bash $(SERVER_DIR)/scripts/ha_install.sh
 
 ha-start:
-	bash /etc/neron/server/scripts/ha.sh start
+	@bash $(SERVER_DIR)/scripts/ha.sh start
 
 ha-stop:
-	bash /etc/neron/server/scripts/ha.sh stop
+	@bash $(SERVER_DIR)/scripts/ha.sh stop
 
 ha-restart:
-	bash /etc/neron/server/scripts/ha.sh restart
+	@bash $(SERVER_DIR)/scripts/ha.sh restart
 
 ha-status:
-	bash /etc/neron/server/scripts/ha.sh status
+	@bash $(SERVER_DIR)/scripts/ha.sh status
 
 ha-logs:
-	bash /etc/neron/server/scripts/ha.sh logs
+	@bash $(SERVER_DIR)/scripts/ha.sh logs
 
 ha-config:
-	bash /etc/neron/server/scripts/ha.sh config
+	@bash $(SERVER_DIR)/scripts/ha.sh config

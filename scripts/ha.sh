@@ -43,7 +43,7 @@ spinner() {
 
 echo ""
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  🏠 Home Assistant Manager"
+echo -e "   Home Assistant Manager"
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
@@ -77,7 +77,7 @@ usage() {
 # =========================
 check_systemd() {
     command -v systemctl >/dev/null 2>&1 || {
-        echo "❌ systemctl non disponible"
+        echo " systemctl non disponible"
         exit 1
     }
 }
@@ -88,7 +88,7 @@ check_systemd() {
 start() {
     echo ""
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "        🏠 START HOME ASSISTANT"
+    echo -e "         START HOME ASSISTANT"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
@@ -99,9 +99,9 @@ start() {
     sleep 1
 
     if systemctl is-active --quiet "$SERVICE"; then
-        echo -e "${GREEN}✔ Home Assistant démarré${NC}"
+        echo -e "${GREEN} Home Assistant démarré${NC}"
     else
-        echo -e "${RED}❌ Échec démarrage${NC}"
+        echo -e "${RED} Échec démarrage${NC}"
         systemctl status "$SERVICE" --no-pager -l || true
         exit 1
     fi
@@ -112,7 +112,7 @@ start() {
 stop() {
     echo ""
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "        🛑 STOP HOME ASSISTANT"
+    echo -e "        STOP HOME ASSISTANT"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
@@ -123,11 +123,11 @@ stop() {
     sleep 1
 
     if systemctl is-active --quiet "$SERVICE"; then
-        echo -e "${RED}❌ Échec arrêt${NC}"
+        echo -e "${RED} Échec arrêt${NC}"
         systemctl status "$SERVICE" --no-pager -l || true
         exit 1
     else
-        echo -e "${GREEN}✔ Home Assistant arrêté${NC}"
+        echo -e "${GREEN} Home Assistant arrêté${NC}"
     fi
 
     echo ""
@@ -136,7 +136,7 @@ stop() {
 restart() {
     echo ""
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "        🔄 RESTART HOME ASSISTANT"
+    echo -e "         RESTART HOME ASSISTANT"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
@@ -147,9 +147,9 @@ restart() {
     sleep 1
 
     if systemctl is-active --quiet "$SERVICE"; then
-        echo -e "${GREEN}✔ Home Assistant redémarré${NC}"
+        echo -e "${GREEN} Home Assistant redémarré${NC}"
     else
-        echo -e "${RED}❌ Échec restart${NC}"
+        echo -e "${RED} Échec restart${NC}"
         systemctl status "$SERVICE" --no-pager -l || true
         exit 1
     fi
@@ -160,16 +160,16 @@ restart() {
 status() {
     echo ""
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "        📊 STATUS HOME ASSISTANT"
+    echo -e "         STATUS HOME ASSISTANT"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
 
     if systemctl is-active --quiet "$SERVICE"; then
-        echo -e "${GREEN}✔ ACTIF${NC}"
+        echo -e "${GREEN} ACTIF${NC}"
     else
-        echo -e "${RED}❌ INACTIF${NC}"
+        echo -e "${RED} INACTIF${NC}"
     fi
 
     systemctl status "$SERVICE" --no-pager -l || true
@@ -180,7 +180,7 @@ status() {
 logs() {
     echo ""
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "        📜 LOGS HOME ASSISTANT"
+    echo -e "         LOGS HOME ASSISTANT"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
@@ -192,7 +192,7 @@ logs() {
 config() {
     echo ""
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo -e "        ⚙️  CONFIG HOME ASSISTANT"
+    echo -e "          CONFIG HOME ASSISTANT"
     echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
@@ -208,21 +208,21 @@ config() {
     HA_URL=${HA_URL:-$CURRENT_URL}
 
     echo ""
-    echo "  👉 Génère un token dans HA"
+    echo "   Génère un token dans HA"
     echo ""
 
     read -p "  Token (laisser vide pour garder l'actuel) : " HA_TOKEN
     HA_TOKEN=${HA_TOKEN:-$CURRENT_TOKEN}
 
     echo ""
-    echo "🔍 Test de connexion..."
+    echo " Test de connexion..."
 
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
         -H "Authorization: Bearer $HA_TOKEN" \
         "$HA_URL/api/")
 
     if [ "$HTTP_CODE" = "200" ]; then
-        echo -e "${GREEN}✔ Connexion OK${NC}"
+        echo -e "${GREEN} Connexion OK${NC}"
 
         $PYTHON - <<EOF
 import yaml
@@ -242,20 +242,20 @@ config["home_assistant"]["token"] = token
 with open(config_file, "w") as f:
     yaml.dump(config, f, allow_unicode=True)
 
-print("✔ neron.yaml mis à jour")
+print("neron.yaml mis à jour")
 EOF
 
         echo ""
-        read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART_NOW
+        read -p "Redémarrer Néron maintenant ? [O/n] " RESTART_NOW
 
         if [ "$RESTART_NOW" != "n" ]; then
             make -C "$REPO_DIR" restart
         else
-            echo "  👉 Lance : make restart"
+            echo "Lance : make restart"
         fi
 
     else
-        echo -e "${RED}❌ Connexion échouée ($HTTP_CODE)${NC}"
+        echo -e "${RED}Connexion échouée ($HTTP_CODE)${NC}"
         exit 1
     fi
 
@@ -270,6 +270,4 @@ case "$1" in
     logs)    logs ;;
     config)  config ;;
     *)       usage ;;
-esacy
-
-
+esac

@@ -56,7 +56,9 @@ echo -e "  🏠 Installation Home Assistant"
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-slow_echo "${BLUE}Initialisation installation Néron Home Assistant...${NC}"
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "Initialisation installation Néron Home Assistant..."
 
 sudo dpkg --configure -a > /dev/null 2>&1 || true
 
@@ -64,7 +66,9 @@ sudo dpkg --configure -a > /dev/null 2>&1 || true
 # [1/5] DEPENDENCIES
 # =========================
 install_dependencies() {
-    slow_echo "${BLUE}[1/5] Installation dépendances système...${NC}"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "[1/5] Installation dépendances système...${NC}"
 
     sudo apt-get update -y -qq > /dev/null 2>&1 &
     spinner $!
@@ -86,7 +90,9 @@ install_dependencies() {
 # [2/5] STRUCTURE
 # =========================
 setup_directories() {
-    slow_echo "${BLUE}[2/5] Création structure Néron...${NC}"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "[2/5] Création structure Néron...${NC}"
 
     sudo mkdir -p "$HA_DIR/config"
     sudo chown -R "$HA_USER:$HA_USER" "$HA_DIR"
@@ -98,7 +104,9 @@ setup_directories() {
 # [3/5] USER
 # =========================
 create_user() {
-    slow_echo "${BLUE}[3/5] Vérification utilisateur homeassistant...${NC}"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "[3/5] Vérification utilisateur homeassistant...${NC}"
 
     GROUPS="dialout"
     getent group i2c >/dev/null && GROUPS="$GROUPS,i2c"
@@ -118,7 +126,9 @@ create_user() {
 # [4/5] VENV CHECK
 # =========================
 check_venv() {
-    slow_echo "${BLUE}[4/5] Vérification venv Néron...${NC}"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "[4/5] Vérification venv Néron...${NC}"
 
     if [ ! -d "$VENV_DIR" ]; then
         echo -e "${RED}❌ venv introuvable ($VENV_DIR)${NC}"
@@ -132,7 +142,9 @@ check_venv() {
 # [5/5] HOME ASSISTANT
 # =========================
 install_ha() {
-    slow_echo "${BLUE}[5/5] Installation Home Assistant...${NC}"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "[5/5] Installation Home Assistant...${NC}"
 
     sudo -u "$HA_USER" bash -c "
         source $VENV_DIR/bin/activate &&
@@ -148,7 +160,9 @@ install_ha() {
 # SYSTEMD SERVICE
 # =========================
 create_service() {
-    slow_echo "${BLUE}Création service systemd...${NC}"
+    echo ""
+    echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo "Création service systemd...${NC}"
 
     sudo tee /etc/systemd/system/$SERVICE > /dev/null <<EOF
 [Unit]
@@ -190,14 +204,14 @@ echo ""
 create_service
 
 echo ""
-echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "        ${GREEN}✔ INSTALLATION TERMINÉE${NC}"
-echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo "Service : $SERVICE"
 echo "URL     : http://100.194.90.109:8123"
 echo ""
 echo "Commandes :"
 echo "  make ha-start"
-echo "  make ha-stop"
-echo "  make ha-status"
+echo "  make ha-config"
 echo ""

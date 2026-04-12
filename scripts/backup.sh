@@ -147,3 +147,4 @@ case "$1" in
     backup)  backup ;;
     restore) restore ;;
     *)       usage ;;
+esac
