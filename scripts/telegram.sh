@@ -1,13 +1,44 @@
 #!/usr/bin/env bash
+# scripts/telegram.sh
 
 set -e
+clear
 
-# Couleurs (optionnel)
+# =========================
+# COLORS
+# =========================
 BOLD="\033[1m"
 BLUE="\033[34m"
 YELLOW="\033[33m"
 GREEN="\033[32m"
 NC="\033[0m"
+
+# =========================
+# UI FUNCTIONS
+# =========================
+slow_echo() {
+    local text="$1"
+    local delay="${2:-0.02}"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep $delay
+    done
+    echo
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\\'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "${spinstr}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "      \b\b\b\b\b\b"
+}
 
 echo ""
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"

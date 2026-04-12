@@ -1,13 +1,54 @@
+
 #!/usr/bin/env bash
+# scripts/client.sh
+
 set -e
+clear
+
+# =========================
+# COLORS
+# =========================
+BOLD="\033[1m"
+BLUE="\033[34m"
+YELLOW="\033[33m"
+GREEN="\033[32m"
+NC="\033[0m"
+
+# =========================
+# UI FUNCTIONS
+# =========================
+slow_echo() {
+    local text="$1"
+    local delay="${2:-0.02}"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep $delay
+    done
+    echo
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\\'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "${spinstr}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "      \b\b\b\b\b\b"
+}
+
+echo ""
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  📱 Configuration Telegram"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
 
 SERVICE="neron-client.service"
-
-BLUE="\033[34m"
-GREEN="\033[32m"
-YELLOW="\033[33m"
-RED="\033[31m"
-NC="\033[0m"
 
 usage() {
     echo ""
@@ -30,9 +71,9 @@ check_systemd() {
 
 start() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📱 START NÉRON CLIENT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        📱 START NÉRON CLIENT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -54,9 +95,9 @@ start() {
 
 stop() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        🛑 STOP NÉRON CLIENT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        🛑 STOP NÉRON CLIENT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -78,9 +119,9 @@ stop() {
 
 restart() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        🔄 RESTART NÉRON CLIENT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        🔄 RESTART NÉRON CLIENT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -102,9 +143,9 @@ restart() {
 
 status() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📱 STATUS NÉRON CLIENT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        📱 STATUS NÉRON CLIENT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -122,9 +163,9 @@ status() {
 
 logs() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📜 LOGS NÉRON CLIENT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        📜 LOGS NÉRON CLIENT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd

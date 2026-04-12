@@ -1,18 +1,18 @@
-#!/bin/bash
-# ha_install.sh v1.0 - NERON HOME ASSISTANT CORE
-set -euo pipefail
+#!/usr/bin/env bash
+# scripts/ha_install.sh
+
+set -e
 clear
 
 # =========================
 # COLORS
 # =========================
-BOLD=$(tput bold)
-RESET=$(tput sgr0)
-RED=$(tput setaf 1)
-GREEN=$(tput setaf 2)
-YELLOW=$(tput setaf 3)
-BLUE=$(tput setaf 4)
-NC=$RESET
+BOLD="\033[1m"
+BLUE="\033[34m"
+YELLOW="\033[33m"
+GREEN="\033[32m"
+RED="\033[31m"
+NC="\033[0m"
 
 # =========================
 # CONFIG
@@ -50,15 +50,18 @@ spinner() {
     printf "      \b\b\b\b\b\b"
 }
 
-# =========================
-# CHECK SYSTEM
-# =========================
+echo ""
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  🏠 Installation Home Assistant"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
 slow_echo "${BLUE}Initialisation installation Néron Home Assistant...${NC}"
 
 sudo dpkg --configure -a > /dev/null 2>&1 || true
 
 # =========================
-# 1. DEPENDANCES
+# [1/5] DEPENDENCIES
 # =========================
 install_dependencies() {
     slow_echo "${BLUE}[1/5] Installation dépendances système...${NC}"
@@ -80,29 +83,7 @@ install_dependencies() {
 }
 
 # =========================
-# 2. USER SAFE
-# =========================
-create_user() {
-    slow_echo "${BLUE}[3/5] Vérification utilisateur homeassistant...${NC}"
-
-    GROUPS="dialout"
-    getent group i2c >/dev/null && GROUPS="$GROUPS,i2c"
-    getent group gpio >/dev/null && GROUPS="$GROUPS,gpio"
-
-    if id "$HA_USER" &>/dev/null; then
-        echo "✔ User déjà existant : $HA_USER"
-
-        # sécurise les groupes même si déjà créé
-        sudo usermod -aG dialout "$HA_USER" || true
-    else
-        echo "Création utilisateur : $HA_USER"
-        sudo useradd -rm "$HA_USER" -G "$GROUPS"
-        echo "✔ User créé"
-    fi
-}
-
-# =========================
-# 3. STRUCTURE
+# [2/5] STRUCTURE
 # =========================
 setup_directories() {
     slow_echo "${BLUE}[2/5] Création structure Néron...${NC}"
@@ -114,13 +95,33 @@ setup_directories() {
 }
 
 # =========================
-# 4. CHECK VENV
+# [3/5] USER
+# =========================
+create_user() {
+    slow_echo "${BLUE}[3/5] Vérification utilisateur homeassistant...${NC}"
+
+    GROUPS="dialout"
+    getent group i2c >/dev/null && GROUPS="$GROUPS,i2c"
+    getent group gpio >/dev/null && GROUPS="$GROUPS,gpio"
+
+    if id "$HA_USER" &>/dev/null; then
+        echo "✔ User déjà existant : $HA_USER"
+        sudo usermod -aG dialout "$HA_USER" || true
+    else
+        echo "Création utilisateur : $HA_USER"
+        sudo useradd -rm "$HA_USER" -G "$GROUPS"
+        echo -e "${GREEN}✔ User créé${NC}"
+    fi
+}
+
+# =========================
+# [4/5] VENV CHECK
 # =========================
 check_venv() {
     slow_echo "${BLUE}[4/5] Vérification venv Néron...${NC}"
 
     if [ ! -d "$VENV_DIR" ]; then
-        echo -e "${RED}ERREUR: venv introuvable ($VENV_DIR)${NC}"
+        echo -e "${RED}❌ venv introuvable ($VENV_DIR)${NC}"
         exit 1
     fi
 
@@ -128,7 +129,7 @@ check_venv() {
 }
 
 # =========================
-# 5. INSTALL HOME ASSISTANT
+# [5/5] HOME ASSISTANT
 # =========================
 install_ha() {
     slow_echo "${BLUE}[5/5] Installation Home Assistant...${NC}"
@@ -136,8 +137,9 @@ install_ha() {
     sudo -u "$HA_USER" bash -c "
         source $VENV_DIR/bin/activate &&
         pip install --upgrade pip wheel &&
-        pip install homeassistant  &
+        pip install homeassistant &
     " > /dev/null 2>&1 &
+    spinner $!
 
     echo -e "${GREEN}✔ Home Assistant installé${NC}"
 }
@@ -174,13 +176,12 @@ EOF
 # =========================
 # MAIN
 # =========================
-
 echo ""
 install_dependencies
 echo ""
-create_user
-echo ""
 setup_directories
+echo ""
+create_user
 echo ""
 check_venv
 echo ""
@@ -189,9 +190,9 @@ echo ""
 create_service
 
 echo ""
-echo "======================================"
-echo -e "${GREEN}✔ INSTALLATION TERMINÉE${NC}"
-echo "======================================"
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo -e "        ${GREEN}✔ INSTALLATION TERMINÉE${NC}"
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "Service : $SERVICE"
 echo "URL     : http://100.194.90.109:8123"
 echo ""

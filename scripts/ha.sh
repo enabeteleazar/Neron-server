@@ -1,31 +1,80 @@
 #!/usr/bin/env bash
-set -e
+# scripts/ha.sh
 
+set -e
+clear
+
+# =========================
+# COLORS
+# =========================
+BOLD="\033[1m"
+BLUE="\033[34m"
+YELLOW="\033[33m"
+GREEN="\033[32m"
+RED="\033[31m"
+NC="\033[0m"
+
+# =========================
+# UI FUNCTIONS
+# =========================
+slow_echo() {
+    local text="$1"
+    local delay="${2:-0.02}"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep $delay
+    done
+    echo
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\\'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "${spinstr}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "      \b\b\b\b\b\b"
+}
+
+echo ""
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  🏠 Home Assistant Manager"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# =========================
+# CONFIG
+# =========================
 BASE_DIR="/etc/neron"
 REPO_DIR="$BASE_DIR/server"
 SERVICE="neron-homeassistant.service"
 CONFIG_FILE="$REPO_DIR/neron.yaml"
 PYTHON="$BASE_DIR/server/venv/bin/python3"
 
-BLUE="\033[34m"
-GREEN="\033[32m"
-YELLOW="\033[33m"
-RED="\033[31m"
-NC="\033[0m"
-
+# =========================
+# USAGE
+# =========================
 usage() {
     echo ""
     echo "Usage:"
     echo "  ha.sh start"
     echo "  ha.sh stop"
     echo "  ha.sh restart"
-    echo "  ha.sh config"
     echo "  ha.sh status"
     echo "  ha.sh logs"
+    echo "  ha.sh config"
     echo ""
     exit 1
 }
 
+# =========================
+# HELPERS
+# =========================
 check_systemd() {
     command -v systemctl >/dev/null 2>&1 || {
         echo "❌ systemctl non disponible"
@@ -33,11 +82,14 @@ check_systemd() {
     }
 }
 
+# =========================
+# COMMANDS
+# =========================
 start() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📱 START HOME ASSISTANT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        🏠 START HOME ASSISTANT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -47,7 +99,7 @@ start() {
     sleep 1
 
     if systemctl is-active --quiet "$SERVICE"; then
-        echo -e "${GREEN}✔ Client démarré${NC}"
+        echo -e "${GREEN}✔ Home Assistant démarré${NC}"
     else
         echo -e "${RED}❌ Échec démarrage${NC}"
         systemctl status "$SERVICE" --no-pager -l || true
@@ -59,9 +111,9 @@ start() {
 
 stop() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        🛑 STOP HOME ASSISTANT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        🛑 STOP HOME ASSISTANT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -75,7 +127,7 @@ stop() {
         systemctl status "$SERVICE" --no-pager -l || true
         exit 1
     else
-        echo -e "${GREEN}✔ Client arrêté${NC}"
+        echo -e "${GREEN}✔ Home Assistant arrêté${NC}"
     fi
 
     echo ""
@@ -83,9 +135,9 @@ stop() {
 
 restart() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        🔄 RESTART HOME ASSISTANT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        🔄 RESTART HOME ASSISTANT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -95,7 +147,7 @@ restart() {
     sleep 1
 
     if systemctl is-active --quiet "$SERVICE"; then
-        echo -e "${GREEN}✔ Client redémarré${NC}"
+        echo -e "${GREEN}✔ Home Assistant redémarré${NC}"
     else
         echo -e "${RED}❌ Échec restart${NC}"
         systemctl status "$SERVICE" --no-pager -l || true
@@ -107,9 +159,9 @@ restart() {
 
 status() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📱 STATUS HOMEASSISTANT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        📊 STATUS HOME ASSISTANT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -127,9 +179,9 @@ status() {
 
 logs() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📜 LOGS HOME ASSISTANT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        📜 LOGS HOME ASSISTANT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     check_systemd
@@ -139,9 +191,9 @@ logs() {
 
 config() {
     echo ""
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "        📜 CONFIG HOME ASSISTANT"
-    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        ⚙️  CONFIG HOME ASSISTANT"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
 
     CURRENT_URL=$($PYTHON -c "import yaml; d=yaml.safe_load(open('$CONFIG_FILE')); print(d.get('home_assistant',{}).get('url','http://homeassistant.local:8123'))")
@@ -170,7 +222,7 @@ config() {
         "$HA_URL/api/")
 
     if [ "$HTTP_CODE" = "200" ]; then
-        echo "✔ Connexion OK"
+        echo -e "${GREEN}✔ Connexion OK${NC}"
 
         $PYTHON - <<EOF
 import yaml
@@ -194,26 +246,30 @@ print("✔ neron.yaml mis à jour")
 EOF
 
         echo ""
-        read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART
+        read -p "  Redémarrer Néron maintenant ? [O/n] " RESTART_NOW
 
-        if [ "$RESTART" != "n" ]; then
+        if [ "$RESTART_NOW" != "n" ]; then
             make -C "$REPO_DIR" restart
         else
             echo "  👉 Lance : make restart"
         fi
 
     else
-        echo "❌ Connexion échouée ($HTTP_CODE)"
+        echo -e "${RED}❌ Connexion échouée ($HTTP_CODE)${NC}"
         exit 1
     fi
+
+    echo ""
 }
 
 case "$1" in
-    start) start ;;
-    stop) stop ;;
+    start)   start ;;
+    stop)    stop ;;
     restart) restart ;;
-    status) status ;;
-    logs) logs ;;
-    config) config ;;
-    *) usage ;;
-esac
+    status)  status ;;
+    logs)    logs ;;
+    config)  config ;;
+    *)       usage ;;
+esacy
+
+

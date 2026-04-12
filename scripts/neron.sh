@@ -1,28 +1,70 @@
 #!/usr/bin/env bash
+# scripts/neron.sh
 
 set -e
+clear
 
-SERVER_DIR="/etc/neron/server"
-
+# =========================
+# COLORS
+# =========================
+BOLD="\033[1m"
 BLUE="\033[34m"
-GREEN="\033[32m"
 YELLOW="\033[33m"
+GREEN="\033[32m"
 RED="\033[31m"
 NC="\033[0m"
 
+# =========================
+# UI FUNCTIONS
+# =========================
+slow_echo() {
+    local text="$1"
+    local delay="${2:-0.02}"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep $delay
+    done
+    echo
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\\'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "${spinstr}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "      \b\b\b\b\b\b"
+}
+
+echo ""
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  🤖 Configuration Néron"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# =========================
+# CONFIG
+# =========================
+BASE_DIR="/etc/neron"
+SERVER_DIR="$BASE_DIR/server"
 FILE="$SERVER_DIR/neron.yaml"
 
-echo ""
-echo "============================================"
-echo "           ⚙️ CONFIG NÉRON"
-echo "============================================"
-echo ""
-
+# =========================
+# GUARD
+# =========================
 if [ ! -f "$FILE" ]; then
     echo -e "${RED}❌ neron.yaml introuvable${NC}"
     exit 1
 fi
 
+# =========================
+# DISPLAY CONFIG
+# =========================
 python3 - <<EOF
 import yaml
 
@@ -102,4 +144,4 @@ print(f"Max results  : {sea.get('max_results')}")
 EOF
 
 echo ""
-echo "============================================"
+echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

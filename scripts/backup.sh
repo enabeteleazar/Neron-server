@@ -1,35 +1,79 @@
 #!/usr/bin/env bash
+# scripts/backup.sh
 
 set -e
+clear
 
-BASE_DIR="/etc/neron/server"
-BACKUP_ROOT="$BASE_DIR/backups"
-
+# =========================
+# COLORS
+# =========================
+BOLD="\033[1m"
 BLUE="\033[34m"
-GREEN="\033[32m"
 YELLOW="\033[33m"
+GREEN="\033[32m"
 RED="\033[31m"
 NC="\033[0m"
 
-# --------------------------------------------------
-# HELP
-# --------------------------------------------------
+# =========================
+# UI FUNCTIONS
+# =========================
+slow_echo() {
+    local text="$1"
+    local delay="${2:-0.02}"
+    for ((i=0; i<${#text}; i++)); do
+        printf "%s" "${text:$i:1}"
+        sleep $delay
+    done
+    echo
+}
+
+spinner() {
+    local pid=$1
+    local delay=0.1
+    local spinstr='|/-\\'
+    while ps -p "$pid" > /dev/null 2>&1; do
+        local temp=${spinstr#?}
+        printf " [%c]  " "${spinstr}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+        printf "\b\b\b\b\b\b"
+    done
+    printf "      \b\b\b\b\b\b"
+}
+
+echo ""
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "  💾 Backup Néron"
+echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# =========================
+# CONFIG
+# =========================
+BASE_DIR="/etc/neron/server"
+BACKUP_ROOT="$BASE_DIR/backups"
+
+# =========================
+# USAGE
+# =========================
 usage() {
     echo ""
     echo "Usage:"
-    echo "  backup.sh backup     → crée une sauvegarde"
-    echo "  backup.sh restore     → restaure une sauvegarde"
+    echo "  backup.sh backup"
+    echo "  backup.sh restore"
     echo ""
     exit 1
 }
 
-# --------------------------------------------------
+# =========================
 # BACKUP
-# --------------------------------------------------
+# =========================
 backup() {
     echo ""
-    echo "💾 Sauvegarde de Néron..."
-    echo "----------------------------------------"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        💾 BACKUP NÉRON"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
 
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
     DEST="$BACKUP_ROOT/$TIMESTAMP"
@@ -46,18 +90,23 @@ backup() {
     echo ""
 }
 
-# --------------------------------------------------
+# =========================
 # RESTORE
-# --------------------------------------------------
+# =========================
 restore() {
     echo ""
-    echo "📂 Sauvegardes disponibles :"
-    echo "----------------------------------------"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo -e "        📂 RESTORE NÉRON"
+    echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo ""
 
     if [ ! -d "$BACKUP_ROOT" ]; then
-        echo "❌ Aucune sauvegarde trouvée"
+        echo -e "${RED}❌ Aucune sauvegarde trouvée${NC}"
         exit 1
     fi
+
+    echo "Sauvegardes disponibles :"
+    echo ""
 
     BACKUPS=($(ls -1t "$BACKUP_ROOT"))
 
@@ -69,18 +118,17 @@ restore() {
     read -p "Choisir le numéro de sauvegarde : " CHOICE
 
     INDEX=$((CHOICE-1))
-
     SELECTED="${BACKUPS[$INDEX]}"
 
     if [ -z "$SELECTED" ]; then
-        echo "❌ Sélection invalide"
+        echo -e "${RED}❌ Sélection invalide${NC}"
         exit 1
     fi
 
     SRC="$BACKUP_ROOT/$SELECTED"
 
     if [ ! -d "$SRC" ]; then
-        echo "❌ Dossier introuvable"
+        echo -e "${RED}❌ Dossier introuvable${NC}"
         exit 1
     fi
 
@@ -90,22 +138,12 @@ restore() {
         cp "$SRC/memory.db" "$BASE_DIR/data/memory.db"
     fi
 
-    echo "✔ Restauration terminée"
+    echo -e "${GREEN}✔ Restauration terminée${NC}"
     echo "👉 run: make restart"
     echo ""
 }
 
-# --------------------------------------------------
-# MAIN
-# --------------------------------------------------
 case "$1" in
-    backup)
-        backup
-        ;;
-    restore)
-        restore
-        ;;
-    *)
-        usage
-        ;;
-esac
+    backup)  backup ;;
+    restore) restore ;;
+    *)       usage ;;
