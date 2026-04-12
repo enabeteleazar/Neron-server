@@ -1,6 +1,5 @@
-
 # core/app.py
-# Neron Core v2.2.0
+# Neron Core v2.2.1
 
 from __future__ import annotations
 
@@ -72,23 +71,23 @@ _file_handler.setFormatter(
 logging.getLogger().addHandler(_file_handler)
 logger = get_logger("neron_core")
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
 _startup_time: float               = 0.0
 _gateway_task: asyncio.Task | None = None
 
-llm_agent:     LLMAgent      | None = None
-memory_agent:  MemoryAgent   | None = None
-web_agent:     WebAgent      | None = None
-stt_agent:     STTAgent      | None = None
-tts_agent:                    None  = None
-ha_agent:      HAAgent       | None = None
-code_agent:    CodeAgent     | None = None
-code_audit_agent: CodeAuditAgent | None = None
-router:        IntentRouter  | None = None
-time_provider: TimeProvider  | None = None
+llm_agent:        LLMAgent        | None = None
+memory_agent:     MemoryAgent     | None = None
+web_agent:        WebAgent        | None = None
+stt_agent:        STTAgent        | None = None
+tts_agent:                         None  = None
+ha_agent:         HAAgent         | None = None
+code_agent:       CodeAgent       | None = None
+code_audit_agent: CodeAuditAgent  | None = None
+router:           IntentRouter    | None = None
+time_provider:    TimeProvider    | None = None
 
 
 def utc_now_iso() -> str:
@@ -383,9 +382,11 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> None:
 def root():
     return {"service": "Neron Core", "version": VERSION, "status": "active"}
 
+
 @app.get("/health")
 def health():
     return {"status": "healthy", "version": VERSION}
+
 
 @app.get("/status")
 def status():
@@ -393,6 +394,7 @@ def status():
         return world_model.get()
     except Exception as e:
         raise HTTPException(500, f"Impossible de recuperer le status : {e}")
+
 
 @app.get("/metrics")
 def prometheus_metrics():
@@ -406,6 +408,22 @@ async def ha_reload(_: None = Depends(verify_api_key)):
         raise HTTPException(503, "Agent HA non disponible")
     count = await ha_agent.reload()
     return {"status": "ok", "entities": count, "timestamp": utc_now_iso()}
+
+
+# ── Route /memory ─────────────────────────────────────────────────────────────
+
+@app.get("/memory")
+async def get_memory(limit: int = 5, _: None = Depends(verify_api_key)):
+    """Retourne les dernières entrées de la mémoire conversationnelle."""
+    if not memory_agent:
+        raise HTTPException(status_code=503, detail="Agent mémoire non disponible")
+    limit = min(max(1, limit), 100)
+    try:
+        entries = memory_agent.retrieve(limit=limit)
+        return {"entries": entries, "count": len(entries), "timestamp": utc_now_iso()}
+    except Exception as e:
+        logger.error("Erreur récupération mémoire : %s", e)
+        raise HTTPException(status_code=500, detail=f"Erreur mémoire : {e}")
 
 
 # ── Routes /personality ───────────────────────────────────────────────────────
@@ -826,4 +844,3 @@ async def _handle_code(query, intent_result, metadata, start) -> CoreResponse:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=settings.SERVER_HOST, port=settings.SERVER_PORT)
-

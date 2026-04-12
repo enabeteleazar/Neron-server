@@ -17,12 +17,6 @@ SERVICE := neron
 
 help:
 	@echo ""
-	@echo "[Installation / Maintenance]"
-	@echo "  make install    	-- installer Neron"
-	@echo "  make update     	-- git pull + restart"
-	@echo "  make clean      	-- nettoyer venv et logs"
-	@echo "  make version    	-- versions Neron / Python / Ollama"
-	@echo ""
 	@echo "[Server]"
 	@echo "  make start      	-- demarrer le service"
 	@echo "  make stop       	-- arreter le service"
@@ -36,10 +30,6 @@ help:
 	@echo "[Sauvegarde]"
 	@echo "  make backup     	-- sauvegarder DB + neron.yaml"
 	@echo "  make restore    	-- restaurer une sauvegarde"
-	@echo ""
-	@echo "[Diagnostic]"
-	@echo "  make test       	-- tester l'API et Ollama"
-	@echo "  make neron      	-- afficher la config active"
 	@echo ""
 	@echo "[Integration]"
 	@echo "  make ollama     	-- gerer le modele Ollama"
