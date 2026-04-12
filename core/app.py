@@ -1,3 +1,4 @@
+
 # core/app.py
 # Neron Core v2.2.0
 
@@ -28,7 +29,6 @@ from prometheus_client import (
     generate_latest,
 )
 from pydantic import BaseModel
-
 from core.agents.base_agent import get_logger
 from core.agents.code_agent import CodeAgent
 from core.agents.code_audit_agent import CodeAuditAgent

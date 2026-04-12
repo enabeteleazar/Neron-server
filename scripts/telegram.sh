@@ -46,6 +46,8 @@ echo -e "  📱 Configuration Telegram"
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+YAML_FILE="/etc/neron/server/neron.yaml"
+
 read -p "  Voulez-vous utiliser Telegram ? [O/n] " USE_TG
 if [ "$USE_TG" = "n" ]; then
     echo -e "${YELLOW}  👉 Vous pourrez configurer Telegram plus tard${NC}"
@@ -108,4 +110,36 @@ echo ""
 echo -e "${GREEN}  ✔ Configuration Telegram prête${NC}"
 echo "  BOT_TOKEN=$BOT_TOKEN"
 echo "  CHAT_ID=$CHAT_ID"
+
+
+if [ -f "$YAML_FILE" ]; then
+    echo ""
+    echo -e "${YELLOW}  Mise à jour de neron.yaml...${NC}"
+
+    python3 -c "
+import yaml, sys
+
+with open('$YAML_FILE', 'r') as f:
+    config = yaml.safe_load(f)
+
+if 'telegram' not in config:
+    config['telegram'] = {}
+
+config['telegram']['token'] = '$BOT_TOKEN'
+config['telegram']['chat_id'] = '$CHAT_ID'
+
+with open('$YAML_FILE', 'w') as f:
+    yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+
+print('  ✔ neron.yaml mis à jour')
+"
+else
+    echo -e "${YELLOW}  ⚠ neron.yaml introuvable — valeurs à configurer manuellement${NC}"
+    echo ""
+    echo "  telegram:"
+    echo "    token: \"$BOT_TOKEN\""
+    echo "    chat_id: \"$CHAT_ID\""
+fi
+
+
 echo ""
