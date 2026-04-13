@@ -50,7 +50,7 @@ echo ""
 # =========================
 # CONFIG
 # =========================
-BASE_DIR="/etc/neron/server"
+BASE_DIR="/etc/neron"
 BACKUP_ROOT="$BASE_DIR/backups"
 
 # =========================

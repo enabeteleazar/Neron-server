@@ -261,6 +261,8 @@ async def lifespan(app: FastAPI):
             host=settings.SERVER_HOST,
             port=18789,
             token=settings.API_KEY or None,
+            ping_interval=60.0,
+            ping_timeout=120.0,
         )
         _gw = NeronGateway(
             config=gw_config,
