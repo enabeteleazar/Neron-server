@@ -1,19 +1,22 @@
 # agents/watchdog_agent.py
 # Neron Core - Watchdog natif v2 avec détecteur d'anomalies
 
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
 import os
+import re as _re
 import sqlite3
 import time
 
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 import psutil
 from telegram import Update as TGUpdate
@@ -27,157 +30,60 @@ from core.agents.base_agent import get_logger
 from core.config import settings
 from core.modules.world_model import WorldModel
 
-# Instance uniqe du Word Model
-world_model = WorldModel()
-
-# Stockage des agents
-_agents: Dict[str, Any] = {}
-
-# Callback optionnel
-_notify_fn = None
-
-# ==========
-#  SETUP
-# ==========
-
-def set_agents(agents: dict) -> None:
-    global _agents
-    _agents = agents
-
-def set_notify_fn(fn) -> None:
-    global _notify_fn
-    _notify_fn = fn
-
-# ============
-# CHECK AGENT
-# ============
-
-def check_agents():
-    for name, agent in _agents.items():
-        status = "online" if agent else "offline"
-        
-        data = {
-            "status": status,
-            "timestamp": time.time()
-        }
-
-        world_model.update("agents", name, data)
-
-# =============
-#  CHECK SYSTEM
-# =============
-
-def check_system():
-    try:
-        data = {
-            "cpu": psutil.cpu_percent(interval=1),
-            "ram": psutil.virtual_memory().percent,
-            "disk": psutil.disk_usage("/").percent,
-            "timestamp": time.time(),
-        }
-        world_model.update("system", "resources", data)
-    except Exception as e:
-        world_model.update("system", "error", str(e))
-
-
-# ==========
-# ALERT SIMPLE
-# ==========
-
-def check_alert():
-    system = world_model.get_category("system")
-
-    resources = system.get("resources", {})
-
-    if not resources:
-        return
-
-    ram = resources.get("ram", 0)
-
-    if ram > 80:
-        alert = f"RAM usage high: {ram}%"
-        world_model.update("alerts", "ram", {"message": alert, "timestamp": time.time()})
-        if _notify_fn:
-            asyncio.create_task(_notify_fn(alert, "warning", key="ram_alert"))      
-
-    cpu = resources.get("cpu", 0)
-
-    if cpu > 80:
-        alert = f"CPU usage high: {cpu}%"
-        world_model.update("alerts", "cpu", {"message": alert, "timestamp": time.time()})
-        if _notify_fn:
-            asyncio.create_task(_notify_fn(alert, "warning", key="cpu_alert"))
-
-
-# ==========
-# LOOP PRINCIPALE
-# ==========
-
-async def watchdog_loop():
-    while True:
-        try:
-            check_agents()
-            check_system()
-            check_alert()
-            await asyncio.sleep(60)
-        
-        except Exception as e:
-            logger.error("Error in watchdog loop: %s", e)
-            print(f"[WATCHDOG ERROR] {e}")
-
-        await asyncio.sleep(10)
-
-# ==========
-# START
-# ==========
-
-async def start_watchdog():
-    logger.info("Starting watchdog loop...")
-    asyncio.create_task(watchdog_loop())
-
-
-
+# ── Logger ────────────────────────────────────────────────────────────────────
 
 logger = get_logger("watchdog_agent")
+
+# ── WorldModel — instance unique ──────────────────────────────────────────────
+
 world_model = WorldModel()
-_agents = {}
 
-# ── Constantes ────────────────────────────────────────────────────────────────
+# ── Executor pour I/O bloquantes (psutil interval, sqlite) ───────────────────
 
-CHECK_INTERVAL  = settings.WATCHDOG_INTERVAL
-CPU_ALERT_PCT   = settings.WATCHDOG_CPU_ALERT
-RAM_ALERT_PCT   = settings.WATCHDOG_RAM_ALERT
-DISK_ALERT_PCT  = settings.WATCHDOG_DISK_ALERT
-ALERT_COOLDOWN  = 300
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="watchdog_io")
 
-DB_PATH            = str(settings.MEMORY_DB_PATH)
-WATCHDOG_BOT_TOKEN = settings.WATCHDOG_BOT_TOKEN
-WATCHDOG_CHAT_ID   = settings.WATCHDOG_CHAT_ID
+# ── Constantes (depuis settings, avec fallbacks) ──────────────────────────────
+
+CHECK_INTERVAL        = settings.WATCHDOG_INTERVAL
+CPU_ALERT_PCT         = settings.WATCHDOG_CPU_ALERT
+RAM_ALERT_PCT         = settings.WATCHDOG_RAM_ALERT
+DISK_ALERT_PCT        = settings.WATCHDOG_DISK_ALERT
+ALERT_COOLDOWN        = 300
+
+DB_PATH               = str(settings.MEMORY_DB_PATH)
+WATCHDOG_BOT_TOKEN    = settings.WATCHDOG_BOT_TOKEN
+WATCHDOG_CHAT_ID      = settings.WATCHDOG_CHAT_ID
 
 RAM_PROCESS_ALERT_MB  = 500
 CPU_TEMP_ALERT_C      = settings.WATCHDOG_CPU_TEMP_ALERT
 OLLAMA_SILENT_MINUTES = 10
 NERON_SILENT_HOURS    = 24
 CPU_HIGH_CONSECUTIVE  = 3
-# FIX: AUTO_RESTART_WINDOW déclaré une seule fois
 AUTO_RESTART_WINDOW   = 300
 AUTO_RESTART_THRESHOLD = 3
 
 # ── État global ───────────────────────────────────────────────────────────────
 
-_agents:            dict                  = {}
-_notify_fn                                = None
-_watchdog_bot_app:  TGApplication | None  = None
-_task:              asyncio.Task | None   = None
-_last_alert:        dict                  = {}
-_alerted_anomalies: set                   = set()
-_agent_failures:    dict                  = {}
-_pending_confirm:   dict                  = {}
-_last_ollama_ok:    float                 = 0.0
-_last_conversation: float                 = 0.0
-_cpu_high_count:    int                   = 0
-_mute_until:        float                 = 0.0
-_start_time:        float                 = time.monotonic()
+_agents:            dict                 = {}
+_notify_fn                               = None
+_watchdog_bot_app:  TGApplication | None = None
+_task:              asyncio.Task | None  = None
+_last_alert:        dict                 = {}
+_alerted_anomalies: set                  = set()
+_agent_failures:    dict                 = {}
+_pending_confirm:   dict                 = {}
+_last_ollama_ok:    float                = 0.0
+_last_conversation: float                = 0.0
+_cpu_high_count:    int                  = 0
+_mute_until:        float                = 0.0
+_start_time:        float                = time.monotonic()
+
+# ── Setup ─────────────────────────────────────────────────────────────────────
+
+def setup(agents: dict, notify_fn) -> None:
+    global _agents, _notify_fn
+    _agents    = agents
+    _notify_fn = notify_fn
 
 
 # ── DB Events ─────────────────────────────────────────────────────────────────
@@ -193,11 +99,12 @@ def get_db():
 
 
 def log_event(
-    type_: str,
+    type_:   str,
     service: str | None  = None,
     message: str | None  = None,
     data:    dict | None = None,
 ) -> None:
+    """Persiste un event en DB (appelable depuis sync et async)."""
     try:
         with get_db() as conn:
             conn.execute(
@@ -232,18 +139,58 @@ def read_events(days: int = 7) -> List[Dict]:
         return []
 
 
-# ── Setup ─────────────────────────────────────────────────────────────────────
+# ── Helpers système ───────────────────────────────────────────────────────────
 
-def setup(agents: dict, notify_fn) -> None:
-    global _agents, _notify_fn
-    _agents    = agents
-    _notify_fn = notify_fn
+def _get_cpu_temp() -> float:
+    """Lecture température CPU — instantanée, pas de sleep."""
+    try:
+        temps = psutil.sensors_temperatures()
+        if "coretemp" in temps:
+            for e in temps["coretemp"]:
+                if "Package" in e.label:
+                    return e.current
+            return temps["coretemp"][0].current
+        if "acpitz" in temps:
+            return max(e.current for e in temps["acpitz"])
+    except Exception:
+        pass
+    return 0.0
+
+
+async def _cpu_percent_async() -> float:
+    """
+    Mesure CPU non-bloquante via run_in_executor.
+    psutil.cpu_percent(interval=1) fait un sleep(1) — inacceptable dans
+    l'event loop. On le délègue au ThreadPoolExecutor dédié.
+    """
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(
+        _executor,
+        lambda: psutil.cpu_percent(interval=1),
+    )
+
+
+def _sqlite_ping() -> bool:
+    """Vérifie la DB SQLite — appelé en run_in_executor depuis les handlers async."""
+    try:
+        with get_db() as conn:
+            conn.execute("SELECT COUNT(*) FROM memory")
+        return True
+    except Exception:
+        return False
+
+
+def _sqlite_clear_events() -> None:
+    """Efface tous les events — appelé en run_in_executor."""
+    with get_db() as conn:
+        conn.execute("DELETE FROM events")
+        conn.commit()
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 async def _notify(msg: str, level: str = "warning", key: str | None = None) -> None:
-    # FIX: _mute_until vérifié — la commande /mute est maintenant effective
+    """Point central de notification : bot watchdog > notify_fn > log."""
     if _mute_until > time.monotonic():
         logger.debug("Notification muette (mute actif) : %s", msg[:60])
         return
@@ -276,47 +223,97 @@ async def _notify(msg: str, level: str = "warning", key: str | None = None) -> N
 
 # ── Checks système ────────────────────────────────────────────────────────────
 
-def _get_cpu_temp() -> float:
+def check_agents() -> None:
+    """Met à jour l'état de chaque agent dans le WorldModel (sync, rapide)."""
+    for name, agent in _agents.items():
+        status = "online" if agent else "offline"
+        world_model.update("agents", name, {
+            "status":    status,
+            "timestamp": time.time(),
+        })
+
+
+async def check_system() -> None:
+    """
+    Collecte les métriques système et met à jour le WorldModel.
+    cpu_percent est mesuré via run_in_executor pour ne pas bloquer la loop.
+    """
     try:
-        temps = psutil.sensors_temperatures()
-        if "coretemp" in temps:
-            for e in temps["coretemp"]:
-                if "Package" in e.label:
-                    return e.current
-            return temps["coretemp"][0].current
-        if "acpitz" in temps:
-            return max(e.current for e in temps["acpitz"])
-    except Exception:
-        pass
-    return 0.0
+        cpu  = await _cpu_percent_async()          # non-bloquant
+        ram  = psutil.virtual_memory().percent      # instantané
+        disk = psutil.disk_usage("/").percent       # instantané
+        world_model.update("system", "resources", {
+            "cpu":       cpu,
+            "ram":       ram,
+            "disk":      disk,
+            "timestamp": time.time(),
+        })
+    except Exception as e:
+        world_model.update("system", "error", str(e))
+
+
+async def check_alert() -> None:
+    """
+    Envoie des alertes si les seuils sont dépassés.
+    Async pour pouvoir await _notify() directement (plus de create_task dangereux).
+    """
+    system    = world_model.get_category("system")
+    resources = system.get("resources", {})
+    if not resources:
+        return
+
+    ram = resources.get("ram", 0)
+    if ram > RAM_ALERT_PCT:
+        alert = f"RAM usage high: {ram}%"
+        world_model.update("alerts", "ram", {"message": alert, "timestamp": time.time()})
+        if _notify_fn:
+            await _notify(alert, "warning", key="ram_alert")
+
+    cpu = resources.get("cpu", 0)
+    if cpu > CPU_ALERT_PCT:
+        alert = f"CPU usage high: {cpu}%"
+        world_model.update("alerts", "cpu", {"message": alert, "timestamp": time.time()})
+        if _notify_fn:
+            await _notify(alert, "warning", key="cpu_alert")
+
+    disk = resources.get("disk", 0)
+    if disk > DISK_ALERT_PCT:
+        alert = f"Disk usage high: {disk}%"
+        world_model.update("alerts", "disk", {"message": alert, "timestamp": time.time()})
+        if _notify_fn:
+            await _notify(alert, "alert", key="disk_alert")
 
 
 async def _check_system() -> dict:
-    cpu  = psutil.cpu_percent(interval=1)
-    ram  = psutil.virtual_memory().percent
-    disk = psutil.disk_usage("/").percent
-    proc = psutil.Process(os.getpid())
+    """
+    Version enrichie pour la boucle principale watchdog :
+    collecte métriques + alerte immédiate + log DB.
+    """
+    cpu      = await _cpu_percent_async()
+    ram      = psutil.virtual_memory().percent
+    disk     = psutil.disk_usage("/").percent
+    proc     = psutil.Process(os.getpid())
     proc_ram = round(proc.memory_info().rss / 1024 / 1024)
 
     stats = {"cpu": cpu, "ram": ram, "disk": disk, "proc_ram_mb": proc_ram}
     log_event("check", message="system_stats", data=stats)
 
-    if cpu  > CPU_ALERT_PCT:
-        await _notify(f"⚠️ CPU élevé : {cpu}%",    "warning", key="cpu")
+    if cpu > CPU_ALERT_PCT:
+        await _notify(f"⚠️ CPU élevé : {cpu}%", "warning", key="cpu")
         log_event("instability", service="system", message=f"CPU élevé {cpu}%")
-    if ram  > RAM_ALERT_PCT:
-        await _notify(f"⚠️ RAM élevée : {ram}%",   "warning", key="ram")
+    if ram > RAM_ALERT_PCT:
+        await _notify(f"⚠️ RAM élevée : {ram}%", "warning", key="ram")
         log_event("instability", service="system", message=f"RAM élevée {ram}%")
     if disk > DISK_ALERT_PCT:
-        await _notify(f"🔴 Disque plein : {disk}%", "alert",   key="disk")
+        await _notify(f"🔴 Disque plein : {disk}%", "alert", key="disk")
         log_event("instability", service="system", message=f"Disque plein {disk}%")
 
     return stats
 
 
 async def _check_agents() -> List[str]:
+    """Vérifie la connectivité des agents et déclenche les auto-restarts si besoin."""
     issues = []
-    # FIX: STT/TTS retirés des checks — désactivés avec la suppression de NEXUS
     checks = {
         "llm": ("LLM (Ollama)", "check_connection"),
     }
@@ -369,15 +366,7 @@ async def _check_agents() -> List[str]:
 
     return issues
 
-    def check_agents():
-        for name, agent in _agents.items():
-            status = "online" if agent else "offline"
-            data = {
-                "status": status,
-                "timestamp": time.time()
-            }
-            world_model.update("agents", name, data)
-            
+
 # ── Détecteur d'anomalies ─────────────────────────────────────────────────────
 
 class AnomalyDetector:
@@ -580,10 +569,10 @@ class AnomalyDetector:
         return all_anomalies
 
 
-# ── Boucle principale ─────────────────────────────────────────────────────────
-
 _detector = AnomalyDetector()
 
+
+# ── Rapports ──────────────────────────────────────────────────────────────────
 
 async def _send_daily_report() -> None:
     if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
@@ -618,18 +607,18 @@ async def _send_weekly_report() -> None:
     if not _watchdog_bot_app or not WATCHDOG_CHAT_ID:
         return
     try:
-        entries      = read_events(days=7)
-        crashes      = [e for e in entries if e.get("type") == "crash"]
-        recoveries   = [e for e in entries if e.get("type") == "recovery"]
-        manuals      = [e for e in entries if e.get("type") == "manual_required"]
-        instab       = [e for e in entries if e.get("type") == "instability"]
-        auto_rst     = [e for e in recoveries if "auto-restart" in e.get("message", "")]
-        score        = get_health_score()
-        elapsed      = time.monotonic() - _start_time
-        days_up      = int(elapsed // 86400)
-        hours_up     = int((elapsed % 86400) // 3600)
+        entries    = read_events(days=7)
+        crashes    = [e for e in entries if e.get("type") == "crash"]
+        recoveries = [e for e in entries if e.get("type") == "recovery"]
+        manuals    = [e for e in entries if e.get("type") == "manual_required"]
+        instab     = [e for e in entries if e.get("type") == "instability"]
+        auto_rst   = [e for e in recoveries if "auto-restart" in e.get("message", "")]
+        score      = get_health_score()
+        elapsed    = time.monotonic() - _start_time
+        days_up    = int(elapsed // 86400)
+        hours_up   = int((elapsed % 86400) // 3600)
 
-        crash_by_agent = {}
+        crash_by_agent: dict = {}
         for e in crashes:
             svc = e.get("service", "inconnu")
             crash_by_agent[svc] = crash_by_agent.get(svc, 0) + 1
@@ -655,9 +644,8 @@ async def _send_weekly_report() -> None:
             for agent, count in top_crashes[:3]:
                 lines.append(f"  • {agent} : {count} crash(s)")
 
-        # FIX: comparaison par date au lieu de référence d'objet
-        week_cutoff    = datetime.now() - timedelta(days=7)
-        entries_14     = read_events(days=14)
+        week_cutoff       = datetime.now() - timedelta(days=7)
+        entries_14        = read_events(days=14)
         last_week_crashes = len([
             e for e in entries_14
             if e.get("type") == "crash"
@@ -681,25 +669,35 @@ async def _send_weekly_report() -> None:
         logger.error("Rapport hebdomadaire erreur : %s", e)
 
 
-async def _watchdog_loop():
+# ── Boucle principale — une seule définition ──────────────────────────────────
+
+async def watchdog_loop() -> None:
+    """
+    Boucle principale du watchdog.
+    - check_agents() : sync, mise à jour WorldModel uniquement
+    - check_system() : async, mesure CPU via executor (non-bloquant)
+    - check_alert()  : async, await _notify() direct (pas de create_task)
+    """
     logger.info("Watchdog démarré — intervalle %ds", CHECK_INTERVAL)
+    await asyncio.sleep(10)  # laisser le temps au démarrage de se stabiliser
+
     while True:
         try:
-            check_system()
             check_agents()
-            check_alert()
+            await check_system()
+            await check_alert()
         except Exception as e:
-            logger.error("Watchdog check error : %s", e)
-            world_model.update("system", "error", str(e))
-        await asyncio.sleep(WATCHDOG_INTERVAL)
+            logger.error("Watchdog loop error : %s", e)
+            world_model.update("system", "watchdog_error", str(e))
+        await asyncio.sleep(CHECK_INTERVAL)
+
 
 # ── API publique ──────────────────────────────────────────────────────────────
 
 async def send_watchdog_notification(message: str, level: str = "info") -> None:
     """
-    Envoie une notification sur le bot watchdog dédié.
-    Utilisé comme notify_fn central pour le scheduler et app.py.
-    Fallback sur _notify_fn si le bot watchdog n'est pas démarré.
+    Point d'entrée pour les notifications externes (scheduler, app.py).
+    Fallback transparent sur _notify() qui gère le bot et le mute.
     """
     await _notify(message, level)
 
@@ -707,7 +705,7 @@ async def send_watchdog_notification(message: str, level: str = "info") -> None:
 async def start_watchdog() -> None:
     global _task, _start_time
     _start_time = time.monotonic()
-    _task       = asyncio.create_task(_watchdog_loop())
+    _task       = asyncio.create_task(watchdog_loop())
     logger.info("Watchdog task créée")
 
 
@@ -723,15 +721,15 @@ async def stop_watchdog() -> None:
 
 
 def get_status() -> dict:
+    """Snapshot système instantané (cpu_percent sans interval → non-bloquant)."""
     try:
         proc = psutil.Process(os.getpid())
         return {
-            "cpu_pct":        psutil.cpu_percent(interval=0.1),
+            "cpu_pct":        psutil.cpu_percent(interval=None),   # pas de sleep
             "ram_pct":        psutil.virtual_memory().percent,
             "ram_used_mb":    round(psutil.virtual_memory().used / 1024 / 1024),
             "disk_pct":       psutil.disk_usage("/").percent,
             "process_ram_mb": round(proc.memory_info().rss / 1024 / 1024),
-            # FIX: elapsed depuis _start_time, pas depuis le boot système
             "uptime_s":       round(time.monotonic() - _start_time),
         }
     except Exception as e:
@@ -760,7 +758,7 @@ def get_anomalies(days: int = 7) -> list:
     return results
 
 
-# ── Bot Watchdog ──────────────────────────────────────────────────────────────
+# ── Bot Watchdog — autorisation ───────────────────────────────────────────────
 
 WATCHDOG_ALLOWED = set(settings.WATCHDOG_CHAT_ID.split(","))
 
@@ -769,6 +767,37 @@ def _wdog_authorized(update) -> bool:
     if not WATCHDOG_ALLOWED or WATCHDOG_ALLOWED == {""}:
         return True
     return str(update.message.chat_id) in WATCHDOG_ALLOWED
+
+
+# ── Bot Watchdog — commandes ──────────────────────────────────────────────────
+
+async def _wdog_cmd_start(update, context) -> None:
+    if not _wdog_authorized(update):
+        return
+    await update.message.reply_text(
+        "🔍 <b>Néron Watchdog v2</b>\n\n"
+        "Commandes disponibles:\n"
+        "\n📊 <b>Monitoring</b>\n"
+        "/status — état complet\n"
+        "/score — score de santé 7 jours\n"
+        "/anomalies — anomalies détectées\n"
+        "/stats — CPU/RAM 24h\n"
+        "/trend — tendance 7j vs 7j précédents\n"
+        "/uptime — temps de fonctionnement\n"
+        "\n📋 <b>Historique</b>\n"
+        "/history [agent] — historique events 7j\n"
+        "/logs [n] — dernières lignes de log\n"
+        "\n📊 <b>Rapports</b>\n"
+        "/rapport — rapport quotidien immédiat\n"
+        "/hebdo — rapport hebdomadaire immédiat\n"
+        "\n🔧 <b>Actions</b>\n"
+        "/reload — recharger tous les agents sans redémarrer\n"
+        "/restart &lt;agent&gt; — recharger un agent (core, llm, memory)\n"
+        "/mute &lt;min&gt; — couper les alertes X minutes\n"
+        "/config [clé] [valeur] — voir/modifier les seuils\n"
+        "/clear — effacer l'historique events\n",
+        parse_mode="HTML",
+    )
 
 
 async def _wdog_cmd_status(update, context) -> None:
@@ -790,18 +819,13 @@ async def _wdog_cmd_status(update, context) -> None:
         except Exception:
             ok_ollama = False
 
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute("SELECT COUNT(*) FROM memory")
-            conn.close()
-            ok_memory = True
-        except Exception:
-            ok_memory = False
+        # Vérification SQLite via executor (non-bloquant)
+        loop      = asyncio.get_event_loop()
+        ok_memory = await loop.run_in_executor(_executor, _sqlite_ping)
 
         cpu_temp = _get_cpu_temp()
         temp_str = f" | 🌡️ {cpu_temp:.1f}°C" if cpu_temp > 0 else ""
 
-        # FIX: STT/TTS retirés du status — désactivés avec la suppression de NEXUS
         lines = [
             "📊 <b>Néron v2 — Watchdog</b>\n",
             f"{'✅' if ok_core   else '🔴'} Core",
@@ -841,42 +865,13 @@ async def _wdog_cmd_anomalies(update, context) -> None:
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
 
-async def _wdog_cmd_start(update, context) -> None:
-    if not _wdog_authorized(update):
-        return
-    await update.message.reply_text(
-        "🔍 <b>Néron Watchdog v2</b>\n\n"
-        "Commandes disponibles:\n"
-        "\n📊 <b>Monitoring</b>\n"
-        "/status — état complet\n"
-        "/score — score de santé 7 jours\n"
-        "/anomalies — anomalies détectées\n"
-        "/stats — CPU/RAM 24h\n"
-        "/trend — tendance 7j vs 7j précédents\n"
-        "/uptime — temps de fonctionnement\n"
-        "\n📋 <b>Historique</b>\n"
-        "/history [agent] — historique events 7j\n"
-        "/logs [n] — dernières lignes de log\n"
-        "\n📊 <b>Rapports</b>\n"
-        "/rapport — rapport quotidien immédiat\n"
-        "/hebdo — rapport hebdomadaire immédiat\n"
-        "\n🔧 <b>Actions</b>\n"
-        "/reload — recharger tous les agents sans redémarrer\n"
-        "/restart &lt;agent&gt; — recharger un agent (core, llm, memory)\n"
-        "/mute &lt;min&gt; — couper les alertes X minutes\n"
-        "/config [clé] [valeur] — voir/modifier les seuils\n"
-        "/clear — effacer l'historique events\n",
-        parse_mode="HTML",
-    )
-
-
 async def _wdog_cmd_uptime(update, context) -> None:
     if not _wdog_authorized(update):
         return
     elapsed = time.monotonic() - _start_time
-    h   = int(elapsed // 3600)
-    m   = int((elapsed % 3600) // 60)
-    s   = int(elapsed % 60)
+    h    = int(elapsed // 3600)
+    m    = int((elapsed % 3600) // 60)
+    s    = int(elapsed % 60)
     sys_ = get_status()
     await update.message.reply_text(
         f"⏱ <b>Uptime</b>\n\nDémarré il y a {h}h {m}m {s}s\n"
@@ -912,15 +907,14 @@ async def _wdog_cmd_history(update, context) -> None:
 async def _wdog_cmd_logs(update, context) -> None:
     if not _wdog_authorized(update):
         return
-    # FIX: settings.LOG_NERON au lieu du chemin hardcodé
     log_path = str(settings.LOGS_DIR / settings.LOG_NERON)
     try:
         n = min(int(context.args[0]) if context.args else 20, 50)
         with open(log_path) as f:
             lines = f.readlines()
         last = [
-            l.strip() for l in lines[-n:]
-            if any(x in l for x in ["ERROR", "WARNING", "INFO"])
+            line.strip() for line in lines[-n:]
+            if any(x in line for x in ["ERROR", "WARNING", "INFO"])
         ]
         text = "\n".join(last[-20:])
         if len(text) > 3500:
@@ -938,10 +932,9 @@ async def _wdog_cmd_logs(update, context) -> None:
 async def _wdog_cmd_stats(update, context) -> None:
     if not _wdog_authorized(update):
         return
-    import re as _re
     try:
-        entries   = read_events(days=1)
-        checks    = [e for e in entries if e.get("type") == "check"]
+        entries              = read_events(days=1)
+        checks               = [e for e in entries if e.get("type") == "check"]
         cpu_vals, ram_vals, labels = [], [], []
         for e in checks[-12:]:
             msg   = e.get("message", "")
@@ -1150,7 +1143,6 @@ async def _wdog_cmd_confirm(update, context) -> None:
         await update.message.reply_text("🔄 Redémarrage de Néron Core via systemd...")
         log_event("restart", service="core", message="restart systemd via Telegram watchdog")
         await _notify("🔄 Redémarrage Core déclenché via Telegram", "warning")
-        # FIX: systemctl restart au lieu de os.execv — lifecycle propre via systemd
         proc = await asyncio.create_subprocess_exec(
             "sudo", "systemctl", "restart", "neron",
             stdout=asyncio.subprocess.PIPE,
@@ -1161,12 +1153,12 @@ async def _wdog_cmd_confirm(update, context) -> None:
             await update.message.reply_text(
                 f"❌ Échec systemctl restart : {stderr.decode()[:200]}"
             )
+
     elif action == "clear_events":
         try:
-            conn = sqlite3.connect(DB_PATH)
-            conn.execute("DELETE FROM events")
-            conn.commit()
-            conn.close()
+            # SQLite via executor — non-bloquant dans le handler async
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(_executor, _sqlite_clear_events)
             await update.message.reply_text("✅ Historique events effacé")
         except Exception as e:
             await update.message.reply_text(f"❌ {e}")
@@ -1315,32 +1307,3 @@ async def stop_watchdog_bot() -> None:
         logger.error("Erreur stop_watchdog_bot : %s", e)
     finally:
         _watchdog_bot_app = None
-
-WATCHDOG_INTERVAL = 10  # secondes entre chaque check
-CPU_ALERT_PCT = 90.0   # % CPU système avant alerte
-RAM_ALERT_PCT = 90.0   # % RAM système avant alerte
-DISK_ALERT_PCT = 90.0  # % disque avant alerte
-RAM_PROCESS_ALERT_MB = 500.0  # MB RAM process Néron avant alerte
-OLLAMA_SILENT_MINUTES = 5  # minutes sans réponse Ollama avant alerte
-NERON_SILENT_HOURS = 4      # heures sans conversation avant alerte
-ALERT_COOLDOWN = 3600      # secondes minimum entre 2 alertes identiques
-CPU_TEMP_ALERT_C = 85.0    # °C température CPU avant alerte      
-
-async def watchdog_loop() -> None:
-    logger.info("Watchdog démarré — intervalle %ds", WATCHDOG_INTERVAL)
-    await asyncio.sleep(10)
-    cycle = 0
-
-    while True:
-        try:
-            check_agents()  # update l'etat des agents dans WM
-            check_system()  # update le status système dans WM
-            check_ollama()  # update le status d'Ollama dans WM
-            check_alerts()  # envoie les alertes si seuils dépassés
-        except Exception as e:
-            # on logue l'erreur mais on continue le loop pour ne pas perdre les alertes suivantes
-            logger.error("Watchdog loop error : %s", e)
-            world_model.update("system", "watchdog_error", str(e))
-        await asyncio.sleep(WATCHDOG_INTERVAL)  # petit sleep pour laisser le temps aux checks de mettre à jour le WM
-
-
