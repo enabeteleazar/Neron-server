@@ -9,4 +9,3 @@ manager = LLMManager()
 @app.post("/chat")
 async def chat(req: LLMRequest):
     return await manager.generate(req)
-EPF

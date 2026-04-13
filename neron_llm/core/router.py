@@ -1,14 +1,15 @@
-# core/router.py
 class LLMRouter:
 
     def select_provider(self, request):
-        if request.task == "local":
-            return "ollama"
-        if request.task == "heavy":
+        task = request.task or "default"
+
+        if task == "code":
             return "claude"
         return "ollama"
 
     def select_model(self, request):
-        if request.task == "code":
+        task = request.task or "default"
+
+        if task == "code":
             return "deepseek-coder"
         return "mistral"
