@@ -1,25 +1,30 @@
-import httpx
+import requests
+from neron_llm.config import get_llm_config
+from neron_llm.core.types import LLMRequest
+from .base import BaseProvider
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "mistral"
 
+class OllamaProvider(BaseProvider):
 
-class OllamaProvider:
+    def __init__(self):
+        cfg = get_llm_config()
+        self.host = cfg.get("host", "http://localhost:11434")
+        self.timeout = cfg.get("timeout", 60)
 
-    def __init__(self, model: str = DEFAULT_MODEL, timeout: int = 60):
-        self.model = model
-        self.timeout = timeout
-
-    async def generate(self, message: str) -> str:
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                OLLAMA_URL,
+    def generate(self, request: LLMRequest, model: str) -> str:
+        try:
+            r = requests.post(
+                f"{self.host}/api/generate",
                 json={
-                    "model": self.model,
-                    "prompt": message,
-                    "stream": False,
+                    "model": model,
+                    "prompt": request.message,
+                    "stream": False
                 },
+                timeout=self.timeout
             )
-            response.raise_for_status()
-            data = response.json()
+
+            data = r.json()
             return data.get("response", "")
+
+        except Exception as e:
+            return f"[OLLAMA ERROR] {str(e)}"

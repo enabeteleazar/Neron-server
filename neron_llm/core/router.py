@@ -1,28 +1,20 @@
+from neron_llm.config import get_llm_config
+
+
 class LLMRouter:
+    def __init__(self):
+        cfg = get_llm_config()
 
-    # Mapping task → provider
-    _TASK_PROVIDER = {
-        "code": "claude",
-        "default": "ollama",
-    }
+        self.model_map = cfg.get("model_map", {})
+        self.default_model = cfg.get("model") or self.model_map.get("default")
+        self.fallback_model = cfg.get("fallback_model", self.default_model)
 
-    # Mapping task → model
-    _TASK_MODEL = {
-        "code": "deepseek-coder",
-        "default": "mistral",
-    }
+    def select_model(self, task: str | None):
+        if not task:
+            return self.default_model
 
-    # Provider(s) à exécuter en mode parallel/race
-    _ALL_PROVIDERS = ["ollama", "claude"]
+        return self.model_map.get(task, self.default_model)
 
-    def select_provider(self, request) -> str:
-        task = request.task or "default"
-        return self._TASK_PROVIDER.get(task, "ollama")
-
-    def select_model(self, request) -> str:
-        task = request.task or "default"
-        return self._TASK_MODEL.get(task, "mistral")
-
-    def select_all_providers(self) -> list[str]:
-        """Retourne tous les providers disponibles pour exécution parallèle."""
-        return list(self._ALL_PROVIDERS)
+    def select_provider(self, request):
+        # extension future (claude / ollama priority)
+        return request.provider or "ollama"
