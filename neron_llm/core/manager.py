@@ -1,110 +1,205 @@
+"""LLM Manager — orchestration engine with single/parallel/race modes.
+
+Supports:
+  - single: one provider, chosen by router, with automatic fallback
+  - parallel: all providers via asyncio.gather, best result picked
+  - race: asyncio.wait(FIRST_COMPLETED), loser tasks cancelled
+  - retry (2 attempts) on provider failure
+  - automatic fallback: Ollama → Claude
+"""
+
+from __future__ import annotations
+
 import asyncio
 import logging
-from typing import Dict
 
 from neron_llm.core.router import LLMRouter
-from neron_llm.core.types import LLMRequest, LLMResponse, ParallelLLMResponse, RaceLLMResponse
-from neron_llm.providers.ollama import OllamaProvider
-from neron_llm.providers.claude import ClaudeProvider
+from neron_llm.core.strategy import StrategyEngine
+from neron_llm.core.types import LLMRequest, LLMResponse
 from neron_llm.providers.base import BaseProvider
+from neron_llm.providers.claude import ClaudeProvider
+from neron_llm.providers.ollama import OllamaProvider
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("neron_llm.manager")
+
+MAX_RETRIES = 2
 
 
 class LLMManager:
-    """Orchestre les appels LLM selon le mode demandé.
-
-    Modes disponibles :
-    - single   : un seul provider, choisi par le router
-    - parallel : tous les providers en asyncio.gather — retourne tous les résultats
-    - race     : asyncio.wait(FIRST_COMPLETED) — retourne le premier, annule les autres
-    """
+    """Orchestrates LLM calls across providers with strategy and fallback."""
 
     def __init__(self):
         self.router = LLMRouter()
-        self.providers: Dict[str, BaseProvider] = {
+        self.strategy = StrategyEngine()
+        self.providers: dict[str, BaseProvider] = {
             "ollama": OllamaProvider(),
             "claude": ClaudeProvider(),
         }
 
     # ------------------------------------------------------------------
-    # Mode SINGLE
+    # Main entry point
     # ------------------------------------------------------------------
 
-    async def generate(self, request: LLMRequest) -> LLMResponse:
-        """Appel unique vers le provider sélectionné par le router."""
-        provider_name = self.router.select_provider(request)
-        model = self.router.select_model(request.task)
+    async def handle(self, request: LLMRequest) -> LLMResponse:
+        """Route, strategize, and execute the request."""
+        mode = self.strategy.decide(task=request.task, mode=request.mode)
+        model = request.model or self.router.select_model(task=request.task)
+        provider_name = self.router.select_provider(provider=request.provider)
 
-        provider = self.providers.get(provider_name) or self.providers["ollama"]
+        logger.info(
+            "Handle: mode=%s, model=%s, provider=%s",
+            mode, model, provider_name,
+        )
 
-        logger.debug("single | provider=%s model=%s", provider_name, model)
-        response = await provider.generate(request.message, model)
-
-        return LLMResponse(provider=provider_name, model=model, response=response)
-
-    # ------------------------------------------------------------------
-    # Mode PARALLEL
-    # ------------------------------------------------------------------
-
-    async def generate_parallel(self, request: LLMRequest) -> ParallelLLMResponse:
-        """Interroge tous les providers simultanément via asyncio.gather.
-
-        Retourne tous les résultats, même si certains échouent (les erreurs
-        sont capturées et incluses dans la réponse sous forme de message d'erreur).
-        """
-        model = self.router.select_model(request.task)
-
-        async def call(name: str, provider: BaseProvider) -> tuple[str, str]:
-            try:
-                resp = await provider.generate(request.message, model)
-                return name, resp
-            except Exception as exc:
-                logger.warning("parallel | provider=%s erreur: %s", name, exc)
-                return name, f"[ERREUR {name}] {exc}"
-
-        tasks = [call(name, p) for name, p in self.providers.items()]
-        pairs = await asyncio.gather(*tasks)
-
-        return ParallelLLMResponse(results=dict(pairs))
+        if mode == "parallel":
+            return await self._execute_parallel(request, model)
+        elif mode == "race":
+            return await self._execute_race(request, model)
+        else:
+            return await self._execute_single(request, model, provider_name)
 
     # ------------------------------------------------------------------
-    # Mode RACE
+    # Mode SINGLE — one provider, retry + fallback
     # ------------------------------------------------------------------
 
-    async def generate_race(self, request: LLMRequest) -> RaceLLMResponse:
-        """Lance tous les providers en compétition — le premier qui répond gagne.
+    async def _execute_single(
+        self, request: LLMRequest, model: str, provider_name: str,
+    ) -> LLMResponse:
+        """Execute with a single provider, retry on failure, then fallback."""
+        result = await self._call_with_retry(provider_name, request.message, model)
+        if result.error is None:
+            return result
 
-        Les tâches perdantes sont explicitement annulées.
-        """
-        model = self.router.select_model(request.task)
+        # Fallback to next provider in chain
+        fallback = self.router.get_fallback_provider(provider_name)
+        if fallback and fallback in self.providers:
+            logger.warning(
+                "Provider '%s' failed after %d retries → falling back to '%s'",
+                provider_name, MAX_RETRIES, fallback,
+            )
+            result = await self._call_with_retry(fallback, request.message, model)
 
-        async def call(name: str, provider: BaseProvider) -> tuple[str, str]:
-            resp = await provider.generate(request.message, model)
-            return name, resp
+        return result
 
-        loop = asyncio.get_running_loop()
-        tasks = {
-            loop.create_task(call(name, p), name=name)
-            for name, p in self.providers.items()
-        }
+    # ------------------------------------------------------------------
+    # Mode PARALLEL — all providers, pick best result
+    # ------------------------------------------------------------------
 
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    async def _execute_parallel(
+        self, request: LLMRequest, model: str,
+    ) -> LLMResponse:
+        """Execute on all providers in parallel, return best result."""
+        tasks = [
+            self._call_provider(name, provider, request.message, model)
+            for name, provider in self.providers.items()
+        ]
+        results = await asyncio.gather(*tasks)
 
-        # Annuler les perdants proprement
-        for t in pending:
-            t.cancel()
-            try:
-                await t
-            except (asyncio.CancelledError, Exception):
-                pass
+        valid = [r for r in results if r.error is None]
+        if not valid:
+            # All failed — return first error
+            return results[0] if results else LLMResponse(
+                model=model, provider="none", response="", error="All providers failed",
+            )
 
-        winner_task = next(iter(done))
+        # Simple scoring: pick the longest response (heuristic for completeness)
+        best = max(valid, key=lambda r: len(r.response))
+        logger.info(
+            "Parallel best: provider=%s, len=%d",
+            best.provider, len(best.response),
+        )
+        return best
+
+    # ------------------------------------------------------------------
+    # Mode RACE — first completed wins, others cancelled
+    # ------------------------------------------------------------------
+
+    async def _execute_race(
+        self, request: LLMRequest, model: str,
+    ) -> LLMResponse:
+        """Execute on all providers, return first to complete."""
+        tasks: dict[asyncio.Task, str] = {}
+        for name, provider in self.providers.items():
+            task = asyncio.create_task(
+                self._call_provider(name, provider, request.message, model),
+            )
+            tasks[task] = name
+
+        done, pending = await asyncio.wait(
+            tasks.keys(), return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        # Cancel pending tasks
+        cancelled: list[str] = []
+        for task in pending:
+            task.cancel()
+            cancelled.append(tasks[task])
+        logger.debug("Race: cancelled providers=%s", cancelled)
+
+        # Collect results from completed tasks
+        for task in done:
+            result = task.result()
+            if isinstance(result, LLMResponse) and result.error is None:
+                logger.info("Race winner: provider=%s", result.provider)
+                return result
+
+        # Winner had error — try other completed tasks
+        for task in done:
+            result = task.result()
+            if isinstance(result, LLMResponse):
+                return result
+
+        return LLMResponse(
+            model=model, provider="none", response="", error="Race: all providers failed",
+        )
+
+    # ------------------------------------------------------------------
+    # Internals
+    # ------------------------------------------------------------------
+
+    async def _call_with_retry(
+        self, provider_name: str, message: str, model: str,
+    ) -> LLMResponse:
+        """Call a provider with retry logic (up to MAX_RETRIES attempts)."""
+        provider = self.providers.get(provider_name)
+        if not provider:
+            return LLMResponse(
+                model=model, provider=provider_name, response="",
+                error=f"Unknown provider: {provider_name}",
+            )
+
+        last_result: LLMResponse | None = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            result = await self._call_provider(provider_name, provider, message, model)
+            if result.error is None:
+                return result
+            logger.warning(
+                "Attempt %d/%d failed for '%s': %s",
+                attempt, MAX_RETRIES, provider_name, result.error,
+            )
+            last_result = result
+
+        # All retries exhausted
+        return last_result or LLMResponse(
+            model=model, provider=provider_name, response="",
+            error=f"Provider '{provider_name}' failed after {MAX_RETRIES} attempts",
+        )
+
+    async def _call_provider(
+        self, name: str, provider: BaseProvider, message: str, model: str,
+    ) -> LLMResponse:
+        """Call a single provider and wrap result in LLMResponse."""
         try:
-            winner_name, winner_response = winner_task.result()
+            response = await provider.generate(message, model)
+            return LLMResponse(model=model, provider=name, response=response, error=None)
         except Exception as exc:
-            logger.error("race | le gagnant a levé une exception: %s", exc)
-            winner_name, winner_response = "unknown", f"[ERREUR RACE] {exc}"
+            logger.error("Provider '%s' error: %s", name, exc)
+            return LLMResponse(model=model, provider=name, response="", error=str(exc))
 
-        logger.debug("race | gagnant=%s", winner_name)
-        return RaceLLMResponse(winner=winner_name, response=winner_response)
+    @staticmethod
+    def _pick_best(responses: list[LLMResponse]) -> LLMResponse:
+        """Simple scoring: prefer non-error, then longest response."""
+        valid = [r for r in responses if r.error is None]
+        if not valid:
+            return responses[0]
+        return max(valid, key=lambda r: len(r.response))

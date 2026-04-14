@@ -1,39 +1,62 @@
-from neron_llm.config import get_llm_config
-from neron_llm.core.types import LLMRequest
+"""Intelligent LLM router — selects model and provider based on config.
+
+Reads from the 'routing' (or legacy 'model_map') section of neron.yaml.
+Provides automatic fallback to the next provider on failure.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from neron_llm.config import get_llm_config, get_routing_config
+
+logger = logging.getLogger("neron_llm.router")
+
+FALLBACK_MODEL = "mistral:latest"
+
+# Provider priority chain — used for fallback
+PROVIDER_CHAIN: list[str] = ["ollama", "claude"]
 
 
 class LLMRouter:
-    """Sélectionne le modèle et le provider en fonction de la tâche et de la config YAML.
-
-    Section attendue dans neron.yaml :
-        llm:
-          model: llama3.2:1b          # modèle par défaut
-          fallback_model: llama3.2:1b
-          host: http://localhost:11434
-          timeout: 120
-          model_map:
-            code: deepseek-coder:latest
-            summary: llama3.2:1b
-            default: llama3.2:1b
-    """
+    """Selects the model and provider for a given request."""
 
     def __init__(self):
-        cfg = get_llm_config()
-        self.model_map: dict = cfg.get("model_map", {})
-        self.default_model: str = cfg.get("model") or self.model_map.get("default", "llama3.2:1b")
-        self.fallback_model: str = cfg.get("fallback_model", self.default_model)
+        self._routing = get_routing_config()
+        self._llm_config = get_llm_config()
 
-    def select_model(self, task: str | None) -> str:
-        if not task or task == "default":
-            return self.default_model
-        return self.model_map.get(task, self.default_model)
+    def select_model(self, task: str | None = None) -> str:
+        """Select model based on task. Falls back: task → default → FALLBACK_MODEL."""
+        if task and task in self._routing:
+            model = self._routing[task]
+            logger.debug("Router: task='%s' → model='%s'", task, model)
+            return model
 
-    def select_provider(self, request: LLMRequest) -> str:
-        """Retourne le nom du provider à utiliser.
+        model = self._routing.get("default", FALLBACK_MODEL)
+        logger.debug("Router: fallback → model='%s'", model)
+        return model
 
-        Priorité : champ explicite > config > ollama par défaut.
+    def select_provider(self, provider: str | None = None) -> str:
+        """Select provider. Priority: explicit > config default > 'ollama'."""
+        if provider:
+            logger.debug("Router: explicit provider='%s'", provider)
+            return provider
+
+        default = self._llm_config.get("default_provider", "ollama")
+        logger.debug("Router: default provider='%s'", default)
+        return default
+
+    def get_fallback_provider(self, current: str) -> str | None:
+        """Return the next provider in the fallback chain after `current`.
+
+        Returns None if `current` is the last provider or not in the chain.
         """
-        if request.provider:
-            return request.provider
-        cfg = get_llm_config()
-        return cfg.get("default_provider", "ollama")
+        try:
+            idx = PROVIDER_CHAIN.index(current)
+            if idx + 1 < len(PROVIDER_CHAIN):
+                next_provider = PROVIDER_CHAIN[idx + 1]
+                logger.debug("Router: fallback %s → %s", current, next_provider)
+                return next_provider
+        except ValueError:
+            pass
+        return None

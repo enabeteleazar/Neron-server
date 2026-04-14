@@ -1,14 +1,24 @@
+"""Base provider interface for all LLM backends.
+
+Every provider MUST be async to enable parallel and race execution
+without blocking the event loop.
+"""
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 
 
 class BaseProvider(ABC):
-    """Interface commune à tous les providers LLM.
-
-    Toutes les implémentations DOIVENT être async pour permettre
-    l'exécution parallèle et race sans bloquer l'event loop.
-    """
+    """Abstract interface for LLM providers."""
 
     @abstractmethod
     async def generate(self, message: str, model: str) -> str:
-        """Envoie un message au LLM et retourne la réponse textuelle."""
+        """Send a message to the LLM and return the text response.
+
+        Raises:
+            Exception: On timeout, HTTP error, or any failure.
+                      The manager catches exceptions and formats them
+                      into LLMResponse(error=...).
+        """
         ...

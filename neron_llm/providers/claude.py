@@ -1,3 +1,16 @@
+"""Claude (Anthropic) provider — async HTTP via httpx.AsyncClient.
+
+API key is read from ANTHROPIC_API_KEY env var or from neron.yaml.
+
+Config (neron.yaml → llm section):
+    claude_api_key: sk-ant-...
+    claude_max_tokens: 1024
+    timeout: 300
+    temperature: 0.7
+"""
+
+from __future__ import annotations
+
 import logging
 import os
 
@@ -6,23 +19,14 @@ import httpx
 from neron_llm.config import get_llm_config
 from neron_llm.providers.base import BaseProvider
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("neron_llm.claude")
 
 ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
 ANTHROPIC_VERSION = "2023-06-01"
 
 
 class ClaudeProvider(BaseProvider):
-    """Appel async vers l'API Anthropic Claude.
-
-    La clé API est lue depuis la variable d'environnement ANTHROPIC_API_KEY
-    ou depuis neron.yaml → llm.claude_api_key.
-
-    Config neron.yaml (optionnel) :
-        llm:
-          claude_api_key: sk-ant-...
-          claude_max_tokens: 1024
-    """
+    """Async provider for the Anthropic Claude API."""
 
     def __init__(self):
         cfg = get_llm_config()
@@ -31,16 +35,25 @@ class ClaudeProvider(BaseProvider):
             or cfg.get("claude_api_key", "")
         )
         self.max_tokens: int = int(cfg.get("claude_max_tokens", 1024))
-        self.timeout: float = float(cfg.get("timeout", 120))
+        self.timeout: float = float(cfg.get("timeout", 300))
+        self.temperature: float = float(cfg.get("temperature", 0.7))
 
         if not self.api_key:
             logger.warning(
-                "ClaudeProvider : ANTHROPIC_API_KEY absent — les appels échoueront."
+                "ClaudeProvider: ANTHROPIC_API_KEY not set — calls will raise."
             )
 
     async def generate(self, message: str, model: str) -> str:
+        """Generate a response via the Anthropic Messages API.
+
+        Raises:
+            ValueError: If API key is missing or response is empty.
+            httpx.TimeoutException: On timeout.
+            httpx.HTTPStatusError: On HTTP 4xx/5xx.
+            Exception: On any other failure.
+        """
         if not self.api_key:
-            return "[CLAUDE] Clé API manquante (ANTHROPIC_API_KEY non définie)"
+            raise ValueError("ANTHROPIC_API_KEY not set")
 
         headers = {
             "x-api-key": self.api_key,
@@ -50,30 +63,19 @@ class ClaudeProvider(BaseProvider):
         payload = {
             "model": model,
             "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
             "messages": [{"role": "user", "content": message}],
         }
 
         logger.debug("claude | POST %s model=%s", ANTHROPIC_API_URL, model)
 
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                r = await client.post(ANTHROPIC_API_URL, headers=headers, json=payload)
-                r.raise_for_status()
-                data = r.json()
-                # Anthropic retourne content[0].text pour les réponses texte
-                return data["content"][0]["text"]
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            r = await client.post(ANTHROPIC_API_URL, headers=headers, json=payload)
+            r.raise_for_status()
+            data = r.json()
 
-        except httpx.TimeoutException:
-            msg = f"[CLAUDE TIMEOUT] Claude n'a pas répondu en {self.timeout}s"
-            logger.error(msg)
-            return msg
+        content = data.get("content", [])
+        if not content:
+            raise ValueError("Claude returned empty content")
 
-        except httpx.HTTPStatusError as exc:
-            msg = f"[CLAUDE HTTP {exc.response.status_code}] {exc.response.text[:200]}"
-            logger.error(msg)
-            return msg
-
-        except Exception as exc:
-            msg = f"[CLAUDE ERREUR] {exc}"
-            logger.error(msg)
-            return msg
+        return content[0].get("text", "")
