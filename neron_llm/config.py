@@ -4,10 +4,13 @@ from pathlib import Path
 CONFIG_PATH = "/etc/neron/server/neron.yaml"
 
 
-def load_config():
-    with open(CONFIG_PATH, "r") as f:
-        return yaml.safe_load(f)
+def load_config() -> dict:
+    path = Path(CONFIG_PATH)
+    if not path.exists():
+        return {}
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
 
 
-def get_llm_config():
+def get_llm_config() -> dict:
     return load_config().get("llm", {})

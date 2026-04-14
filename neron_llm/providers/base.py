@@ -1,9 +1,14 @@
 from abc import ABC, abstractmethod
-from neron_llm.core.types import LLMRequest
 
 
 class BaseProvider(ABC):
+    """Interface commune à tous les providers LLM.
+
+    Toutes les implémentations DOIVENT être async pour permettre
+    l'exécution parallèle et race sans bloquer l'event loop.
+    """
 
     @abstractmethod
-    def generate(self, request: LLMRequest, model: str) -> str:
-        pass
+    async def generate(self, message: str, model: str) -> str:
+        """Envoie un message au LLM et retourne la réponse textuelle."""
+        ...
