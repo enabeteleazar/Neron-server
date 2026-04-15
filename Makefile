@@ -7,7 +7,8 @@ SERVER_DIR := $(REPO_DIR)/server
 VENV_DIR := $(SERVER_DIR)/venv
 PYTHON := $(VENV_DIR)/bin/python3
 PIP := $(VENV_DIR)/bin/pip
-SERVICE := neron
+SERVICE_SERVER := neron.service
+SERVICE_LLM := neron-llm.service
 
 .PHONY: help install install-core install-systemd start stop restart status logs update clean test version telegram ha-config ollama install-client start-client backup restore neron
 
@@ -77,19 +78,22 @@ install-systemd:
 # ============================================
 
 start:
-	@sudo systemctl start $(SERVICE)
-
+	@bash $(SERVER_DIR)/scripts/neron-boot.sh
 stop:
-	@sudo systemctl stop $(SERVICE)
-
+	@sudo systemctl stop $(SERVICE_SERVER)
+	@sudo systemctl stop $(SERVICE_LLM)
 restart:
-	@sudo systemctl restart $(SERVICE)
+	@sudo systemctl restart $(SERVICE_SERVER)
+	@sudo systemctl restart $(SERVICE_LLM)
 
 status:
-	@systemctl status $(SERVICE) --no-pager
+	@systemctl status $(SERVICE_SERVER) --no-pager
+	@systemctl status $(SERVICE_LLM)  --no-pager
 
 logs:
-	@journalctl -u $(SERVICE) -f
+	@journalctl -u $(SERVICE_SERVER) -f
+	@journalctl -u $(SERVICE_LLM) -f
+
 
 # ============================================
 # UPDATE

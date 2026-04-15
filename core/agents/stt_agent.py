@@ -1,6 +1,7 @@
 # agents/stt_agent.py
 # Neron Core - Agent STT (faster-whisper direct, sans neron_stt intermédiaire)
 
+import asyncio
 import logging
 import os
 from core.config import settings
@@ -10,8 +11,12 @@ import wave
 import struct
 from pathlib import Path
 from typing import Optional
+from concurrent.futures import ThreadPoolExecutor
 
 from core.agents.base_agent import AgentResult, get_logger
+
+# Pool dédié pour les opérations CPU-bound (Whisper, file I/O)
+_stt_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="stt_io")
 
 logger = get_logger("stt_agent")
 
@@ -87,6 +92,26 @@ class STTAgent:
             )
 
         start = time.monotonic()
+
+        try:
+            # Décharger TOUT le travail CPU/IO bloquant dans le ThreadPool
+            result = await asyncio.get_event_loop().run_in_executor(
+                _stt_executor, self._transcribe_sync, audio_bytes, ext
+            )
+            return result
+
+        except Exception as e:
+            latency_ms = round((time.monotonic() - start) * 1000, 2)
+            logger.error(f"Erreur transcription : {e}")
+            return AgentResult(
+                success=False, content="", source="stt_agent",
+                error=f"Erreur transcription : {str(e)}",
+                latency_ms=latency_ms, metadata={}
+            )
+
+    def _transcribe_sync(self, audio_bytes: bytes, ext: str) -> AgentResult:
+        """Version synchrone de la transcription — exécutée dans un thread."""
+        start = time.monotonic()
         tmp_path = None
 
         try:
@@ -94,7 +119,7 @@ class STTAgent:
                 tmp.write(audio_bytes)
                 tmp_path = tmp.name
 
-            logger.info(f"Transcription : '{filename}' ({len(audio_bytes)} bytes)")
+            logger.info(f"Transcription : ({len(audio_bytes)} bytes)")
 
             kwargs = {"beam_size": 5}
             if WHISPER_LANGUAGE:
@@ -113,7 +138,6 @@ class STTAgent:
                 metadata={
                     "language": language,
                     "stt_model": WHISPER_MODEL_NAME,
-                    "filename": filename,
                     "duration_ms": latency_ms
                 }
             )

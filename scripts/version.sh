@@ -56,7 +56,8 @@ echo ""
 API_URL="http://localhost:8010/health"
 
 SERVICES=(
-    "neron.service"
+    "neron-server.service"
+    "neron-llm.service"
     "neron-homeassistant.service"
     "neron-client.service"
 )

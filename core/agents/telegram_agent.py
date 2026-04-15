@@ -1,5 +1,4 @@
-# core/agents/telegram_agent.py
-# Neron Core - Bot Telegram intégré (sans port séparé)
+# core/agents/telegram_agent.py Neron Core - Bot Telegram intégré (sans port séparé)
 
 from __future__ import annotations
 

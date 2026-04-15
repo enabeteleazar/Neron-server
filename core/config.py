@@ -77,6 +77,14 @@ class Config:
     LLM_TEMPERATURE = float(_get(_cfg, "llm", "temperature",                             default=0.7))
     LLM_MAX_TOKENS  = int(_get(_cfg, "llm",   "max_tokens",                              default=2048))
 
+    # Section lue par NéronLLMClient
+    _neron_llm_cfg = _cfg.get("neron_llm", {})
+    NERON_LLM: dict = {
+        "url":     _neron_llm_cfg.get("url",     "http://localhost:8765"),
+        "timeout": float(_neron_llm_cfg.get("timeout", 30)),
+        "retry":   int(_neron_llm_cfg.get("retry",   2)),
+    }
+
     # ── STT (désactivé — conservé pour compatibilité) ─────────────────────
     WHISPER_MODEL         = _get(_cfg, "stt", "model",          fallback_env="WHISPER_MODEL",         default="base")
     WHISPER_LANG          = _get(_cfg, "stt", "language",       fallback_env="WHISPER_LANGUAGE",      default="fr")

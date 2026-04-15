@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,6 +22,9 @@ world_model_router = APIRouter(prefix="/world-model", tags=["World Model"])
 
 # Instance store partagée
 _store = WorldModelStore()
+
+# ThreadPool dédié pour les opérations bloquantes (build_world_model, SQLite I/O)
+_wm_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="wm_io")
 
 # Auth — réutilise le même header que app.py
 _API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -42,11 +46,12 @@ async def get_world_model(_: None = Depends(_verify_key)) -> dict:
     Si un snapshot récent existe en cache (< 30s), le retourne directement.
     Sinon, en construit un nouveau.
     """
-    # Tentative de lecture du cache JSON
-    cached = _store.load()
+    loop = asyncio.get_event_loop()
+
+    # Lecture du cache via executor (SQLite I/O bloquant)
+    cached = await loop.run_in_executor(_wm_executor, _store.load)
     if cached:
         ts        = cached.get("meta", {}).get("timestamp", "")
-        build_ms  = cached.get("meta", {}).get("build_ms", 0)
         # Cache valide si < 30 secondes
         try:
             from datetime import datetime, timezone
@@ -58,12 +63,12 @@ async def get_world_model(_: None = Depends(_verify_key)) -> dict:
         except Exception:
             pass
 
-    # Construction d'un nouveau snapshot
+    # Construction d'un nouveau snapshot via executor (CPU + I/O bloquant)
     try:
-        snapshot = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: build_world_model(source="api")
+        snapshot = await loop.run_in_executor(
+            _wm_executor, lambda: build_world_model(source="api")
         )
-        _store.save(snapshot)
+        await loop.run_in_executor(_wm_executor, _store.save, snapshot)
         snapshot["meta"]["cache"] = False
         return snapshot
     except Exception as e:
@@ -76,11 +81,12 @@ async def refresh_world_model(_: None = Depends(_verify_key)) -> dict:
     """
     Force la reconstruction du World Model (ignore le cache).
     """
+    loop = asyncio.get_event_loop()
     try:
-        snapshot = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: build_world_model(source="api_refresh")
+        snapshot = await loop.run_in_executor(
+            _wm_executor, lambda: build_world_model(source="api_refresh")
         )
-        _store.save(snapshot)
+        await loop.run_in_executor(_wm_executor, _store.save, snapshot)
         return {
             "status":    "ok",
             "score":     snapshot.get("score", {}),
@@ -95,10 +101,13 @@ async def refresh_world_model(_: None = Depends(_verify_key)) -> dict:
 @world_model_router.get("/score")
 async def get_score(_: None = Depends(_verify_key)) -> dict:
     """Retourne uniquement le score de santé global."""
-    snapshot = _store.load()
+    loop = asyncio.get_event_loop()
+    snapshot = await loop.run_in_executor(_wm_executor, _store.load)
     if not snapshot:
-        snapshot = build_world_model(source="api_score")
-        _store.save(snapshot)
+        snapshot = await loop.run_in_executor(
+            _wm_executor, lambda: build_world_model(source="api_score")
+        )
+        await loop.run_in_executor(_wm_executor, _store.save, snapshot)
     return {
         "score":           snapshot.get("score", {}),
         "recommendations": snapshot.get("recommendations", []),
@@ -109,10 +118,13 @@ async def get_score(_: None = Depends(_verify_key)) -> dict:
 @world_model_router.get("/anomalies")
 async def get_anomalies(_: None = Depends(_verify_key)) -> dict:
     """Retourne les anomalies détectées dans le snapshot courant."""
-    snapshot = _store.load()
+    loop = asyncio.get_event_loop()
+    snapshot = await loop.run_in_executor(_wm_executor, _store.load)
     if not snapshot:
-        snapshot = build_world_model(source="api_anomalies")
-        _store.save(snapshot)
+        snapshot = await loop.run_in_executor(
+            _wm_executor, lambda: build_world_model(source="api_anomalies")
+        )
+        await loop.run_in_executor(_wm_executor, _store.save, snapshot)
     return {
         "anomalies": snapshot.get("anomalies", []),
         "count":     len(snapshot.get("anomalies", [])),
@@ -130,7 +142,10 @@ async def get_history(
     Retourne l'historique des snapshots.
     Paramètres : limit (max 1000), days (max 30).
     """
-    history = _store.get_history(limit=limit, days=days)
+    loop = asyncio.get_event_loop()
+    history = await loop.run_in_executor(
+        _wm_executor, lambda: _store.get_history(limit=limit, days=days)
+    )
     return {
         "history": history,
         "count":   len(history),
@@ -154,7 +169,10 @@ async def get_trend(
             400,
             f"Metrique invalide : {metric!r}. Disponibles : {sorted(allowed)}"
         )
-    trend = _store.get_trend(metric=metric, periods=periods)
+    loop = asyncio.get_event_loop()
+    trend = await loop.run_in_executor(
+        _wm_executor, lambda: _store.get_trend(metric=metric, periods=periods)
+    )
     return {
         "metric":  metric,
         "periods": periods,

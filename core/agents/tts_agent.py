@@ -1,12 +1,17 @@
 # agents/tts_agent.py
 # Neron Core - Agent TTS (espeak + ffmpeg MP3)
 
+import asyncio
 import os
 from core.config import settings
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from core.agents.base_agent import AgentResult, get_logger
+
+# Pool dédié pour les opérations CPU/IO bloquantes du TTS
+_tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts_io")
 
 logger = get_logger("tts_agent")
 
@@ -58,9 +63,10 @@ class TTSAgent:
 
         start = time.monotonic()
         try:
-            logger.info(f"Synthèse TTS : '{text[:60]}' ({len(text)} chars)")
-
-            result = _tts_engine.synthesize(text, format="mp3")
+            # Déleguer l'opération bloquante (subprocess.run) au ThreadPool
+            result = await asyncio.get_event_loop().run_in_executor(
+                _tts_executor, _tts_engine.synthesize, text, "mp3"
+            )
             if isinstance(result, tuple):
                 audio_bytes, mimetype = result
             else:
