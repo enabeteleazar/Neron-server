@@ -74,26 +74,26 @@ install-systemd:
 	@echo "✔ systemd OK"
 
 # ============================================
-# SERVICE CONTROL
+# SERVICE CONTROL (delegated to neronctl)
 # ============================================
 
+neronctl:
+	@/usr/local/bin/neronctl $(CMD)
+
 start:
-	@bash $(SERVER_DIR)/scripts/neron-boot.sh
+	@neronctl start
+
 stop:
-	@sudo systemctl stop $(SERVICE_SERVER)
-	@sudo systemctl stop $(SERVICE_LLM)
+	@neronctl stop
+
 restart:
-	@sudo systemctl restart $(SERVICE_SERVER)
-	@sudo systemctl restart $(SERVICE_LLM)
+	@neronctl restart
 
 status:
-	@systemctl status $(SERVICE_SERVER) --no-pager
-	@systemctl status $(SERVICE_LLM)  --no-pager
+	@neronctl status
 
 logs:
-	@journalctl -u $(SERVICE_SERVER) -f
-	@journalctl -u $(SERVICE_LLM) -f
-
+	@neronctl logs
 
 # ============================================
 # UPDATE
