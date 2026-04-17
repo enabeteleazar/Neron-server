@@ -537,6 +537,14 @@ async def text_input_stream(input_data: TextInput, _: None = Depends(verify_api_
                 yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
 
             logger.debug("stream: %d tokens recus", token_count)
+
+            if token_count == 0:
+                # Aucun token reçu du LLM — Ollama probablement indisponible
+                logger.warning("stream: aucun token recu — Ollama indisponible ou timeout")
+                error_msg = "⚠️ Le service LLM n'a retourné aucune réponse. Vérifie qu'Ollama est bien démarré (`systemctl status ollama`)."
+                yield f"data: {json.dumps({'token': error_msg, 'done': True, 'error': 'no_tokens'})}\n\n"
+                return
+
             await _store_memory(query, full_response, {"intent": intent_result.intent.value})
             yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
             logger.debug("stream: termine")

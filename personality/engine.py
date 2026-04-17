@@ -19,9 +19,7 @@ _UNKNOWN_ENERGY_HINT = "Maintiens un équilibre entre clarté et concision."
 def build_system_prompt(user_context: str = "") -> str:
     """
     Construit le prompt système complet à partir de la persona active.
-    - Traits et règles formatés en liste à tirets
-    - État dynamique (mood, energy_level, learning) avec instructions concrètes
-    - Valeurs inconnues → instruction générique cohérente + warning
+    Format texte brut — sans headers Markdown, sans ##.
     """
     try:
         persona = load_persona()
@@ -32,15 +30,14 @@ def build_system_prompt(user_context: str = "") -> str:
             "Répondez de façon neutre et informez l'utilisateur du problème."
         )
 
-    # ── Traits ───────────────────────────────────────────────────────────────
-    traits_raw   = persona.get("traits", [])
-    traits_block = (
-        "\n".join(f"- {t}" for t in traits_raw)
-        if isinstance(traits_raw, list)
-        else f"- {traits_raw}"
+    name = persona.get("name", "Neron")
+    role = persona.get("role", "assistant")
+
+    traits_raw = persona.get("traits", [])
+    traits_inline = (
+        ", ".join(traits_raw) if isinstance(traits_raw, list) else str(traits_raw)
     )
 
-    # ── Règles ────────────────────────────────────────────────────────────────
     rules_raw   = persona.get("rules", [])
     rules_block = (
         "\n".join(f"- {r}" for r in rules_raw)
@@ -48,61 +45,47 @@ def build_system_prompt(user_context: str = "") -> str:
         else f"- {rules_raw}"
     )
 
-    # ── Paramètres dynamiques ─────────────────────────────────────────────────
-    comm         = persona.get("communication", {})
     behavior     = persona.get("behavior", {})
     learning     = persona.get("learning", {})
     mood         = persona.get("mood", "neutre")
     energy_level = persona.get("energy_level", "normal")
 
-    # ── Instructions mood / energy avec fallback explicite ────────────────────
     if mood not in MOOD_INSTRUCTIONS:
-        logger.warning(
-            "[ENGINE] Valeur mood inconnue : %r. Reconnues : %s. Instruction générique appliquée.",
-            mood, list(MOOD_INSTRUCTIONS.keys()),
-        )
+        logger.warning("[ENGINE] Valeur mood inconnue : %r. Instruction générique appliquée.", mood)
     mood_hint = MOOD_INSTRUCTIONS.get(mood, _UNKNOWN_MOOD_HINT)
 
     if energy_level not in ENERGY_INSTRUCTIONS:
-        logger.warning(
-            "[ENGINE] Valeur energy_level inconnue : %r. Reconnues : %s. Instruction générique appliquée.",
-            energy_level, list(ENERGY_INSTRUCTIONS.keys()),
-        )
+        logger.warning("[ENGINE] Valeur energy_level inconnue : %r. Instruction générique appliquée.", energy_level)
     energy_hint = ENERGY_INSTRUCTIONS.get(energy_level, _UNKNOWN_ENERGY_HINT)
 
-    # ── Apprentissage ─────────────────────────────────────────────────────────
     learning_hint = (
-        "Tu peux adapter ton comportement en fonction des retours de l'utilisateur."
+        "Tu adaptes ton comportement selon les retours de l'utilisateur."
         if learning.get("enabled", True)
-        else "Mode statique actif — ne modifie pas ton comportement selon les retours."
+        else "Mode statique — ne modifie pas ton comportement selon les retours."
     )
 
-    prompt = f"""\
-Tu es {persona.get('name', 'Neron')}, {persona.get('role', 'assistant')}.
+    proactive = behavior.get("proactive", True)
+    suggest   = behavior.get("suggest_improvements", True)
 
-## Traits de personnalité
-{traits_block}
+    context_block = (
+        f"\nContexte de la conversation : {user_context}" if user_context else ""
+    )
 
-## Style de communication
-- Ton : {comm.get('tone', 'technique')}
-- Niveau de détail : {comm.get('verbosity', 'medium')}
-- Format : {comm.get('format', 'structuré')}
+    lines = [
+        f"Tu es {name}, {role}. Tu réponds uniquement en français, de façon naturelle et conversationnelle.",
+        "",
+        f"Tes traits : {traits_inline}.",
+        "",
+        f"Humeur actuelle : {mood} — {mood_hint}",
+        f"Énergie : {energy_level} — {energy_hint}",
+    ]
+    if proactive:
+        lines.append("Tu es proactif et proposes des pistes quand c'est utile.")
+    if suggest:
+        lines.append("Tu suggères des améliorations quand c'est pertinent.")
+    lines.append(learning_hint)
+    lines += ["", "Règles absolues à respecter :", rules_block]
+    if context_block:
+        lines.append(context_block)
 
-## État dynamique
-- Humeur : {mood} — {mood_hint}
-- Énergie : {energy_level} — {energy_hint}
-
-## Comportement
-- Proactif : {behavior.get('proactive', True)}
-- Propose des améliorations : {behavior.get('suggest_improvements', True)}
-
-## Apprentissage
-- {learning_hint}
-
-## Règles
-{rules_block}
-
-## Contexte utilisateur
-{user_context if user_context else "Aucun contexte supplémentaire fourni."}
-"""
-    return prompt.strip()
+    return "\n".join(lines).strip()

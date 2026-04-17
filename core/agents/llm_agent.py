@@ -217,7 +217,9 @@ class LLMAgent(BaseAgent):
         stream_url = f"{base_url}/llm/stream"
 
         try:
-            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=timeout, write=5.0, pool=5.0)) as client:
+            # read=None : pas de timeout entre chunks — le LLM peut être lent à démarrer.
+            # Le timeout global (asyncio.wait_for) protège contre un blocage infini.
+            async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=None, write=5.0, pool=5.0)) as client:
                 async with client.stream("POST", stream_url, json=payload, headers=headers) as response:
                     if response.status_code == 404:
                         # /llm/stream not yet implemented — fall back to /llm/generate
