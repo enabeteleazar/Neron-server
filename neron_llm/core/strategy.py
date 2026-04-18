@@ -1,13 +1,7 @@
-"""neron_llm/core/strategy.py
-Strategy layer — decides execution mode automatically based on task type.
+# neron_llm/core/strategy.py
+#Strategy layer — decides execution mode automatically based on task type.
 
-v2.0 changes:
-  • task_type coverage extended: reasoning, agent now mapped
-  • strategy overrides readable from neron.yaml → strategy: section
-  • decide() signature unchanged (backward compat)
-"""
 from __future__ import annotations
-
 import logging
 
 logger = logging.getLogger("neron_llm.strategy")
@@ -28,15 +22,6 @@ _DEFAULT_TASK_STRATEGIES: dict[str, str] = {
 
 
 class StrategyEngine:
-    """Decides execution mode based on task type or explicit override.
-
-    Config override (neron.yaml → strategy:):
-        strategy:
-          code:      parallel
-          reasoning: single
-          chat:      race
-          agent:     single
-    """
 
     def __init__(self) -> None:
         # Load yaml overrides at construction — config is cached by lru_cache

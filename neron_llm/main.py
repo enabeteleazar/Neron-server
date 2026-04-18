@@ -33,7 +33,7 @@ _handler = logging.StreamHandler()
 _handler.setFormatter(_JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[_handler])
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-logging.getLogger("httpx").setlevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 

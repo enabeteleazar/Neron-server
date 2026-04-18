@@ -14,12 +14,6 @@ logger = logging.getLogger("neron_llm.ollama")
 
 
 class OllamaProvider(BaseProvider):
-    """Async provider for local Ollama instances.
-
-    The underlying httpx.AsyncClient is shared for the lifetime of this
-    object.  Call aclose() (or use LLMManager.aclose()) to release the
-    connection pool gracefully on shutdown.
-    """
 
     def __init__(self) -> None:
         cfg = get_llm_config()
@@ -37,13 +31,6 @@ class OllamaProvider(BaseProvider):
         logger.debug("OllamaProvider initialised — base_url=%s timeout=%s", host, timeout)
 
     async def generate(self, message: str, model: str) -> str:
-        """Generate a response via Ollama's /api/generate endpoint.
-
-        Raises:
-            httpx.TimeoutException: On timeout.
-            httpx.HTTPStatusError: On HTTP 4xx/5xx.
-            ValueError: On unexpected response format.
-        """
         payload = {
             "model":  model,
             "prompt": message,
@@ -62,6 +49,5 @@ class OllamaProvider(BaseProvider):
         return data["response"]
 
     async def aclose(self) -> None:
-        """Close the shared HTTP client and release connections."""
         await self._client.aclose()
         logger.debug("OllamaProvider: HTTP client closed")

@@ -1,20 +1,8 @@
-"""neron_llm/core/router.py
-Intelligent LLM router — selects model and provider based on config.
+# neron_llm/core/router.py
+# Intelligent LLM router — selects model and provider based on config.
 
-v2.0 changes:
-  • routing defaults now cover all task_type values from the public bus
-    (code, reasoning, agent → qwen2.5-coder:14b  |  chat → llama3.2:1b)
-  • fallback model chain:  qwen2.5-coder:14b → deepseek-coder:6.7b
-  • FALLBACK_MODEL updated to deepseek-coder:6.7b
-  • get_fallback_model() added — model-level fallback independent of provider
-
-Config reads from neron.yaml → routing section (supports both 'routing'
-and legacy 'model_map' keys for backward compat).
-"""
 from __future__ import annotations
-
 import logging
-
 from neron_llm.config import get_llm_config, get_routing_config
 
 logger = logging.getLogger("neron_llm.router")
@@ -47,7 +35,6 @@ _DEFAULT_TASK_ROUTING: dict[str, str] = {
 
 
 class LLMRouter:
-    """Selects model and provider for a given task."""
 
     def __init__(self) -> None:
         # Config-based routing overrides built-in defaults
@@ -61,10 +48,6 @@ class LLMRouter:
     # ── Model selection ───────────────────────────────────────────────────────
 
     def select_model(self, task: str | None = None) -> str:
-        """Select primary model for a task.
-
-        Priority: explicit task match → 'default' key → FALLBACK_MODEL.
-        """
         if task and task in self._routing:
             model = self._routing[task]
             logger.debug("Router: task='%s' → model='%s'", task, model)

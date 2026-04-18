@@ -18,12 +18,6 @@ ANTHROPIC_VERSION  = "2023-06-01"
 
 
 class ClaudeProvider(BaseProvider):
-    """Async provider for the Anthropic Claude API.
-
-    The underlying httpx.AsyncClient is shared for the lifetime of this
-    object.  Call aclose() (or use LLMManager.aclose()) to release the
-    connection pool gracefully on shutdown.
-    """
 
     def __init__(self) -> None:
         cfg = get_llm_config()
@@ -31,7 +25,7 @@ class ClaudeProvider(BaseProvider):
         self.api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
         if not self.api_key:
             logger.warning(
-                "ClaudeProvider: ANTHROPIC_API_KEY not set — calls will raise."
+                "ClaudeProvider:ANTHROPIC_API_KEY not set - call will raise."
             )
 
         self.max_tokens:  int   = int(cfg.get("claude_max_tokens", 1024))
@@ -60,13 +54,6 @@ class ClaudeProvider(BaseProvider):
         return bool(self.api_key)
 
     async def generate(self, message: str, model: str) -> str:
-        """Generate a response via the Anthropic Messages API.
-
-        Raises:
-            ValueError: If API key is missing or response is empty.
-            httpx.TimeoutException: On timeout.
-            httpx.HTTPStatusError: On HTTP 4xx/5xx.
-        """
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
 
