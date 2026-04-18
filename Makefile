@@ -22,6 +22,7 @@ help:
 	@echo "  make start      	-- demarrer le service"
 	@echo "  make stop       	-- arreter le service"
 	@echo "  make restart    	-- redemarrer le service"
+	@echo "  make logs		-- Logs du server"
 	@echo "  make version		-- Info Systeme"
 	@echo ""
 	@echo "[Client]"
