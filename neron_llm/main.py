@@ -1,12 +1,6 @@
-"""neron_llm/main.py
-Neron LLM microservice — main entry point.
+# neron_llm/main.py
+# Neron LLM microservice — main entry point.
 
-v2.0: structured JSON logging, startup/shutdown events.
-
-Usage:
-    uvicorn neron_llm.main:app --host 127.0.0.1 --port 8765
-    uvicorn neron_llm.main:app --host 127.0.0.1 --port 8765 --workers 1
-"""
 from __future__ import annotations
 
 import json
@@ -39,7 +33,7 @@ _handler = logging.StreamHandler()
 _handler.setFormatter(_JsonFormatter())
 logging.basicConfig(level=logging.INFO, handlers=[_handler])
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
-
+logging.getLogger("httpx").setlevel(logging.WARNING)
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
@@ -61,6 +55,8 @@ async def on_startup() -> None:
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
+    from neron_llm.api.routes import manager
+    await manager.aclose()
     logging.getLogger("neron_llm").info(
         json.dumps({"event": "neron_llm_stopped"})
     )

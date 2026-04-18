@@ -1,14 +1,6 @@
-"""neron_llm/api/routes.py
-API routes for neron_llm — fully async.
+# neron_llm/api/routes.py
+# API routes for neron_llm — fully async.
 
-v2.0: POST /llm/generate added as the primary bus endpoint.
-      GET  /llm/metrics added.
-      POST /llm/stream  added (SSE, future-ready).
-      All existing routes (/chat, /health, /reload) preserved.
-
-Correlation ID (x-neron-request-id) is read from headers and forwarded
-to all log entries for end-to-end tracing.
-"""
 from __future__ import annotations
 
 import json
@@ -187,17 +179,16 @@ async def stream(req: GenerateRequest, request: Request) -> StreamingResponse:
 
 @router.get("/llm/health")
 async def health() -> dict:
-    """Health check — also reports per-provider status."""
-    from neron_llm.providers.ollama import OllamaProvider
-    from neron_llm.config import get_llm_config
-
+    """Health check — reports per-provider status."""
     ollama_up: bool = False
     try:
-        import httpx
-        cfg  = get_llm_config()
-        host = cfg.get("host", "http://localhost:11434")
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            r = await client.get(f"{host}/api/tags")
+        # Reuse the shared OllamaProvider client (no new TCP connection).
+        # Override timeout for this call only: health checks must be fast.
+        ollama_provider = manager.providers.get("ollama")
+        if ollama_provider is not None:
+            r = await ollama_provider._client.get(
+                "/api/tags", timeout=3.0,
+            )
             ollama_up = r.status_code == 200
     except Exception:
         pass

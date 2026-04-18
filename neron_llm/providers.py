@@ -1,5 +1,16 @@
-# providers/ollama.py
-# Ollama provider — async HTTP via a shared httpx.AsyncClient.
+"""Ollama provider — async HTTP via a shared httpx.AsyncClient.
+
+A single AsyncClient is created at instantiation and reused across
+all generate() calls.  This enables HTTP keep-alive and connection
+pooling, which significantly reduces latency and resource usage under
+load compared to opening a new connection per request.
+
+Config (neron.yaml → llm section):
+    host: http://localhost:11434
+    timeout: 300
+    ollama_max_connections: 50          # optional, default 50
+    ollama_max_keepalive_connections: 10  # optional, default 10
+"""
 
 from __future__ import annotations
 

@@ -1,17 +1,6 @@
-"""neron_llm/core/manager.py
-LLM Manager — orchestration engine with single/parallel/race modes.
+# neron_llm/core/manager.py
+# LLM Manager — orchestration engine with single/parallel/race modes.
 
-v2.0 changes:
-  • _execute_single() now tries model fallback chain BEFORE provider fallback
-    (qwen2.5-coder:14b → deepseek-coder:6.7b → provider fallback → error)
-  • Correlation ID (x-neron-request-id) forwarded to provider calls
-  • Structured JSON error logging
-
-Unchanged:
-  • parallel / race modes
-  • retry logic (MAX_RETRIES = 2)
-  • provider fallback chain (ollama → claude)
-"""
 from __future__ import annotations
 
 import asyncio
@@ -40,6 +29,23 @@ class LLMManager:
             "ollama": OllamaProvider(),
             "claude": ClaudeProvider(),
         }
+
+    async def aclose(self) -> None:
+        """Close all provider HTTP clients gracefully.
+
+        Called at application shutdown via the FastAPI lifespan handler.
+        Iterates all providers and awaits their aclose() — providers that
+        do not hold connections (e.g. test fakes) are safe: BaseProvider
+        provides a default no-op aclose().
+        """
+        for name, provider in self.providers.items():
+            try:
+                await provider.aclose()
+                logger.debug(json.dumps({"event": "provider_closed", "provider": name}))
+            except Exception as exc:
+                logger.warning(
+                    json.dumps({"event": "provider_close_error", "provider": name, "error": str(exc)})
+                )
 
     # ── Main entry point ──────────────────────────────────────────────────────
 

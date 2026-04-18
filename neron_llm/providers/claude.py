@@ -1,13 +1,5 @@
-"""Claude (Anthropic) provider — async HTTP via httpx.AsyncClient.
-
-API key is read from ANTHROPIC_API_KEY env var or from neron.yaml.
-
-Config (neron.yaml → llm section):
-    claude_api_key: sk-ant-...
-    claude_max_tokens: 1024
-    timeout: 300
-    temperature: 0.7
-"""
+# providers/claude.py
+# Claude (Anthropic) provider — async HTTP via a shared httpx.AsyncClient.
 
 from __future__ import annotations
 
@@ -21,31 +13,51 @@ from neron_llm.providers.base import BaseProvider
 
 logger = logging.getLogger("neron_llm.claude")
 
-ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages"
-ANTHROPIC_VERSION = "2023-06-01"
+ANTHROPIC_BASE_URL = "https://api.anthropic.com"
+ANTHROPIC_VERSION  = "2023-06-01"
 
 
 class ClaudeProvider(BaseProvider):
-    """Async provider for the Anthropic Claude API."""
+    """Async provider for the Anthropic Claude API.
 
-    def is_available(self) -> bool:
-        import os
-        return bool(os.getenv("ANTHROPIC_API_KEY"))
+    The underlying httpx.AsyncClient is shared for the lifetime of this
+    object.  Call aclose() (or use LLMManager.aclose()) to release the
+    connection pool gracefully on shutdown.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
         cfg = get_llm_config()
-        self.api_key: str = (
-            os.getenv("ANTHROPIC_API_KEY")
-            or cfg.get("claude_api_key", "")
-        )
-        self.max_tokens: int = int(cfg.get("claude_max_tokens", 1024))
-        self.timeout: float = float(cfg.get("timeout", 300))
-        self.temperature: float = float(cfg.get("temperature", 0.7))
 
+        self.api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
         if not self.api_key:
             logger.warning(
                 "ClaudeProvider: ANTHROPIC_API_KEY not set — calls will raise."
             )
+
+        self.max_tokens:  int   = int(cfg.get("claude_max_tokens", 1024))
+        self.temperature: float = float(cfg.get("temperature", 0.7))
+        timeout = float(cfg.get("timeout", 300))
+        limits  = httpx.Limits(
+            max_connections          = int(cfg.get("claude_max_connections", 20)),
+            max_keepalive_connections= int(cfg.get("claude_max_keepalive_connections", 5)),
+        )
+
+        # Authentication headers are baked into the client once at startup.
+        # No need to rebuild them on every generate() call.
+        self._client = httpx.AsyncClient(
+            base_url = ANTHROPIC_BASE_URL,
+            timeout  = timeout,
+            limits   = limits,
+            headers  = {
+                "x-api-key":          self.api_key,
+                "anthropic-version":  ANTHROPIC_VERSION,
+                "content-type":       "application/json",
+            },
+        )
+        logger.debug("ClaudeProvider initialised — timeout=%s max_tokens=%s", timeout, self.max_tokens)
+
+    def is_available(self) -> bool:
+        return bool(self.api_key)
 
     async def generate(self, message: str, model: str) -> str:
         """Generate a response via the Anthropic Messages API.
@@ -54,32 +66,30 @@ class ClaudeProvider(BaseProvider):
             ValueError: If API key is missing or response is empty.
             httpx.TimeoutException: On timeout.
             httpx.HTTPStatusError: On HTTP 4xx/5xx.
-            Exception: On any other failure.
         """
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
 
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": ANTHROPIC_VERSION,
-            "content-type": "application/json",
-        }
         payload = {
-            "model": model,
+            "model":      model,
             "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-            "messages": [{"role": "user", "content": message}],
+            "temperature":self.temperature,
+            "messages":   [{"role": "user", "content": message}],
         }
 
-        logger.debug("claude | POST %s model=%s", ANTHROPIC_API_URL, model)
+        logger.debug("claude | POST /v1/messages model=%s", model)
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            r = await client.post(ANTHROPIC_API_URL, headers=headers, json=payload)
-            r.raise_for_status()
-            data = r.json()
+        r = await self._client.post("/v1/messages", json=payload)
+        r.raise_for_status()
+        data = r.json()
 
         content = data.get("content", [])
         if not content:
             raise ValueError("Claude returned empty content")
 
         return content[0].get("text", "")
+
+    async def aclose(self) -> None:
+        """Close the shared HTTP client and release connections."""
+        await self._client.aclose()
+        logger.debug("ClaudeProvider: HTTP client closed")
