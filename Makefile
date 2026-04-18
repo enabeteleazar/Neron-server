@@ -10,7 +10,7 @@ PIP := $(VENV_DIR)/bin/pip
 SERVICE_SERVER := neron.service
 SERVICE_LLM := neron-llm.service
 
-.PHONY: help install install-core install-systemd start stop restart status logs update clean test version telegram ha-config ollama install-client start-client backup restore neron
+.PHONY: help install install-core install-systemd start stop restart status logs update clean version telegram ha-config ollama install-client start-client backup restore neron
 
 # ============================================
 # HELP
@@ -22,6 +22,7 @@ help:
 	@echo "  make start      	-- demarrer le service"
 	@echo "  make stop       	-- arreter le service"
 	@echo "  make restart    	-- redemarrer le service"
+	@echo "  make version		-- Info Systeme"
 	@echo ""
 	@echo "[Client]"
 	@echo "  make client-start    	-- demarrer l'application"
@@ -115,18 +116,11 @@ clean:
 	@echo "✔ clean done"
 
 # ============================================
-# TEST
-# ============================================
-
-test:
-	@bash $(SERVER_DIR)/scripts/test.sh
-
-# ============================================
 # VERSION
 # ============================================
 
 version:
-	@bash $(SERVER_DIR)/scripts/version.sh
+	@bash $(SERVER_DIR)/scripts/doctor.sh
 
 # ============================================
 # CLIENT
