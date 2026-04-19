@@ -10,6 +10,9 @@ import time
 
 import pytest
 
+from fastapi import HTTPException
+from unittest.mock import patch
+
 from neron_llm.core.manager import LLMManager, MAX_RETRIES
 from neron_llm.core.router import LLMRouter
 from neron_llm.core.strategy import StrategyEngine
@@ -249,7 +252,10 @@ def test_fallback_on_failure():
 
 
 def test_retry_then_success():
-    """Provider that fails once but succeeds on retry."""
+    """Provider that fails once but succeeds on retry.
+
+    The backoff sleep is patched to zero so the test stays fast.
+    """
     mgr = LLMManager()
     recovering = RecoveringProvider()
     mgr.providers = {
@@ -260,13 +266,38 @@ def test_retry_then_success():
     mgr.router.select_model = lambda task=None: "test"
 
     req = make_request(mode="single")
-    result = asyncio.run(mgr.handle(req))
+
+    with patch("neron_llm.core.manager.asyncio.sleep") as mock_sleep:
+        mock_sleep.return_value = None  # instant
+        result = asyncio.run(mgr.handle(req))
 
     assert result.error is None
     assert result.provider == "ollama"
-    assert recovering.call_count == 2  # failed once, succeeded on retry
+    assert recovering.call_count == 2       # failed once, succeeded on retry
+    assert mock_sleep.call_count == 1       # slept exactly once (between attempts)
+    wait_called = mock_sleep.call_args[0][0]
+    assert wait_called > 0                  # backoff is non-zero
 
-    print(f"\n  RETRY confirmed: 2 attempts, success on retry")
+    print(f"\n  RETRY confirmed: 2 attempts, backoff={wait_called:.2f}s (patched to 0)")
+
+
+def test_retry_no_sleep_after_last_attempt():
+    """Sleep must NOT be called after the final failed attempt (wasted wait).
+
+    Calls _call_with_retry directly to isolate retry logic from the
+    model/provider fallback chain in _execute_single.
+    """
+    mgr = LLMManager()
+    mgr.providers = {"ollama": FailingProvider()}
+
+    with patch("neron_llm.core.manager.asyncio.sleep") as mock_sleep:
+        mock_sleep.return_value = None
+        asyncio.run(mgr._call_with_retry("ollama", "test message", "test-model"))
+
+    # MAX_RETRIES=2 → 2 attempts, 1 sleep between them, 0 sleep after last
+    assert mock_sleep.call_count == MAX_RETRIES - 1
+
+    print(f"\n  NO POST-LAST-ATTEMPT SLEEP confirmed: sleep called {mock_sleep.call_count}x")
 
 
 def test_all_providers_fail():
@@ -278,7 +309,9 @@ def test_all_providers_fail():
     }
 
     req = make_request(mode="single", provider="ollama")
-    result = asyncio.run(mgr.handle(req))
+
+    with patch("neron_llm.core.manager.asyncio.sleep"):
+        result = asyncio.run(mgr.handle(req))
 
     assert result.error is not None
     assert "error" in result.error.lower() or "failed" in result.error.lower()
@@ -331,6 +364,208 @@ def test_response_format():
 # ---------------------------------------------------------------------------
 # Entrypoint
 # ---------------------------------------------------------------------------
+# Authentication tests
+# ---------------------------------------------------------------------------
+
+
+def test_auth_disabled_when_no_env_var():
+    """When NERON_API_KEY is not set, all requests pass through."""
+    import importlib
+    import os
+    from unittest.mock import patch, AsyncMock
+
+    with patch.dict(os.environ, {}, clear=False):
+        os.environ.pop("NERON_API_KEY", None)
+
+        # Re-import routes with no key set
+        import neron_llm.api.routes as routes_mod
+        importlib.reload(routes_mod)
+
+        assert routes_mod._NERON_API_KEY == ""
+
+        # _require_api_key must not raise when no key is configured
+        result = asyncio.run(routes_mod._require_api_key(key=None))
+        assert result is None
+
+    print("\n  AUTH DISABLED: no key set → requests pass through")
+
+
+def test_auth_rejects_missing_key():
+    """When NERON_API_KEY is set, a missing header returns 403."""
+    import importlib
+    import os
+
+    with patch.dict(os.environ, {"NERON_API_KEY": "secret-test-key"}):
+        import neron_llm.api.routes as routes_mod
+        importlib.reload(routes_mod)
+
+        try:
+            asyncio.run(routes_mod._require_api_key(key=None))
+            assert False, "Should have raised HTTPException"
+        except HTTPException as exc:
+            assert exc.status_code == 403
+
+    print("\n  AUTH: missing key → 403")
+
+
+def test_auth_rejects_wrong_key():
+    """Wrong key returns 403."""
+    import importlib
+    import os
+
+    with patch.dict(os.environ, {"NERON_API_KEY": "secret-test-key"}):
+        import neron_llm.api.routes as routes_mod
+        importlib.reload(routes_mod)
+
+        try:
+            asyncio.run(routes_mod._require_api_key(key="wrong-key"))
+            assert False, "Should have raised HTTPException"
+        except HTTPException as exc:
+            assert exc.status_code == 403
+
+    print("\n  AUTH: wrong key → 403")
+
+
+def test_auth_accepts_correct_key():
+    """Correct key passes through."""
+    import importlib
+    import os
+
+    with patch.dict(os.environ, {"NERON_API_KEY": "secret-test-key"}):
+        import neron_llm.api.routes as routes_mod
+        importlib.reload(routes_mod)
+
+        result = asyncio.run(routes_mod._require_api_key(key="secret-test-key"))
+        assert result is None
+
+    print("\n  AUTH: correct key → 200")
+
+
+# ---------------------------------------------------------------------------
+# Input validation tests (P1.4)
+# ---------------------------------------------------------------------------
+
+
+def test_generate_request_rejects_empty_prompt():
+    """Empty prompt must be rejected by Pydantic."""
+    from pydantic import ValidationError
+    from neron_llm.core.types import GenerateRequest
+
+    try:
+        GenerateRequest(task_type="chat", prompt="")
+        assert False, "Should have raised ValidationError"
+    except ValidationError:
+        pass
+
+    print("\n  VALIDATION: empty prompt → ValidationError")
+
+
+def test_generate_request_rejects_oversized_prompt():
+    """Prompt exceeding PROMPT_MAX_LEN must be rejected."""
+    from pydantic import ValidationError
+    from neron_llm.core.types import GenerateRequest, PROMPT_MAX_LEN
+
+    try:
+        GenerateRequest(task_type="chat", prompt="x" * (PROMPT_MAX_LEN + 1))
+        assert False, "Should have raised ValidationError"
+    except ValidationError:
+        pass
+
+    print(f"\n  VALIDATION: prompt > {PROMPT_MAX_LEN} chars → ValidationError")
+
+
+def test_generate_request_accepts_max_prompt():
+    """Prompt exactly at the limit must be accepted."""
+    from neron_llm.core.types import GenerateRequest, PROMPT_MAX_LEN
+
+    req = GenerateRequest(task_type="chat", prompt="x" * PROMPT_MAX_LEN)
+    assert len(req.prompt) == PROMPT_MAX_LEN
+
+    print(f"\n  VALIDATION: prompt = {PROMPT_MAX_LEN} chars → accepted")
+
+
+def test_generate_request_rejects_oversized_context():
+    """Context dict exceeding CONTEXT_MAX_KEYS must be rejected."""
+    from pydantic import ValidationError
+    from neron_llm.core.types import GenerateRequest, CONTEXT_MAX_KEYS
+
+    try:
+        big_context = {str(i): "v" for i in range(CONTEXT_MAX_KEYS + 1)}
+        GenerateRequest(task_type="chat", prompt="test", context=big_context)
+        assert False, "Should have raised ValidationError"
+    except ValidationError:
+        pass
+
+    print(f"\n  VALIDATION: context > {CONTEXT_MAX_KEYS} keys → ValidationError")
+
+
+def test_llm_request_rejects_empty_message():
+    """Legacy LLMRequest also validates message length."""
+    from pydantic import ValidationError
+    from neron_llm.core.types import LLMRequest
+
+    try:
+        LLMRequest(message="")
+        assert False, "Should have raised ValidationError"
+    except ValidationError:
+        pass
+
+    print("\n  VALIDATION: empty LLMRequest.message → ValidationError")
+
+
+# ---------------------------------------------------------------------------
+# Reload lock tests (P1.6)
+# ---------------------------------------------------------------------------
+
+
+def test_reload_closes_old_manager():
+    """Old manager's aclose() must be called after a successful reload."""
+    import importlib
+    from unittest.mock import AsyncMock, patch
+
+    import neron_llm.api.routes as routes_mod
+    importlib.reload(routes_mod)
+
+    old_manager = routes_mod.manager
+    old_manager.aclose = AsyncMock()
+
+    from fastapi.testclient import TestClient
+    from neron_llm.main import app
+
+    with TestClient(app) as client:
+        resp = client.post("/llm/reload")
+
+    assert resp.status_code == 200
+    old_manager.aclose.assert_awaited_once()
+
+    print("\n  RELOAD: old manager.aclose() called ✓")
+
+
+def test_reload_keeps_old_manager_on_failure():
+    """If new manager construction fails, old manager must be preserved."""
+    import importlib
+    from unittest.mock import patch
+
+    import neron_llm.api.routes as routes_mod
+    importlib.reload(routes_mod)
+
+    original_manager = routes_mod.manager
+
+    with patch("neron_llm.api.routes.LLMManager", side_effect=RuntimeError("bad config")):
+        from fastapi.testclient import TestClient
+        from neron_llm.main import app
+
+        with TestClient(app) as client:
+            resp = client.post("/llm/reload")
+
+    assert resp.status_code == 500
+    # Manager must be unchanged after failed reload
+    assert routes_mod.manager is original_manager
+
+    print("\n  RELOAD: failed reload preserves old manager ✓")
+
+
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     test_strategy_explicit_mode()
@@ -345,7 +580,19 @@ if __name__ == "__main__":
     test_sequential_baseline()
     test_fallback_on_failure()
     test_retry_then_success()
+    test_retry_no_sleep_after_last_attempt()
     test_all_providers_fail()
     test_parallel_tolerates_failing_provider()
     test_response_format()
-    print("\n  All tests passed — neron_llm v1.0 is production-ready.")
+    test_auth_disabled_when_no_env_var()
+    test_auth_rejects_missing_key()
+    test_auth_rejects_wrong_key()
+    test_auth_accepts_correct_key()
+    test_generate_request_rejects_empty_prompt()
+    test_generate_request_rejects_oversized_prompt()
+    test_generate_request_accepts_max_prompt()
+    test_generate_request_rejects_oversized_context()
+    test_llm_request_rejects_empty_message()
+    test_reload_closes_old_manager()
+    test_reload_keeps_old_manager_on_failure()
+    print("\n  All tests passed — neron_llm v2.0 is production-ready.")

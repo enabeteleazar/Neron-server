@@ -1,16 +1,27 @@
-# neron_llm/api/routes.py
-# API routes for neron_llm — fully async.
+"""neron_llm/api/routes.py
+API routes for neron_llm — fully async.
 
+v2.0: POST /llm/generate added as the primary bus endpoint.
+      GET  /llm/metrics added.
+      POST /llm/stream  added (SSE, future-ready).
+      All existing routes (/chat, /health, /reload) preserved.
+
+Correlation ID (x-neron-request-id) is read from headers and forwarded
+to all log entries for end-to-end tracing.
+"""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from typing import AsyncIterator
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.responses import StreamingResponse
+from fastapi.security import APIKeyHeader
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Counter,
@@ -29,6 +40,41 @@ from neron_llm.core.types   import (
 logger  = logging.getLogger("neron_llm.routes")
 router  = APIRouter()
 manager = LLMManager()
+
+# Protège le remplacement atomique du manager lors d'un /reload.
+# asyncio.Lock() est suffisant ici — uvicorn tourne en single-worker.
+# Avec plusieurs workers, chacun a son propre espace mémoire : le lock
+# protège contre les appels /reload concurrents dans le même worker.
+_reload_lock = asyncio.Lock()
+
+# ── Authentication ─────────────────────────────────────────────────────────────
+
+_API_KEY_HEADER = APIKeyHeader(name="X-Neron-API-Key", auto_error=False)
+_NERON_API_KEY  = os.getenv("NERON_API_KEY", "")
+
+if not _NERON_API_KEY:
+    logger.warning(
+        json.dumps({
+            "event":   "auth_disabled",
+            "reason":  "NERON_API_KEY not set — all endpoints are unprotected",
+            "action":  "set NERON_API_KEY env var to enable authentication",
+        })
+    )
+
+
+async def _require_api_key(
+    key: str | None = Security(_API_KEY_HEADER),
+) -> None:
+    """FastAPI dependency — enforces API key on protected routes.
+
+    If NERON_API_KEY is not set (dev/local mode), auth is disabled and
+    all requests pass through with a warning logged at startup.
+    If set, the X-Neron-API-Key header must match exactly.
+    """
+    if not _NERON_API_KEY:
+        return  # auth disabled — dev mode, warning already logged at import
+    if key != _NERON_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid or missing API key")
 
 # ── Prometheus metrics (registered once) ──────────────────────────────────────
 
@@ -64,7 +110,7 @@ def _request_id(request: Request | None = None, body_rid: str = "") -> str:
 
 # ── POST /llm/generate — PRIMARY BUS ENDPOINT ─────────────────────────────────
 
-@router.post("/llm/generate", response_model=GenerateResponse)
+@router.post("/llm/generate", response_model=GenerateResponse, dependencies=[Depends(_require_api_key)])
 async def generate(req: GenerateRequest, request: Request) -> GenerateResponse:
     """Primary REST bus endpoint.  server/ calls ONLY this route.
 
@@ -137,7 +183,7 @@ async def generate(req: GenerateRequest, request: Request) -> GenerateResponse:
 
 # ── POST /llm/stream — SSE streaming (future-ready) ──────────────────────────
 
-@router.post("/llm/stream")
+@router.post("/llm/stream", dependencies=[Depends(_require_api_key)])
 async def stream(req: GenerateRequest, request: Request) -> StreamingResponse:
     """Streaming endpoint — Server-Sent Events.
 
@@ -206,28 +252,40 @@ async def health() -> dict:
 
 # ── POST /llm/reload ─────────────────────────────────────────────────────────
 
-@router.post("/llm/reload")
+@router.post("/llm/reload", dependencies=[Depends(_require_api_key)])
 async def reload() -> dict:
     """Hot-reload YAML config without restarting the service.
 
-    Safe mode: new manager replaces old only after successful construction.
+    Safe mode:
+      1. Lock prevents concurrent reloads.
+      2. New manager is fully constructed before swapping.
+      3. Old manager's HTTP clients are closed after the swap.
     """
     global manager
+    async with _reload_lock:
+        try:
+            from neron_llm.config import reload_config
+            reload_config()
+            new_manager = LLMManager()       # raises if config is broken — old manager kept
+            old_manager, manager = manager, new_manager
+            logger.info(json.dumps({"event": "config_reloaded"}))
+        except Exception as exc:
+            logger.error(json.dumps({"event": "config_reload_failed", "error": str(exc)}))
+            raise HTTPException(status_code=500, detail=f"Reload failed: {exc}")
+
+    # Close old manager's HTTP clients outside the lock — no need to block
+    # incoming requests while waiting for TCP connections to drain.
     try:
-        from neron_llm.config import reload_config
-        reload_config()
-        new_manager = LLMManager()    # will raise if config is broken
-        manager = new_manager
-        logger.info(json.dumps({"event": "config_reloaded"}))
-        return {"status": "ok", "message": "Configuration reloaded"}
+        await old_manager.aclose()
     except Exception as exc:
-        logger.error(json.dumps({"event": "config_reload_failed", "error": str(exc)}))
-        raise HTTPException(status_code=500, detail=f"Reload failed: {exc}")
+        logger.warning(json.dumps({"event": "old_manager_close_error", "error": str(exc)}))
+
+    return {"status": "ok", "message": "Configuration reloaded"}
 
 
 # ── GET /llm/metrics ─────────────────────────────────────────────────────────
 
-@router.get("/llm/metrics")
+@router.get("/llm/metrics", dependencies=[Depends(_require_api_key)])
 async def metrics() -> StreamingResponse:
     """Prometheus metrics endpoint."""
     from fastapi.responses import Response
@@ -236,7 +294,7 @@ async def metrics() -> StreamingResponse:
 
 # ── POST /chat — backward compat (kept from v1) ───────────────────────────────
 
-@router.post("/chat", response_model=LLMResponse)
+@router.post("/chat", response_model=LLMResponse, dependencies=[Depends(_require_api_key)])
 async def chat(request: LLMRequest) -> LLMResponse:
     """Legacy endpoint — preserved for backward compat.  Prefer /llm/generate."""
     logger.info(
