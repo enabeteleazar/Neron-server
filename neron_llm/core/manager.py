@@ -1,17 +1,6 @@
-"""neron_llm/core/manager.py
-LLM Manager — orchestration engine with single/parallel/race modes.
+# neron_llm/core/manager.py
+# LLM Manager — orchestration engine with single/parallel/race modes.
 
-v2.0 changes:
-  • _execute_single() now tries model fallback chain BEFORE provider fallback
-    (qwen2.5-coder:14b → deepseek-coder:6.7b → provider fallback → error)
-  • Correlation ID (x-neron-request-id) forwarded to provider calls
-  • Structured JSON error logging
-
-Unchanged:
-  • parallel / race modes
-  • retry logic (MAX_RETRIES = 2)
-  • provider fallback chain (ollama → claude)
-"""
 from __future__ import annotations
 
 import asyncio
@@ -164,14 +153,21 @@ class LLMManager:
     async def _execute_race(
         self, request: LLMRequest, model: str,
     ) -> LLMResponse:
-        """Execute on all providers; return first to complete successfully."""
+        """Execute on all providers; return first to complete successfully.
+
+        Uses race_timeout (default 30s) instead of the full generation timeout
+        to ensure fast failure and avoid blocking the event loop.
+        """
         tasks: dict[asyncio.Task, str] = {}
         for name, provider in self.providers.items():
             # Skip providers that aren't configured
             if hasattr(provider, 'is_available') and not provider.is_available():
                 continue
+            # Pass race_timeout so providers fail fast instead of blocking for 300s
+            race_timeout = getattr(provider, "_timeout_race", None)
             task = asyncio.create_task(
-                self._call_provider(name, provider, request.message, model)
+                self._call_provider(name, provider, request.message, model,
+                                    timeout=race_timeout)
             )
             tasks[task] = name
 
@@ -258,17 +254,27 @@ class LLMManager:
 
     async def _call_provider(
         self, name: str, provider: BaseProvider, message: str, model: str,
+        timeout: float | None = None,
     ) -> LLMResponse:
         try:
-            response = await provider.generate(message, model)
+            response = await provider.generate(message, model, timeout=timeout)
             return LLMResponse(model=model, provider=name, response=response, error=None)
         except Exception as exc:
+            exc_type = type(exc).__name__
+            # str(exc) is empty for httpx timeout/network exceptions — use repr fallback
+            exc_msg  = str(exc) or repr(exc)
+            # Include request URL for httpx exceptions (have a .request attribute)
+            request_url = str(getattr(getattr(exc, "request", None), "url", ""))
+
             logger.error(
                 json.dumps({
                     "event":    "provider_error",
                     "provider": name,
                     "model":    model,
-                    "error":    str(exc),
+                    "exc_type": exc_type,
+                    "error":    exc_msg,
+                    **({"request_url": request_url} if request_url else {}),
                 })
             )
-            return LLMResponse(model=model, provider=name, response="", error=str(exc))
+            error_str = f"{exc_type}: {exc_msg}" if exc_msg else exc_type
+            return LLMResponse(model=model, provider=name, response="", error=error_str)

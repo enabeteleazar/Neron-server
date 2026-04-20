@@ -1,5 +1,4 @@
-# providers/claude.py
-# Claude (Anthropic) provider — async HTTP via a shared httpx.AsyncClient.
+#Claude (Anthropic) provider — async HTTP via a shared httpx.AsyncClient.
 
 from __future__ import annotations
 
@@ -18,6 +17,12 @@ ANTHROPIC_VERSION  = "2023-06-01"
 
 
 class ClaudeProvider(BaseProvider):
+    """Async provider for the Anthropic Claude API.
+
+    The underlying httpx.AsyncClient is shared for the lifetime of this
+    object.  Call aclose() (or use LLMManager.aclose()) to release the
+    connection pool gracefully on shutdown.
+    """
 
     def __init__(self) -> None:
         cfg = get_llm_config()
@@ -25,12 +30,12 @@ class ClaudeProvider(BaseProvider):
         self.api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
         if not self.api_key:
             logger.warning(
-                "ClaudeProvider:ANTHROPIC_API_KEY not set - call will raise."
+                "ClaudeProvider: ANTHROPIC_API_KEY not set — calls will raise."
             )
 
         self.max_tokens:  int   = int(cfg.get("claude_max_tokens", 1024))
         self.temperature: float = float(cfg.get("temperature", 0.7))
-        timeout = float(cfg.get("timeout", 300))
+        self._timeout_default: float = float(cfg.get("timeout", 300))
         limits  = httpx.Limits(
             max_connections          = int(cfg.get("claude_max_connections", 20)),
             max_keepalive_connections= int(cfg.get("claude_max_keepalive_connections", 5)),
@@ -40,7 +45,7 @@ class ClaudeProvider(BaseProvider):
         # No need to rebuild them on every generate() call.
         self._client = httpx.AsyncClient(
             base_url = ANTHROPIC_BASE_URL,
-            timeout  = timeout,
+            timeout  = self._timeout_default,
             limits   = limits,
             headers  = {
                 "x-api-key":          self.api_key,
@@ -48,14 +53,26 @@ class ClaudeProvider(BaseProvider):
                 "content-type":       "application/json",
             },
         )
-        logger.debug("ClaudeProvider initialised — timeout=%s max_tokens=%s", timeout, self.max_tokens)
+        logger.debug("ClaudeProvider initialised — timeout=%s max_tokens=%s", self._timeout_default, self.max_tokens)
 
     def is_available(self) -> bool:
         return bool(self.api_key)
 
-    async def generate(self, message: str, model: str) -> str:
+    async def generate(self, message: str, model: str, timeout: float | None = None) -> str:
+        """Generate a response via the Anthropic Messages API.
+
+        Args:
+            timeout: Per-call timeout override. Uses configured default if None.
+
+        Raises:
+            ValueError: If API key is missing or response is empty.
+            httpx.TimeoutException: On timeout.
+            httpx.HTTPStatusError: On HTTP 4xx/5xx.
+        """
         if not self.api_key:
             raise ValueError("ANTHROPIC_API_KEY not set")
+
+        effective_timeout = timeout if timeout is not None else self._timeout_default
 
         payload = {
             "model":      model,
@@ -64,9 +81,9 @@ class ClaudeProvider(BaseProvider):
             "messages":   [{"role": "user", "content": message}],
         }
 
-        logger.debug("claude | POST /v1/messages model=%s", model)
+        logger.debug("claude | POST /v1/messages model=%s timeout=%s", model, effective_timeout)
 
-        r = await self._client.post("/v1/messages", json=payload)
+        r = await self._client.post("/v1/messages", json=payload, timeout=effective_timeout)
         r.raise_for_status()
         data = r.json()
 
