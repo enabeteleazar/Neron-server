@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from core.llm_client.types import (
+from serverV2.core.llm_client.types import (
     DEGRADED_RESPONSE,
     LLMGenerateRequest,
     LLMGenerateResponse,
@@ -49,7 +49,7 @@ class NéronLLMClient:
 
     def __init__(self) -> None:
         # Import here to avoid circular imports at module level
-        from core.config import settings
+        from serverV2.core.config import settings
 
         cfg: dict[str, Any] = getattr(settings, "NERON_LLM", {})
         self._base_url: str = cfg.get("url",     "http://localhost:8765").rstrip("/")

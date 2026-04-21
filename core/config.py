@@ -17,7 +17,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 NERON_DIR = Path(os.getenv("NERON_DIR", Path(__file__).parent.parent))
-YAML_PATH = NERON_DIR / "neron.yaml"
+YAML_PATH = Path("/etc/neron/neron.yaml")
 
 # Niveaux de log valides — utilisé pour valider LOG_LEVEL
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
@@ -147,9 +147,11 @@ class Config:
     TWILIO_TO          = _get(_cfg, "twilio", "to_number",       default="")
 
     # ── Logs ──────────────────────────────────────────────────────────────
-    LOGS_DIR         = NERON_DIR / _get(_cfg, "logs", "dir",          default="logs")
-    LOG_NERON        = _get(_cfg, "logs", "neron_log",                default="neron.log")
-    LOG_WATCHDOG     = _get(_cfg, "logs", "watchdog_log",             default="watchdog.log")
+    LOGS_DIR         = Path("/var/log/neron")
+    LOG_DIR          = Path("/var/log/neron")
+    LOG_FILE         = LOG_DIR / "neron.log"
+    LOG_NERON        = Path("/var/log/neron")
+    LOG_WATCHDOG     = Path("/var/log/watchdog")
     LOG_MAX_MB       = int(_get(_cfg, "logs", "max_size_mb",          default=10))
     LOG_BACKUP_COUNT = int(_get(_cfg, "logs", "backup_count",         default=5))
 

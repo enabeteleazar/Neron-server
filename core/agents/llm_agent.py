@@ -20,10 +20,10 @@ from typing import AsyncIterator
 
 import httpx
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.config import settings
-from core.llm_client.client import NéronLLMClient
-from core.llm_client.types import TaskType
+from serverV2.core.agents.base_agent import BaseAgent, AgentResult
+from serverV2.core.config import settings
+from serverV2.core.llm_client.client import NéronLLMClient
+from serverV2.core.llm_client.types import TaskType
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 

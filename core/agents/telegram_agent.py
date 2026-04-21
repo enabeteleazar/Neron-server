@@ -19,11 +19,11 @@ from telegram.ext import (
     filters,
 )
 
-from core.constants import CODE_KEYWORDS
-from core.agents.base_agent import get_logger
-from core.agents.watchdog_agent import get_anomalies, get_health_score, get_status
-from core.config import settings
-from core.tools.twilio_tool import call as twilio_call
+from serverV2.core.constants import CODE_KEYWORDS
+from serverV2.core.agents.base_agent import get_logger
+from serverV2.core.agents.watchdog_agent import get_anomalies, get_health_score, get_status
+from serverV2.core.config import settings
+from serverV2.core.tools.twilio_tool import call as twilio_call
 
 logger = get_logger("telegram_agent")
 
@@ -115,7 +115,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         uptime_min = st.get("uptime_s", 0) // 60
         health     = get_health_score()
         score      = health.get("score", "N/A")
-        from core.modules.scheduler import get_jobs
+        from serverV2.core.modules.scheduler import get_jobs
         jobs      = get_jobs()
         jobs_text = "\n".join(f"  • {j['name']} — {j['next_run']}" for j in jobs) or "  Aucune"
         await update.message.reply_text(
@@ -256,7 +256,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await unauthorized(update)
 
     try:
-        import core.agents.watchdog_agent as _wdog_mod
+        import serverV2.core.agents.watchdog_agent as _wdog_mod
         _wdog_mod._last_conversation = time.monotonic()
     except Exception:
         pass

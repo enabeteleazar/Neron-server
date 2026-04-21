@@ -3,12 +3,12 @@
 
 import asyncio
 import os
-from core.config import settings
+from serverV2.core.config import settings
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from core.agents.base_agent import AgentResult, get_logger
+from serverV2.core.agents.base_agent import AgentResult, get_logger
 
 # Pool dédié pour les opérations CPU/IO bloquantes du TTS
 _tts_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tts_io")

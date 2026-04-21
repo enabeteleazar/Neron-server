@@ -28,16 +28,16 @@ from prometheus_client import (
     generate_latest,
 )
 from pydantic import BaseModel
-from core.agents.base_agent import get_logger
-from core.agents.code_agent import CodeAgent
-from core.agents.code_audit_agent import CodeAuditAgent
-from core.agents.ha_agent import HAAgent
-from core.agents.llm_agent import LLMAgent
-from core.agents.memory_agent import MemoryAgent, init_db as memory_init_db
-from core.agents.stt_agent import STTAgent, load_model as stt_load_model
-from core.agents.telegram_agent import send_notification, set_agents, start_bot, stop_bot
-from core.agents.tts_agent import TTSAgent, load_engine as tts_load_engine
-from core.agents.watchdog_agent import (
+from serverV2.core.agents.base_agent import get_logger
+from serverV2.core.agents.code_agent import CodeAgent
+from serverV2.core.agents.code_audit_agent import CodeAuditAgent
+from serverV2.core.agents.ha_agent import HAAgent
+from serverV2.core.agents.llm_agent import LLMAgent
+from serverV2.core.agents.memory_agent import MemoryAgent, init_db as memory_init_db
+from serverV2.core.agents.stt_agent import STTAgent, load_model as stt_load_model
+from serverV2.core.agents.telegram_agent import send_notification, set_agents, start_bot, stop_bot
+from serverV2.core.agents.tts_agent import TTSAgent, load_engine as tts_load_engine
+from serverV2.core.agents.watchdog_agent import (
     send_watchdog_notification,
     setup as watchdog_setup,
     start_watchdog,
@@ -46,17 +46,17 @@ from core.agents.watchdog_agent import (
     stop_watchdog_bot,
     world_model,
 )
-from core.agents.web_agent import WebAgent
-from core.config import settings
-from core.modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
-from core.modules.gateway import GatewayConfig, NeronGateway
-from core.modules.scheduler import setup as scheduler_setup
-from core.modules.scheduler import start as scheduler_start
-from core.modules.scheduler import stop as scheduler_stop
-from core.modules.sessions import SessionStore
-from core.modules.skills import SkillRegistry
-from core.neron_time.time_provider import TimeProvider
-from core.orchestrator.intent_router import Intent, IntentRouter
+from serverV2.core.agents.web_agent import WebAgent
+from serverV2.core.config import settings
+from serverV2.core.modules.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from serverV2.core.modules.gateway import GatewayConfig, NeronGateway
+from serverV2.core.modules.scheduler import setup as scheduler_setup
+from serverV2.core.modules.scheduler import start as scheduler_start
+from serverV2.core.modules.scheduler import stop as scheduler_stop
+from serverV2.core.modules.sessions import SessionStore
+from serverV2.core.modules.skills import SkillRegistry
+from serverV2.core.neron_time.time_provider import TimeProvider
+from serverV2.core.orchestrator.intent_router import Intent, IntentRouter
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 
@@ -670,7 +670,7 @@ def _handle_time_query(intent_result, metadata, start, query="") -> CoreResponse
     want_heure = any(k in q for k in heure_keys)
     want_date  = any(k in q for k in date_keys)
     n = time_provider.now()
-    from core.neron_time.time_provider import JOURS, MOIS
+    from serverV2.core.neron_time.time_provider import JOURS, MOIS
     jour = JOURS[n.weekday()]
     mois = MOIS[n.month - 1]
     if want_heure and not want_date:

@@ -4,7 +4,7 @@
 import asyncio
 import logging
 import os
-from core.config import settings
+from serverV2.core.config import settings
 import tempfile
 import time
 import wave
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Optional
 from concurrent.futures import ThreadPoolExecutor
 
-from core.agents.base_agent import AgentResult, get_logger
+from serverV2.core.agents.base_agent import AgentResult, get_logger
 
 # Pool dédié pour les opérations CPU-bound (Whisper, file I/O)
 _stt_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="stt_io")
