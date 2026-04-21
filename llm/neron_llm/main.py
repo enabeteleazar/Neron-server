@@ -1,0 +1,72 @@
+# neron_llm/main.py
+# Neron LLM microservice — main entry point.
+
+from __future__ import annotations
+
+import json
+import logging
+
+from fastapi import FastAPI
+
+from neron_llm.api.routes import router
+
+# ── Structured JSON logging ───────────────────────────────────────────────────
+
+class _JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        # If message is already JSON-parseable, forward as-is
+        msg = record.getMessage()
+        try:
+            json.loads(msg)
+            return msg
+        except (json.JSONDecodeError, TypeError):
+            pass
+        return json.dumps({
+            "ts":      self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
+            "level":   record.levelname,
+            "logger":  record.name,
+            "message": msg,
+        })
+
+
+_handler = logging.StreamHandler()
+_handler.setFormatter(_JsonFormatter())
+logging.basicConfig(level=logging.INFO, handlers=[_handler])
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# ── FastAPI app ───────────────────────────────────────────────────────────────
+
+app = FastAPI(
+    title       = "Neron LLM",
+    description = "Microservice IA — routing modèles, abstraction providers",
+    version     = "2.0.0",
+)
+
+app.include_router(router)
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    logging.getLogger("neron_llm").info(
+        json.dumps({"event": "neron_llm_started", "version": "2.0.0", "port": 8765})
+    )
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    from neron_llm.api.routes import manager
+    await manager.aclose()
+    logging.getLogger("neron_llm").info(
+        json.dumps({"event": "neron_llm_stopped"})
+    )
+
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "neron_llm.main:app",
+        host    = "127.0.0.1",
+        port    = 8765,
+        workers = 1,
+    )
