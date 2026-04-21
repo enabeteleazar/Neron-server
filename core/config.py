@@ -148,10 +148,8 @@ class Config:
 
     # ── Logs ──────────────────────────────────────────────────────────────
     LOGS_DIR         = Path("/var/log/neron")
-    LOG_DIR          = Path("/var/log/neron")
-    LOG_FILE         = LOG_DIR / "neron.log"
-    LOG_NERON        = Path("/var/log/neron")
-    LOG_WATCHDOG     = Path("/var/log/watchdog")
+    LOG_FILE         = LOGS_DIR / "neron.log"
+    LOG_WATCHDOG     = LOGS_DIR / "watchdog.log"
     LOG_MAX_MB       = int(_get(_cfg, "logs", "max_size_mb",          default=10))
     LOG_BACKUP_COUNT = int(_get(_cfg, "logs", "backup_count",         default=5))
 

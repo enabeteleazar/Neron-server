@@ -7,7 +7,7 @@ import logging
 
 from twilio.rest import Client
 
-from serverV2.core.config import settings
+from server.core.config import settings
 
 logger = logging.getLogger("twilio_tool")
 

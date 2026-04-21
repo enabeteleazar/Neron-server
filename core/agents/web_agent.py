@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import httpx
 
-from serverV2.core.agents.base_agent import BaseAgent, AgentResult
-from serverV2.core.config import settings
+from server.core.agents.base_agent import BaseAgent, AgentResult
+from server.core.config import settings
 
 SEARXNG_URL         = settings.SEARXNG_URL
 SEARXNG_TIMEOUT     = settings.SEARXNG_TIMEOUT

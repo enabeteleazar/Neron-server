@@ -17,9 +17,9 @@ from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
 if TYPE_CHECKING:
-    from serverV2.core.modules.agent_router import AgentRouter
-    from serverV2.core.modules.sessions import SessionStore
-    from serverV2.core.modules.skills import SkillRegistry
+    from server.core.modules.agent_router import AgentRouter
+    from server.core.modules.sessions import SessionStore
+    from server.core.modules.skills import SkillRegistry
 
 logger = logging.getLogger("neron.gateway")
 

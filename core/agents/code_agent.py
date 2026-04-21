@@ -16,8 +16,8 @@ from typing import Any, Optional
 
 import httpx
 
-from serverV2.core.agents.base_agent import BaseAgent, AgentResult
-from serverV2.core.config import settings
+from server.core.agents.base_agent import BaseAgent, AgentResult
+from server.core.config import settings
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 

@@ -26,9 +26,9 @@ from telegram.ext import (
     ContextTypes as TGContextTypes,
 )
 
-from serverV2.core.agents.base_agent import get_logger
-from serverV2.core.config import settings
-from serverV2.core.modules.world_model import WorldModel
+from server.core.agents.base_agent import get_logger
+from server.core.config import settings
+from server.core.modules.world_model import WorldModel
 
 # ── Logger ────────────────────────────────────────────────────────────────────
 

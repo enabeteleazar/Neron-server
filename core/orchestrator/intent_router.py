@@ -6,8 +6,8 @@ import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 
-from serverV2.core.agents.base_agent import get_logger
-from serverV2.core.constants import (
+from server.core.agents.base_agent import get_logger
+from server.core.constants import (
     CODE_KEYWORDS,
     CODE_AUDIT_KEYWORDS,
     HA_KEYWORDS,
