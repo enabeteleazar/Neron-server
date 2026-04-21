@@ -16,9 +16,9 @@ from telegram.ext import (
     filters,
 )
 
-from core.agents.base_agent import get_logger
-from core.config import settings
-from core.utils import normalize_text
+from serverVNext.serverVNext.core.agents.base_agent import get_logger
+from serverVNext.serverVNext.core.config import settings
+from serverVNext.serverVNext.core.utils import normalize_text
 
 logger = get_logger("telegram_agent")
 

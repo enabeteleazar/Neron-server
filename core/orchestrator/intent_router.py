@@ -6,15 +6,15 @@ import unicodedata
 from dataclasses import dataclass
 from enum import Enum
 
-from core.agents.base_agent import get_logger
-from core.constants import (
+from serverVNext.serverVNext.core.agents.base_agent import get_logger
+from serverVNext.serverVNext.core.constants import (
     CODE_KEYWORDS,
     HA_KEYWORDS,
     PERSONALITY_KEYWORDS,
     TIME_KEYWORDS,
     WEB_KEYWORDS,
 )
-from core.utils import normalize_text
+from serverVNext.serverVNext.core.utils import normalize_text
 
 logger = get_logger(__name__)
 
@@ -38,7 +38,7 @@ class IntentResult:
 
 
 def _normalize(text: str) -> str:
-    """Legacy function - use core.utils.normalize_text instead"""
+    """Legacy function - use serverVNext.serverVNext.core.utils.normalize_text instead"""
     return normalize_text(text)
 
 

@@ -18,7 +18,7 @@ from typing import Callable
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from core.config import settings
+from serverVNext.core.config import settings
 
 # == Logging ==
 settings.LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -112,7 +112,7 @@ class AgentDescriptor:
 
 # == Targets ==
 def _target_watchdog() -> None:
-    from core.agents.watchdog_agent import watchdog_loop, start_watchdog_bot
+    from serverVNext.serverVNext.core.agents.watchdog_agent import watchdog_loop, start_watchdog_bot
 
     async def _run():
         await start_watchdog_bot()
@@ -122,22 +122,22 @@ def _target_watchdog() -> None:
 
 
 def _target_llm() -> None:
-    from core.agents.llm_agent import LLMAgent
+    from serverVNext.serverVNext.core.agents.llm_agent import LLMAgent
     _run_agent_class(LLMAgent)
 
 
 def _target_web() -> None:
-    from core.agents.web_agent import WebAgent
+    from serverVNext.serverVNext.core.agents.web_agent import WebAgent
     _run_agent_class(WebAgent)
 
 
 def _target_telegram() -> None:
-    from core.agents.telegram_agent import start_bot
+    from serverVNext.serverVNext.core.agents.telegram_agent import start_bot
     _run_async(start_bot)
 
 
 def _target_api() -> None:
-    from core.agents.api_agent import APIAgent
+    from serverVNext.serverVNext.core.agents.api_agent import APIAgent
     _run_agent_class(APIAgent)
 
 

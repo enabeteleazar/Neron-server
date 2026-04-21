@@ -2,7 +2,7 @@
 # Tests pour core/orchestrator/intent_router.py
 
 import pytest
-from core.orchestrator.intent_router import IntentRouter, Intent, IntentResult
+from serverVNext.serverVNext.core.orchestrator.intent_router import IntentRouter, Intent, IntentResult
 
 
 class TestIntentRouter:

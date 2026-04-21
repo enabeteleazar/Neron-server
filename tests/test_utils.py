@@ -2,7 +2,7 @@
 # Tests pour core/utils.py
 
 import pytest
-from core.utils import (
+from serverVNext.serverVNext.core.utils import (
     normalize_text,
     safe_get,
     truncate_text,

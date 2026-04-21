@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import httpx
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.world_model.publisher import publish
-from core.config import settings
+from serverVNext.serverVNext.core.agents.base_agent import BaseAgent, AgentResult
+from serverVNext.serverVNext.core.world_model.publisher import publish
+from serverVNext.serverVNext.core.config import settings
 
 SEARXNG_URL         = settings.SEARXNG_URL
 SEARXNG_TIMEOUT     = settings.SEARXNG_TIMEOUT

@@ -2,7 +2,7 @@
 # Tests pour core/agents/base_agent.py
 
 import pytest
-from core.agents.base_agent import BaseAgent, AgentResult
+from serverVNext.serverVNext.core.agents.base_agent import BaseAgent, AgentResult
 
 
 class TestAgentResult:

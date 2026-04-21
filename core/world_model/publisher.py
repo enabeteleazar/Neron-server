@@ -2,7 +2,7 @@
 # Néron v2 — Publication légère dans le World Model (IPC via fichier JSON)
 #
 # Usage depuis n'importe quel agent/process :
-#   from core.world_model.publisher import publish
+#   from serverVNext.serverVNext.core.world_model.publisher import publish
 #   publish("llm_agent", {"status": "online", "latency_ms": 320})
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import logging
 import time
 from pathlib import Path
 
-from core.config import settings
+from serverVNext.serverVNext.core.config import settings
 
 logger = logging.getLogger("world_model.publisher")
 

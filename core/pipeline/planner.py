@@ -2,7 +2,7 @@
 import asyncio
 import time
 from typing import List, Dict, Any, Optional
-from core.agents.memory_agent import MemoryAgent
+from serverVNext.serverVNext.core.agents.memory_agent import MemoryAgent
 
 # ──────────────────────────────────────────────
 # Task

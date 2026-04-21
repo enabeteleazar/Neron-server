@@ -14,7 +14,7 @@ import sys
 sys.path.insert(0, "/mnt/usb-storage/neron/server")
 
 import httpx
-from core.config import settings
+from serverVNext.serverVNext.core.config import settings
 
 BASE_URL = f"http://localhost:{settings.SERVER_PORT}"
 API_KEY = settings.API_KEY

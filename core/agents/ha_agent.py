@@ -9,10 +9,10 @@ from typing import Any
 
 import httpx
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.world_model.publisher import publish
-from core.config import settings
-from core.utils import normalize_text
+from serverVNext.serverVNext.core.agents.base_agent import BaseAgent, AgentResult
+from serverVNext.serverVNext.core.world_model.publisher import publish
+from serverVNext.serverVNext.core.config import settings
+from serverVNext.serverVNext.core.utils import normalize_text
 
 # ── Constantes ────────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ DOMAIN_KEYWORDS: dict[str, list[str]] = {
 # ── Helpers de parsing ────────────────────────────────────────────────────────
 
 def _normalize(text: str) -> str:
-    """Legacy function - use core.utils.normalize_text instead"""
+    """Legacy function - use serverVNext.serverVNext.core.utils.normalize_text instead"""
     return normalize_text(text)
 
 

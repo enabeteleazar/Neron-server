@@ -13,8 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from core.agents.base_agent import BaseAgent, AgentResult
-from core.config import settings
+from serverVNext.serverVNext.core.agents.base_agent import BaseAgent, AgentResult
+from serverVNext.serverVNext.core.config import settings
 
 logger = logging.getLogger("agent.api_agent")
 
@@ -49,8 +49,8 @@ _intent_router = None
 def init_agents() -> None:
     """Initialise LLMAgent + IntentRouter dans le process de l'APIAgent."""
     global _llm_agent, _intent_router
-    from core.agents.llm_agent import LLMAgent
-    from core.orchestrator.intent_router import IntentRouter
+    from serverVNext.serverVNext.core.agents.llm_agent import LLMAgent
+    from serverVNext.serverVNext.core.orchestrator.intent_router import IntentRouter
 
     _llm_agent     = LLMAgent()
     _intent_router = IntentRouter(llm_agent=_llm_agent)
