@@ -1,0 +1,14 @@
+# Vider tout ce qui n’est pas nécessaire dans l’image
+.git
+__pycache__
+*.pyc
+*.pyo
+*.log
+.env
+venv
+.venv
+node_modules
+.cache
+pytest_cache
+tests
+models
