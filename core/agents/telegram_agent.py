@@ -349,8 +349,20 @@ async def start_bot() -> None:
 
     await _telegram_app.initialize()
     await _telegram_app.start()
-    await _telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-    logger.info("Bot Telegram démarré — 10 commandes enregistrées")
+    try:
+        await _telegram_app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+        logger.info("Bot Telegram démarré — 10 commandes enregistrées")
+    except Exception as e:
+        # Gestion conflict (409) si une autre instance utilise getUpdates
+        try:
+            import telegram as _telegram_mod
+            if isinstance(e, _telegram_mod.error.Conflict):
+                logger.warning("Telegram polling conflict: une autre instance est active; polling ignoré")
+                return
+        except Exception:
+            pass
+        logger.exception("Erreur lors demarrage du polling Telegram: %s", e)
+        raise
 
 async def stop_bot() -> None:
     global _telegram_app

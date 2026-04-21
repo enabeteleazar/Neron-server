@@ -131,16 +131,22 @@ class NeronGateway:
         """Démarre le serveur WebSocket et bloque indéfiniment."""
         cfg = self.config
         logger.info("Neron Gateway démarrage sur ws://%s:%d", cfg.host, cfg.port)
-        async with websockets.serve(
-            self._handle_client,
-            cfg.host,
-            cfg.port,
-            ping_interval=cfg.ping_interval,
-            ping_timeout=cfg.ping_timeout,
-            max_size=MAX_MESSAGE_SIZE,
-        ):
-            logger.info("Gateway en écoute ✓")
-            await asyncio.Future()  # tourne indéfiniment
+        try:
+            async with websockets.serve(
+                self._handle_client,
+                cfg.host,
+                cfg.port,
+                ping_interval=cfg.ping_interval,
+                ping_timeout=cfg.ping_timeout,
+                max_size=MAX_MESSAGE_SIZE,
+            ):
+                logger.info("Gateway en écoute ✓")
+                await asyncio.Future()  # tourne indéfiniment
+        except OSError as e:
+            if getattr(e, 'errno', None) == 98:
+                logger.warning("Port %d déjà utilisé, gateway non démarré", cfg.port)
+                return
+            raise
 
     # ── Connexion client ────────────────────────────────────────────────────
 

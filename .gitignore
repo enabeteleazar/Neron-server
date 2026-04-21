@@ -62,3 +62,4 @@ venv/
 yarn-error.log
 neron.yaml
 uvicorn.sh
+data
