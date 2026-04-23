@@ -30,7 +30,7 @@ class OllamaProvider(BaseProvider):
         # Default timeout for single/parallel modes (long generations)
         self._timeout_default: float = float(cfg.get("timeout", 300))
         # Shorter timeout for race mode — fail fast, let the other provider win
-        self._timeout_race:    float = float(cfg.get("race_timeout", 30))
+        self._timeout_race:    float = float(cfg.get("race_timeout", 240))
 
         self._client = httpx.AsyncClient(
             base_url = host,
