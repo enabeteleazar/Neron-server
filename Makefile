@@ -61,8 +61,8 @@ install-core:
 	@test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
 	@$(PIP) install --upgrade pip -q
 
-	@if [ -f $(REPO_DIR)/requirements.txt ]; then \
-		$(PIP) install -r $(REPO_DIR)/requirements.txt -q; \
+	@if [ -f $(REPO_DIR)/constraints.txt ]; then \
+		$(PIP) install -r $(REPO_DIR)/constraints.txt -q; \
 	fi
 
 install-systemd:
