@@ -180,7 +180,7 @@ info_services(){
   step "SERVICES"
 
   SERVICES=(
-    "neron-server.service"
+    "neron.service"
     "neron-llm.service"
     "neron-homeassistant.service"
     "neron-client.service"

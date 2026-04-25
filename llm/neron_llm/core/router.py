@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 import logging
-from neron_llm.config import get_llm_config, get_routing_config
+from llm.neron_llm.config import get_llm_config, get_routing_config
 
 logger = logging.getLogger("neron_llm.router")
 

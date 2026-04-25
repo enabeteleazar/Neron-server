@@ -84,5 +84,10 @@ ollama/
 # GIT (sécurité)
 # =========================
 .gitmodules
+.git
+.github
 venv/
 .venv/
+
+.claude
+.copilot

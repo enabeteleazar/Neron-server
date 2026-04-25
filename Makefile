@@ -3,7 +3,7 @@
 # ============================================
 
 REPO_DIR := /etc/neron
-VENV_DIR := $(SERVER_DIR)/venv
+VENV_DIR := $(REPO_DIR)/venv
 PYTHON := $(VENV_DIR)/bin/python3
 PIP := $(VENV_DIR)/bin/pip
 SERVICE_SERVER := neron.service
@@ -61,14 +61,14 @@ install-core:
 	@test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
 	@$(PIP) install --upgrade pip -q
 
-	@if [ -f $(SERVER_DIR)/requirements.txt ]; then \
-		$(PIP) install -r $(SERVER_DIR)/requirements.txt -q; \
+	@if [ -f $(REPO_DIR)/requirements.txt ]; then \
+		$(PIP) install -r $(REPO_DIR)/requirements.txt -q; \
 	fi
 
 install-systemd:
 	@echo "⚙️ systemd setup..."
 	@printf '[Unit]\nDescription=Néron AI\nAfter=network.target\n\n[Service]\nType=simple\nWorkingDirectory=%s\nExecStart=%s %s/main.py\nRestart=always\nUser=root\nEnvironment=PYTHONUNBUFFERED=1\n\n[Install]\nWantedBy=multi-user.target\n' \
-		"$(SERVER_DIR)" "$(PYTHON)" "$(SERVER_DIR)" \
+		"$(REPO_DIR)" "$(PYTHON)" "$(REPO_DIR)" \
 		| sudo tee /etc/systemd/system/neron.service > /dev/null
 	@sudo systemctl daemon-reload
 	@sudo systemctl enable neron
@@ -102,8 +102,8 @@ logs:
 
 update:
 	@echo "🔄 update..."
-	@git -C $(SERVER_DIR) pull
-	@$(PIP) install -r $(SERVER_DIR)/requirements.txt -q
+	@git -C $(REPO_DIR) pull
+	@$(PIP) install -r $(REPO_DIR)/requirements.txt -q
 	@sudo systemctl restart $(SERVICE)
 	@echo "✔ updated"
 
@@ -120,20 +120,20 @@ clean:
 # ============================================
 
 version:
-	@bash $(SERVER_DIR)/scripts/doctor.sh
+	@bash $(REPO_DIR)/scripts/doctor.sh
 
 # ============================================
 # CLIENT
 # ============================================
 
 client-start:
-	@bash $(SERVER_DIR)/scripts/client.sh start
+	@bash $(REPO_DIR)/scripts/client.sh start
 
 client-stop:
-	@bash $(SERVER_DIR)/scripts/client.sh stop
+	@bash $(REPO_DIR)/scripts/client.sh stop
 
 client-restart:
-	@bash $(SERVER_DIR)/scripts/client.sh restart
+	@bash $(REPO_DIR)/scripts/client.sh restart
 
 
 # ============================================
@@ -141,49 +141,49 @@ client-restart:
 # ============================================
 
 backup:
-	@bash $(SERVER_DIR)/scripts/backup.sh backup
+	@bash $(REPO_DIR)/scripts/backup.sh backup
 
 restore:
-	@bash $(SERVER_DIR)/scripts/backup.sh restore
+	@bash $(REPO_DIR)/scripts/backup.sh restore
 
 # ============================================
 # CONFIG DISPLAY
 # ============================================
 
 neron:
-	@bash $(SERVER_DIR)/scripts/neron.sh
+	@bash $(REPO_DIR)/scripts/neron.sh
 
 # ============================================
 # EXTERNAL MODULES (CLEAN WRAPPERS)
 # ============================================
 
 telegram:
-	@bash $(SERVER_DIR)/scripts/telegram.sh
+	@bash $(REPO_DIR)/scripts/telegram.sh
 
 ollama:
-	@bash $(SERVER_DIR)/scripts/ollama.sh
+	@bash $(REPO_DIR)/scripts/ollama.sh
 
 # ============================================
 # HOME ASSISTANT
 # ============================================
 
 ha-install:
-	@bash $(SERVER_DIR)/scripts/ha_install.sh
+	@bash $(REPO_DIR)/scripts/ha_install.sh
 
 ha-start:
-	@bash $(SERVER_DIR)/scripts/ha.sh start
+	@bash $(REPO_DIR)/scripts/ha.sh start
 
 ha-stop:
-	@bash $(SERVER_DIR)/scripts/ha.sh stop
+	@bash $(REPO_DIR)/scripts/ha.sh stop
 
 ha-restart:
-	@bash $(SERVER_DIR)/scripts/ha.sh restart
+	@bash $(REPO_DIR)/scripts/ha.sh restart
 
 ha-status:
-	@bash $(SERVER_DIR)/scripts/ha.sh status
+	@bash $(REPO_DIR)/scripts/ha.sh status
 
 ha-logs:
-	@bash $(SERVER_DIR)/scripts/ha.sh logs
+	@bash $(REPO_DIR)/scripts/ha.sh logs
 
 ha-config:
-	@bash $(SERVER_DIR)/scripts/ha.sh config
+	@bash $(REPO_DIR)/scripts/ha.sh config

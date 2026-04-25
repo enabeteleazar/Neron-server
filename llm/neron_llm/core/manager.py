@@ -9,14 +9,14 @@ import logging
 import random
 import time
 
-from neron_llm.core.router   import LLMRouter
-from neron_llm.core.strategy import StrategyEngine
-from neron_llm.core.types    import LLMRequest, LLMResponse
-from neron_llm.providers.base   import BaseProvider
-from neron_llm.providers.claude import ClaudeProvider
-from neron_llm.providers.ollama import OllamaProvider
+from llm.neron_llm.core.router   import LLMRouter
+from llm.neron_llm.core.strategy import StrategyEngine
+from llm.neron_llm.core.types    import LLMRequest, LLMResponse
+from llm.neron_llm.providers.base   import BaseProvider
+from llm.neron_llm.providers.claude import ClaudeProvider
+from llm.neron_llm.providers.ollama import OllamaProvider
 
-logger      = logging.getLogger("neron_llm.manager")
+logger      = logging.getLogger("llm.neron_llm.manager")
 MAX_RETRIES      = 2
 RETRY_BASE_DELAY = 1.0   # secondes — délai avant la 2e tentative
 RETRY_MAX_DELAY  = 10.0  # secondes — plafond (croissance exponentielle)

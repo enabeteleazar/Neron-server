@@ -1,0 +1,10 @@
+uvicorn
+psutil
+fastapi
+httpx
+prometheus_client
+python-multipart
+python-telegram-bot
+twilio
+websockets
+apscheduler
