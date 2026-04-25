@@ -2,7 +2,7 @@
 # FastAPI 
 
 from fastapi import FastAPI
-from app.runner import run_full_diagnosis
+from doctor.app.runner import run_full_diagnosis
 
 app = FastAPI(title="Neron Doctor Agent")
 

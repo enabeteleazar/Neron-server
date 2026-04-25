@@ -181,6 +181,7 @@ info_services(){
     "ollama.service"
     "neron.service"
     "neron-llm.service"
+    "neron-doctor.service"
     "neron-homeassistant.service"
     "neron-client.service"
   )

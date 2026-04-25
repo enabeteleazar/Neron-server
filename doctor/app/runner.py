@@ -1,9 +1,9 @@
 # app/runner.py
 # Orchestrateur Principal
 
-from app.analyzer import analyze_project
-from app.tester import test_services
-from app.fixer import apply_fixes
+from doctor.app.analyzer import analyze_project
+from doctor.app.tester import test_services
+from doctor.app.fixer import apply_fixes
 
 SERVER_PATH = "/etc/neron/server"
 LLM_PATH = "/etc/neron/llm"
