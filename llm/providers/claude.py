@@ -7,8 +7,8 @@ import os
 
 import httpx
 
-from neron_llm.config import get_llm_config
-from neron_llm.providers.base import BaseProvider
+from llm.config import get_llm_config
+from llm.providers.base import BaseProvider
 
 logger = logging.getLogger("neron_llm.claude")
 

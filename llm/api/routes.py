@@ -29,15 +29,15 @@ from prometheus_client import (
     generate_latest,
 )
 
-from llm.neron_llm.core.manager import LLMManager
-from llm.neron_llm.core.types   import (
+from llm.core.manager import LLMManager
+from llm.core.types   import (
     GenerateRequest,
     GenerateResponse,
     LLMRequest,
     LLMResponse,
 )
 
-logger  = logging.getLogger("llm.neron_llm.routes")
+logger  = logging.getLogger("llm.routes")
 router  = APIRouter()
 manager = LLMManager()
 
@@ -264,7 +264,7 @@ async def reload() -> dict:
     global manager
     async with _reload_lock:
         try:
-            from llm.neron_llm.config import reload_config
+            from llm.config import reload_config
             reload_config()
             new_manager = LLMManager()       # raises if config is broken — old manager kept
             old_manager, manager = manager, new_manager

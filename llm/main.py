@@ -8,7 +8,7 @@ import logging
 
 from fastapi import FastAPI
 
-from llm.neron_llm.api.routes import router
+from llm.api.routes import router
 
 # ── Structured JSON logging ───────────────────────────────────────────────────
 

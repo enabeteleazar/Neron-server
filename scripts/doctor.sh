@@ -172,14 +172,13 @@ info_ollama(){
   else
     warn "Ollama absent"
   fi
-
-  systemctl is-active --quiet ollama && ok "Service actif" || warn "Service inactif"
 }
 
 info_services(){
   step "SERVICES"
 
   SERVICES=(
+    "ollama.service"
     "neron.service"
     "neron-llm.service"
     "neron-homeassistant.service"
