@@ -1,0 +1,132 @@
+# ── Modèles disponibles (legacy, conservé pour compatibilité) ─────────────────
+model_map:
+  fast:    llama3.1:8b
+  default: mistral:latest
+  code:    deepseek-coder:6.7b
+
+# ── Routing par type de tâche (lu par neron/llm) ──────────────────────────────
+routing:
+  code:      qwen2.5-coder:14b
+  reasoning: qwen2.5-coder:14b
+  agent:     qwen2.5-coder:14b
+  chat:      llama3.1:8b
+  fast:      llama3.1:8b
+  default:   llama3.1:8b
+
+# ── Stratégie d'appel par type de tâche ──────────────────────────────────────
+strategy:
+  code:      parallel
+  reasoning: single
+  chat:      race
+  agent:     single
+
+# ── Code agent ────────────────────────────────────────────────────────────────
+code_agent:
+  backup_count:          10
+  enabled:               true
+  model:                 qwen2.5-coder:14b
+  sandbox_timeout:       10
+  self_review_on_startup: false
+
+# ── Home Assistant ────────────────────────────────────────────────────────────
+home_assistant:
+  enabled: false
+  token:   HIDDEN
+  url:     http://100.90.194.109:8123
+
+# ── Service LLM Ollama (lu par neron/server) ──────────────────────────────────
+llm:
+  host:             http://localhost:11434
+  timeout:          300
+  default_provider: ollama
+  model:            llama3.1:8b
+  fallback_model:   llama3.1:8b
+  ollama:
+    race_timeout: 120
+    timeout:      300
+
+# ── Client LLM (lu par neron/server → neron/llm) ─────────────────────────────
+neron_llm:
+  url:     http://localhost:8765
+  timeout: 120
+  retry:   2
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+logs:
+  dir:           logs
+  neron_log:     neron.log
+  watchdog_log:  watchdog.log
+  max_size_mb:   10
+  backup_count:  5
+
+# ── Mémoire ───────────────────────────────────────────────────────────────────
+memory:
+  db_path:        ../data/memory.db
+  retention_days: 30
+
+# ── Neron core ────────────────────────────────────────────────────────────────
+neron:
+  api_key:    HIDDEN
+  log_level:  INFO
+  version:    2.1.0
+  system_prompt: >-
+    Tu es Néron, un assistant IA personnel installé sur Homebox.
+    Tu es concis et direct. Tu réponds uniquement en français.
+    Tu n'évoques jamais les conversations passées sauf demande explicite.
+    Tu ne te présentes jamais comme une IA générique.
+
+# ── Planificateur ─────────────────────────────────────────────────────────────
+scheduler:
+  enabled:            true
+  daily_report_hour:  8
+  generateur_hour:    2
+  self_review_hour:   3
+  memory_cleanup_days: 30
+
+# ── SearXNG ───────────────────────────────────────────────────────────────────
+searxng:
+  url:         http://localhost:8080
+  max_results: 5
+  timeout:     10.0
+
+# ── Serveur HTTP ──────────────────────────────────────────────────────────────
+server:
+  host: 0.0.0.0
+  port: 8010
+
+# ── Système ───────────────────────────────────────────────────────────────────
+system:
+  watchdog_url: http://localhost:8003
+
+# ── Telegram (bot principal) ──────────────────────────────────────────────────
+telegram:
+  enabled:         false
+  bot_token:       HIDDEN
+  chat_id:         ''
+  notify_on_start: true
+
+# ── Twilio ────────────────────────────────────────────────────────────────────
+twilio:
+  enabled:     true
+  account_sid: HIDDEN
+  auth_token:  HIDDEN
+  from_number: '+12612345678'
+  to_number:   '+33612345678'
+
+# ── Watchdog ──────────────────────────────────────────────────────────────────
+watchdog:
+  enabled:          false
+  bot_token:        HIDDEN
+  chat_id:          ''
+  alert_telegram:   true
+  check_interval:   30
+  restart_max_retries: 3
+  cpu_alert:        95
+  cpu_temp_alert:   75
+  disk_alert:       90
+  ram_alert:        85
+
+# ── Workspace ─────────────────────────────────────────────────────────────────
+workspace:
+  path:             /etc/neron/workspace
+  generator_script: /etc/neron/workspace/generateur.py
