@@ -183,6 +183,7 @@ info_services(){
     "neron-llm.service"
     "neron-doctor.service"
     "neron-homeassistant.service"
+    "cups.service"
     "neron-client.service"
   )
 
