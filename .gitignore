@@ -89,5 +89,9 @@ ollama/
 venv/
 .venv/
 
+# =========================
+# DIVERS
+# =========================
+client/homeassistant/
 .claude
 .copilot

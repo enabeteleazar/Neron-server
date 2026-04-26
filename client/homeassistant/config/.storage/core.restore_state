@@ -1,0 +1,175 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "core.restore_state",
+  "data": [
+    {
+      "state": {"entity_id":"conversation.home_assistant","state":"unknown","attributes":{"friendly_name":"Home Assistant","supported_features":1},"last_changed":"2026-04-26T13:56:26.161937+00:00","last_reported":"2026-04-26T13:56:26.161937+00:00","last_updated":"2026-04-26T13:56:26.161937+00:00","context":{"id":"01KQ517GXH7E5AYXRBP78H37DN","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"event.backup_automatic_backup","state":"unknown","attributes":{"event_types":["completed","failed","in_progress"],"event_type":null,"friendly_name":"Backup Automatic backup"},"last_changed":"2026-04-26T13:57:07.027169+00:00","last_reported":"2026-04-26T13:57:07.027444+00:00","last_updated":"2026-04-26T13:57:07.027169+00:00","context":{"id":"01KQ518RTK3G1Y0AJDVYQ52G8C","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "last_event_type": null,
+        "last_event_attributes": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"person.eleazr","state":"home","attributes":{"editable":true,"id":"eleazr","device_trackers":["device_tracker.iphone_16_black"],"latitude":48.57100928084399,"longitude":3.732283027776117,"gps_accuracy":19,"source":"device_tracker.iphone_16_black","user_id":"d921b47eefe642ff81feafeda44e0ee9","friendly_name":"Eleazr"},"last_changed":"2026-04-26T14:45:27.416528+00:00","last_reported":"2026-04-26T14:45:27.416528+00:00","last_updated":"2026-04-26T14:45:27.416528+00:00","context":{"id":"01KQ54197RHNNT9KSHEB2A4P8H","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"tts.google_translate_en_com","state":"unknown","attributes":{"friendly_name":"Google Translate en com"},"last_changed":"2026-04-26T13:58:45.025750+00:00","last_reported":"2026-04-26T13:58:45.025923+00:00","last_updated":"2026-04-26T13:58:45.025750+00:00","context":{"id":"01KQ51BRH17WXGFM2W4F7ZBB2F","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"scene.light_off","state":"2026-04-26T14:03:34.669918+00:00","attributes":{"friendly_name":"Light Off"},"last_changed":"2026-04-26T14:03:34.670010+00:00","last_reported":"2026-04-26T14:03:34.670010+00:00","last_updated":"2026-04-26T14:03:34.670010+00:00","context":{"id":"01KQ51MKCDXV3SSVPK90FTPMVC","parent_id":null,"user_id":"d921b47eefe642ff81feafeda44e0ee9"}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"scene.on","state":"unknown","attributes":{"friendly_name":"On"},"last_changed":"2026-04-26T14:01:28.200401+00:00","last_reported":"2026-04-26T14:01:28.200605+00:00","last_updated":"2026-04-26T14:01:28.200401+00:00","context":{"id":"01KQ51GQW8514JWFT7GFGJB39S","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"scene.light_on","state":"unknown","attributes":{"friendly_name":"Light On"},"last_changed":"2026-04-26T14:01:28.201340+00:00","last_reported":"2026-04-26T14:01:28.201543+00:00","last_updated":"2026-04-26T14:01:28.201340+00:00","context":{"id":"01KQ51GQW9WTJPH227QAXFZTJY","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"scene.turn_off_all_lights","state":"unknown","attributes":{"friendly_name":"Turn off all lights"},"last_changed":"2026-04-26T14:01:28.202293+00:00","last_reported":"2026-04-26T14:01:28.202503+00:00","last_updated":"2026-04-26T14:01:28.202293+00:00","context":{"id":"01KQ51GQWAY6G1FJMD72E9Q4FY","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"device_tracker.iphone_16_black","state":"home","attributes":{"source_type":"gps","battery_level":50,"latitude":48.57100928084399,"longitude":3.732283027776117,"gps_accuracy":19,"altitude":69.66792614932942,"vertical_accuracy":30,"friendly_name":"iPhone 16 - Black"},"last_changed":"2026-04-26T14:45:27.416031+00:00","last_reported":"2026-04-26T14:45:27.416031+00:00","last_updated":"2026-04-26T14:45:27.416031+00:00","context":{"id":"01KQ54197RY75FG6WFBZ5K2AJW","parent_id":null,"user_id":null}},
+      "extra_data": null,
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_battery_level","state":"50","attributes":{"unit_of_measurement":"%","device_class":"battery","icon":"mdi:battery-50","friendly_name":"iPhone 16 - Black Battery Level"},"last_changed":"2026-04-26T14:45:27.425853+00:00","last_reported":"2026-04-26T14:45:27.799942+00:00","last_updated":"2026-04-26T14:45:27.425853+00:00","context":{"id":"01KQ5419817N62F3JVCRYPJND4","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": 50,
+        "native_unit_of_measurement": "%"
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_sim_1","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black SIM 1"},"last_changed":"2026-04-26T14:18:46.817553+00:00","last_reported":"2026-04-26T14:25:28.339438+00:00","last_updated":"2026-04-26T14:18:46.817553+00:00","context":{"id":"01KQ52GE515Q2RS77EWW6CH2D3","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_sim_2","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black SIM 2"},"last_changed":"2026-04-26T14:18:46.819682+00:00","last_reported":"2026-04-26T14:25:28.339594+00:00","last_updated":"2026-04-26T14:18:46.819682+00:00","context":{"id":"01KQ52GE53GS80M1A3FC87K28D","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_geocoded_location","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black Geocoded Location"},"last_changed":"2026-04-26T14:18:46.983675+00:00","last_reported":"2026-04-26T14:18:46.984073+00:00","last_updated":"2026-04-26T14:18:46.983675+00:00","context":{"id":"01KQ52GEA7M0CTVE0ZYDEHVF9D","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_last_update_trigger","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black Last Update Trigger"},"last_changed":"2026-04-26T14:18:46.987227+00:00","last_reported":"2026-04-26T14:25:28.339761+00:00","last_updated":"2026-04-26T14:18:46.987227+00:00","context":{"id":"01KQ52GEABTGXVVVYXDK3EE88X","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_watch_battery_level","state":"60","attributes":{"unit_of_measurement":"%","device_class":"battery","icon":"mdi:battery-60","friendly_name":"iPhone 16 - Black Watch Battery Level"},"last_changed":"2026-04-26T14:18:46.989436+00:00","last_reported":"2026-04-26T14:25:28.339946+00:00","last_updated":"2026-04-26T14:18:46.989436+00:00","context":{"id":"01KQ52GEADT3VS012HFMRHGSKW","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": 60,
+        "native_unit_of_measurement": "%"
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_watch_battery_state","state":"Not Charging","attributes":{"icon":"mdi:battery-60","friendly_name":"iPhone 16 - Black Watch Battery State"},"last_changed":"2026-04-26T14:18:47.106222+00:00","last_reported":"2026-04-26T14:25:28.340131+00:00","last_updated":"2026-04-26T14:18:47.106222+00:00","context":{"id":"01KQ52GEE2J8X1W33F8ZSNJ0TE","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "Not Charging",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_app_version","state":"2026.4.0","attributes":{"icon":"mdi:cellphone","friendly_name":"iPhone 16 - Black App Version"},"last_changed":"2026-04-26T14:18:47.110348+00:00","last_reported":"2026-04-26T14:25:28.340308+00:00","last_updated":"2026-04-26T14:18:47.110348+00:00","context":{"id":"01KQ52GEE6RRA7REKWS9H6WHFK","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "2026.4.0",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_location_permission","state":"Authorized when in use","attributes":{"icon":"mdi:map","friendly_name":"iPhone 16 - Black Location permission"},"last_changed":"2026-04-26T14:18:47.115301+00:00","last_reported":"2026-04-26T14:25:28.340486+00:00","last_updated":"2026-04-26T14:18:47.115301+00:00","context":{"id":"01KQ52GEEB8SA7CEVQA6999HFF","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "Authorized when in use",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_audio_output","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black Audio Output"},"last_changed":"2026-04-26T14:18:47.249105+00:00","last_reported":"2026-04-26T14:25:28.340647+00:00","last_updated":"2026-04-26T14:18:47.249105+00:00","context":{"id":"01KQ52GEJHBS3BC3KAHTFH7EE5","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_battery_state","state":"Not Charging","attributes":{"Low Power Mode":false,"icon":"mdi:battery-50","friendly_name":"iPhone 16 - Black Battery State"},"last_changed":"2026-04-26T14:25:28.338389+00:00","last_reported":"2026-04-26T14:25:28.338389+00:00","last_updated":"2026-04-26T14:25:28.338389+00:00","context":{"id":"01KQ52WP8JGW6JYDZX1JZCEZK6","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "Not Charging",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_storage","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black Storage"},"last_changed":"2026-04-26T14:18:47.266518+00:00","last_reported":"2026-04-26T14:25:28.338704+00:00","last_updated":"2026-04-26T14:18:47.266518+00:00","context":{"id":"01KQ52GEK2CME1EYRPS8N5TBPA","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_connection_type","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black Connection Type"},"last_changed":"2026-04-26T14:18:56.062047+00:00","last_reported":"2026-04-26T14:25:28.339274+00:00","last_updated":"2026-04-26T14:18:56.062047+00:00","context":{"id":"01KQ52GQ5YJK3JJMQFPK7XN90P","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_bssid","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black BSSID"},"last_changed":"2026-04-26T14:18:56.062711+00:00","last_reported":"2026-04-26T14:25:28.339106+00:00","last_updated":"2026-04-26T14:18:56.062711+00:00","context":{"id":"01KQ52GQ5YQFH41XD0D8XB8GZM","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    },
+    {
+      "state": {"entity_id":"sensor.iphone_16_black_ssid","state":"unavailable","attributes":{"icon":"mdi:dots-square","friendly_name":"iPhone 16 - Black SSID"},"last_changed":"2026-04-26T14:18:56.068007+00:00","last_reported":"2026-04-26T14:25:28.338929+00:00","last_updated":"2026-04-26T14:18:56.068007+00:00","context":{"id":"01KQ52GQ64FDPXEWJBMZJ0AVNY","parent_id":null,"user_id":null}},
+      "extra_data": {
+        "native_value": "unavailable",
+        "native_unit_of_measurement": null
+      },
+      "last_seen": "2026-04-26T14:57:06.945834+00:00"
+    }
+  ]
+}

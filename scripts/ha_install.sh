@@ -19,7 +19,7 @@ NC="\033[0m"
 # =========================
 BASE_DIR="/etc/neron"
 HA_DIR="$BASE_DIR/client/homeassistant"
-VENV_DIR="$BASE_DIR/server/venv"
+VENV_DIR="$BASE_DIR/venv"
 HA_USER="eleazar"
 SERVICE="neron-homeassistant.service"
 

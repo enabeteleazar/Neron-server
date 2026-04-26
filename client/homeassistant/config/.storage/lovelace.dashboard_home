@@ -1,0 +1,235 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace.dashboard_home",
+  "data": {
+    "config": {
+      "views": [
+        {
+          "type": "sections",
+          "title": "Demo",
+          "path": "home",
+          "icon": "mdi:home-assistant",
+          "badges": [
+            {
+              "type": "entity",
+              "show_name": false,
+              "show_state": true,
+              "show_icon": true,
+              "color": "red",
+              "entity": "sensor.saron_sur_aube_temperature"
+            },
+            {
+              "type": "entity",
+              "show_name": false,
+              "show_state": true,
+              "show_icon": true,
+              "color": "indigo",
+              "entity": "weather.saron_sur_aube"
+            },
+            {
+              "type": "entity",
+              "show_name": false,
+              "show_state": true,
+              "show_icon": true,
+              "entity": "device_tracker.iphone_16_black"
+            }
+          ],
+          "sections": [
+            {
+              "cards": [
+                {
+                  "type": "heading",
+                  "heading": "Bienvenue 👋"
+                }
+              ]
+            },
+            {
+              "cards": [
+                {
+                  "type": "heading",
+                  "heading": "Salon",
+                  "icon": "mdi:sofa",
+                  "badges": [
+                    {
+                      "type": "entity",
+                      "show_state": true,
+                      "show_icon": true,
+                      "entity": "sensor.saron_sur_aube_temperature",
+                      "color": "red"
+                    },
+                    {
+                      "type": "entity",
+                      "show_state": true,
+                      "show_icon": true,
+                      "entity": "sensor.saron_sur_aube_humidity",
+                      "color": "indigo"
+                    }
+                  ],
+                  "heading_style": "title"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.hp_laserjet_m2727_mfp_pcl3_hpcups_3_23_12",
+                  "vertical": false,
+                  "features_position": "bottom"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.hp_laserjet_m2727_mfp_pcl3_hpcups_3_23_12_black_cartridge_hp_q7553a",
+                  "vertical": false,
+                  "features_position": "bottom"
+                },
+                {
+                  "type": "tile",
+                  "entity": "binary_sensor.orange_livebox_etat_du_reseau_etendu_wan",
+                  "name": "Blinds",
+                  "vertical": false,
+                  "features_position": "bottom"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.orange_livebox_vitesse_de_telechargement",
+                  "name": "Blinds",
+                  "vertical": false,
+                  "features_position": "bottom"
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "cards": [
+                {
+                  "type": "heading",
+                  "heading": "Énergie",
+                  "icon": "mdi:transmission-tower"
+                },
+                {
+                  "type": "tile",
+                  "entity": "binary_sensor.tesla_wall_connector_vehicle_connected",
+                  "name": "EV",
+                  "icon": "mdi:car"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.tesla_wall_connector_session_energy",
+                  "name": "Last charge",
+                  "color": "green"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.electric_meter_power",
+                  "color": "deep-orange",
+                  "name": "Home power"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.eletric_meter_voltage",
+                  "name": "Voltage",
+                  "color": "deep-orange"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.electricity_maps_grid_fossil_fuel_percentage",
+                  "name": "Fossil fuel",
+                  "color": "brown"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.electricity_maps_co2_intensity",
+                  "name": "CO2 Intensity",
+                  "color": "dark-grey"
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "cards": [
+                {
+                  "type": "heading",
+                  "heading": "Chambre",
+                  "icon": "mdi:bed-king-outline",
+                  "badges": [
+                    {
+                      "type": "entity",
+                      "entity": "switch.in_meeting",
+                      "state": "on",
+                      "state_content": "name",
+                      "visibility": [
+                        {
+                          "condition": "state",
+                          "state": "on",
+                          "entity": "switch.in_meeting"
+                        }
+                      ]
+                    }
+                  ],
+                  "heading_style": "title"
+                },
+                {
+                  "type": "tile",
+                  "entity": "light.entree",
+                  "name": "Shutter",
+                  "vertical": false,
+                  "features_position": "bottom"
+                },
+                {
+                  "type": "tile",
+                  "grid_options": {
+                    "columns": 6,
+                    "rows": 2
+                  },
+                  "entity": "media_player.appletv",
+                  "name": "Spotlights",
+                  "vertical": false,
+                  "features_position": "bottom"
+                },
+                {
+                  "type": "tile",
+                  "entity": "light.lit",
+                  "vertical": false,
+                  "features_position": "bottom"
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "cards": [
+                {
+                  "type": "heading",
+                  "heading": "Mises à jour",
+                  "icon": "mdi:update"
+                },
+                {
+                  "type": "tile",
+                  "entity": "automation.home_assistant_auto_update",
+                  "name": "Auto-update",
+                  "color": "green"
+                },
+                {
+                  "type": "tile",
+                  "entity": "update.home_assistant_operating_system_update",
+                  "name": "OS",
+                  "icon": "mdi:home-assistant"
+                },
+                {
+                  "type": "tile",
+                  "entity": "update.home_assistant_supervisor_update",
+                  "icon": "mdi:home-assistant",
+                  "name": "Supervisor"
+                },
+                {
+                  "type": "tile",
+                  "entity": "update.home_assistant_core_update",
+                  "name": "Core",
+                  "icon": "mdi:home-assistant"
+                }
+              ]
+            }
+          ],
+          "cards": []
+        }
+      ]
+    }
+  }
+}
