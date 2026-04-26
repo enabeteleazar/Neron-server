@@ -1,0 +1,96 @@
+# /etc/neron/neron.yaml
+# Configuration globale de l'infrastructure Néron
+# Chaque module lit sa propre section.
+# Déployer : cp neron.yaml.example /etc/neron/neron.yaml
+
+# ══════════════════════════════════════════════
+#  GLOBAL
+# ══════════════════════════════════════════════
+global:
+  name: Néron
+  version: "2.0"
+  timezone: "Europe/Paris"
+  log_dir: /var/log/neron
+
+
+# ══════════════════════════════════════════════
+#  SERVER — backend FastAPI principal
+# ══════════════════════════════════════════════
+server:
+  host: 0.0.0.0
+  port: 8010
+  workers: 1
+  reload: false
+  secret_key: "change-me-in-production"
+
+
+# ══════════════════════════════════════════════
+#  LLM — couche inférence locale (Ollama)
+# ══════════════════════════════════════════════
+llm:
+  provider: ollama
+  base_url: http://localhost:11434
+  default_model: mistral
+  timeout: 60
+  max_tokens: 2048
+
+
+# ══════════════════════════════════════════════
+#  GATEWAY — WebSocket JSON-RPC
+# ══════════════════════════════════════════════
+gateway:
+  host: 0.0.0.0
+  port: 8765
+  max_connections: 50
+  ping_interval: 30
+
+
+# ══════════════════════════════════════════════
+#  TELEGRAM — bot principal + watchdog
+# ══════════════════════════════════════════════
+telegram:
+  main_bot_token: ""
+  watchdog_bot_token: ""
+  allowed_chat_ids: []
+  notify_on_start: true
+
+
+# ══════════════════════════════════════════════
+#  DOCTOR — agent de diagnostic (ce module)
+# ══════════════════════════════════════════════
+doctor:
+
+  # Chemins des projets à analyser
+  paths:
+    server: /etc/neron/server
+    llm:    /etc/neron/llm
+    logs:   /var/log/neron
+
+  # Endpoints HTTP à tester
+  endpoints:
+    server_health: http://localhost:8010/health
+    server_status: http://localhost:8010/status
+    llm_health:    http://localhost:8765/llm/health
+    ollama:        http://localhost:11434/api/tags
+
+  # Services systemd à surveiller et potentiellement redémarrer
+  services:
+    - neron-server
+    - neron-llm
+    - ollama
+
+  # Authentification (laisser vide pour désactiver en dev)
+  api_key: ""
+
+  # Timeouts et comportement des fixes
+  timing:
+    http_timeout:    5     # secondes avant qu'un ping HTTP soit considéré KO
+    fix_retry_count: 3     # tentatives de restart avant abandon
+    fix_retry_delay: 4     # secondes d'attente entre chaque tentative
+    journal_lines:   100   # nb de lignes journalctl à analyser par service
+
+  # Seuils d'alerte système (en %)
+  thresholds:
+    cpu:  80.0
+    mem:  85.0
+    disk: 90.0
