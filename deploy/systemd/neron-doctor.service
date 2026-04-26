@@ -1,0 +1,18 @@
+[Unit]
+Description=Néron Doctor (API)
+After=network.target
+
+[Service]
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neron
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neron/doctor
+ExecStart=/etc/neron/venv/bin/uvicorn doctor.app.main:app --host 0.0.0.0 --port 8020 --workers 1
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

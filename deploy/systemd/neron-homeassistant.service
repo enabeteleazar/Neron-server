@@ -1,0 +1,14 @@
+[Unit]
+Description=Neron Home Assistant Core
+After=network.target
+
+[Service]
+Type=simple
+User=eleazar
+WorkingDirectory=/etc/neron/client/homeassistant
+ExecStart=/etc/neron/server/venv/bin/hass -c /etc/neron/client/homeassistant/config
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

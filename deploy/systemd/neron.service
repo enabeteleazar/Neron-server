@@ -4,10 +4,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=eleazar
+User=neron
+Group=neron-dev
 WorkingDirectory=/etc/neron
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/etc/neron/venv/bin/python -m uvicorn server.core.app:app --host 0.0.0.0 --port 8010 --workers 1
+Environment=PYTHONPATH=/etc/neron/server
+ExecStart=/etc/neron/venv/bin/uvicorn server.core.app:app --host 0.0.0.0 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
