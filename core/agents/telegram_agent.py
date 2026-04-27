@@ -23,7 +23,7 @@ from core.constants import CODE_KEYWORDS
 from core.agents.base_agent import get_logger
 from core.agents.watchdog_agent import get_anomalies, get_health_score, get_status
 from core.config import settings
-from core.tools.twilio_tool import call as twilio_call
+from core.agents.twilio_agent import call as twilio_call
 
 logger = get_logger("telegram_agent")
 

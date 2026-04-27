@@ -285,3 +285,4 @@ class LLMAgent(BaseAgent):
     async def check_connection(self) -> bool:
         """Return True if neron/llm/ health endpoint is reachable."""
         return await _llm_client.health()
+

@@ -28,7 +28,7 @@ from telegram.ext import (
 
 from core.agents.base_agent import get_logger
 from core.config import settings
-from core.modules.world_model import WorldModel
+from core.memory.world_model.world_model import WorldModel
 
 # ── Logger ────────────────────────────────────────────────────────────────────
 
