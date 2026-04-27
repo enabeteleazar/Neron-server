@@ -45,15 +45,14 @@ from pydantic import BaseModel
 # =========================
 
 from core.agents.base_agent import get_logger
-from core.agents.code_agent import CodeAgent
-from core.agents.code_audit_agent import CodeAuditAgent
-from core.agents.ha_agent import HAAgent
-from core.agents.llm_agent import LLMAgent
-from core.agents.memory_agent import MemoryAgent, init_db as memory_init_db
-from core.agents.telegram_agent import (
-    send_notification, set_agents, start_bot, stop_bot
-)
-from core.agents.watchdog_agent import (
+
+# DEV
+from core.agents.dev.code_agent.agent import CodeAgent
+from core.agents.dev.code_audit_agent import CodeAuditAgent
+
+# AUTOMATION
+from core.agents.automation.ha_agent import HAAgent
+from core.agents.automation.watchdog_agent import (
     send_watchdog_notification,
     setup as watchdog_setup,
     start_watchdog,
@@ -62,7 +61,27 @@ from core.agents.watchdog_agent import (
     stop_watchdog_bot,
     world_model,
 )
-from core.agents.web_agent import WebAgent
+
+# CORE
+from core.agents.core.llm_agent import LLMAgent
+from core.agents.core.memory_agent import MemoryAgent, init_db as memory_init_db
+from core.agents.core.system_agent import SystemAgent
+
+# COMMUNICATION
+from core.agents.communication.telegram_agent import (
+    send_notification,
+    set_agents,
+    start_bot,
+    stop_bot
+)
+from core.agents.communication.web_agent import WebAgent
+from core.agents.communication.twilio_agent import TwilioAgent
+
+# IO
+from core.agents.io.stt_agent import STTAgent
+from core.agents.io.tts_agent import TTSAgent
+
+
 from core.config import settings
 from core.pipeline.routing.agent_router import AgentRouter, LLMConfig, ToolRegistry
 from core.gateway.gateway import GatewayConfig, NeronGateway

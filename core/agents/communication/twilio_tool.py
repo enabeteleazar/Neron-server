@@ -1,12 +1,10 @@
-# tools/twilio_tool.py
-# Néron — Outil d'appel vocal via Twilio
+# core/agents/communication/twilio_tool.py
+# Néron — Outil Twilio (SMS + appel)
 
 from __future__ import annotations
 
 import logging
-
 from twilio.rest import Client
-
 from core.config import settings
 
 logger = logging.getLogger("twilio_tool")
@@ -19,9 +17,9 @@ def _get_client() -> Client:
 
 
 def call(message: str, to: str | None = None) -> dict:
-    """Passe un appel vocal avec un message TTS Twilio."""
+    """Passe un appel vocal avec TTS Twilio."""
     if not settings.TWILIO_ENABLED:
-        return {"ok": False, "error": "Twilio désactivé dans neron.yaml"}
+        return {"ok": False, "error": "Twilio désactivé"}
 
     to_number = to or settings.TWILIO_TO
     if not to_number:
@@ -29,7 +27,8 @@ def call(message: str, to: str | None = None) -> dict:
 
     try:
         client = _get_client()
-        twiml  = (
+
+        twiml = (
             '<?xml version="1.0" encoding="UTF-8"?>'
             "<Response>"
             f'<Say language="fr-FR" voice="Polly.Lea">{message}</Say>'
@@ -37,16 +36,18 @@ def call(message: str, to: str | None = None) -> dict:
             '<Say language="fr-FR" voice="Polly.Lea">Fin du message de Néron.</Say>'
             "</Response>"
         )
+
         call_obj = client.calls.create(
             twiml=twiml,
             to=to_number,
             from_=settings.TWILIO_FROM,
         )
-        logger.info("Appel Twilio lancé — SID: %s → %s", call_obj.sid, to_number)
+
+        logger.info("Call Twilio lancé — SID: %s", call_obj.sid)
         return {"ok": True, "sid": call_obj.sid}
 
     except Exception as e:
-        logger.error("Erreur appel Twilio : %s", e)
+        logger.error("Erreur call Twilio: %s", e)
         return {"ok": False, "error": str(e)}
 
 
@@ -61,14 +62,16 @@ def sms(message: str, to: str | None = None) -> dict:
 
     try:
         client = _get_client()
-        msg    = client.messages.create(
+
+        msg = client.messages.create(
             body=message[:1600],
             to=to_number,
             from_=settings.TWILIO_FROM,
         )
-        logger.info("SMS Twilio envoyé — SID: %s", msg.sid)
+
+        logger.info("SMS envoyé — SID: %s", msg.sid)
         return {"ok": True, "sid": msg.sid}
 
     except Exception as e:
-        logger.error("Erreur SMS Twilio : %s", e)
+        logger.error("Erreur SMS Twilio: %s", e)
         return {"ok": False, "error": str(e)}
