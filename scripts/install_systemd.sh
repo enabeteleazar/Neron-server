@@ -6,10 +6,12 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+BASE_DIR="/etc/neron"
+
 echo "Installing systemd unit files..."
 mkdir -p /etc/systemd/system
-cp /etc/neron/deploy/neron.service /etc/systemd/system/neron.service
-cp /etc/neron/deploy/neron-llm.service /etc/systemd/system/neron-llm.service
+cp "$BASE_DIR/deploy/neron.service" /etc/systemd/system/neron.service
+cp "$BASE_DIR/deploy/neron-llm.service" /etc/systemd/system/neron-llm.service
 
 systemctl daemon-reload
 systemctl enable --now neron.service

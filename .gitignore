@@ -92,6 +92,7 @@ venv/
 # =========================
 # DIVERS
 # =========================
-client/homeassistant/
+/client/homeassistant/*
+!/client/homeassistant/.keep
 .claude
 .copilot

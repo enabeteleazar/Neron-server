@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 LOG="/var/log/neron-watchdog.log"
+BASE_DIR="/etc/neron"
 
 function log(){
   echo "$(date) - $1" >> $LOG
@@ -31,7 +32,7 @@ if [[ $? -ne 0 ]]; then
 fi
 
 # TEST GLOBAL
-bash /etc/neron/scripts/test.sh >/dev/null 2>&1
+bash "$BASE_DIR/scripts/test.sh" >/dev/null 2>&1
 if [[ $? -ne 0 ]]; then
   log "GLOBAL TEST FAILED → RESTART ALL"
   systemctl restart neron-server

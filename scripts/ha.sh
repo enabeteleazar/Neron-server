@@ -51,10 +51,10 @@ echo ""
 # CONFIG
 # =========================
 BASE_DIR="/etc/neron"
-REPO_DIR="$BASE_DIR/server"
+REPO_DIR="$BASE_DIR"
 SERVICE="neron-homeassistant.service"
 CONFIG_FILE="$REPO_DIR/neron.yaml"
-PYTHON="$BASE_DIR/server/venv/bin/python3"
+PYTHON="$BASE_DIR/venv/bin/python3"
 
 # =========================
 # USAGE
