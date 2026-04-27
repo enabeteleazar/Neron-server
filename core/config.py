@@ -1,6 +1,5 @@
 # neron_core/config.py
 # Loader de configuration — neron.yaml (priorité) + .env (fallback)
-# v2.1.0
 
 from __future__ import annotations
 

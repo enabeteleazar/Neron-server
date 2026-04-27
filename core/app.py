@@ -80,7 +80,7 @@ from core.pipeline.intent.intent_router import Intent, IntentRouter
 
 logger = get_logger("neron.core")
 
-VERSION = "2.2.1"
+VERSION = "3.0.0"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
@@ -91,7 +91,7 @@ llm_agent:        LLMAgent        | None = None
 memory_agent:     MemoryAgent     | None = None
 web_agent:        WebAgent        | None = None
 stt_agent:        STTAgent        | None = None
-tts_agent:                         None  = None
+tts_agent:        TTSAgent        | None = None
 ha_agent:         HAAgent         | None = None
 code_agent:       CodeAgent       | None = None
 code_audit_agent: CodeAuditAgent  | None = None
