@@ -96,7 +96,7 @@ def _collect_process() -> dict:
 def _collect_agents() -> dict:
     """État des agents depuis watchdog_agent."""
     try:
-        from agents.watchdog_agent import get_status, get_health_score
+        from core.agents.automation.watchdog_agent import get_status, get_health_score
         sys_status = get_status()
         score      = get_health_score()
 
@@ -107,10 +107,10 @@ def _collect_agents() -> dict:
                 "ram_mb":    sys_status.get("process_ram_mb", 0),
             },
             "score": {
-                "global":              sget("score", 0),
-                "level":               sget("level", "unknown"),
-                "crashes_7d":          sget("crashes", 0),
-                "manual_interventions": sget("manual_interventions", 0),
+                "global":               score.get("score", 0),
+                "level":                score.get("level", "unknown"),
+                "crashes_7d":           score.get("crashes", 0),
+                "manual_interventions": score.get("manual_interventions", 0),
             },
         }
     except Exception as e:
@@ -121,7 +121,7 @@ def _collect_agents() -> dict:
 def _collect_anomalies() -> list[dict]:
     """Anomalies détectées par le watchdog."""
     try:
-        from agents.watchdog_agent import get_anomalies
+        from core.agents.automation.watchdog_agent import get_anomalies
         raw = get_anomalies(days=1)
         return [
             {

@@ -39,9 +39,13 @@ class IntentResult:
 
 
 def _normalize(text: str) -> str:
-    """Normalise : minuscules + suppression des accents."""
+    """Normalise : minuscules + suppression des accents + apostrophes → espace."""
     n = unicodedata.normalize("NFD", text.lower().strip())
-    return "".join(c for c in n if unicodedata.category(c) != "Mn")
+    # Supprime les marques diacritiques
+    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
+    # Apostrophes typographiques et droites → espace
+    n = n.replace("'", " ").replace("'", " ").replace("`", " ")
+    return n
 
 
 class IntentRouter:
@@ -74,27 +78,15 @@ class IntentRouter:
                 return IntentResult(intent=Intent.CODE, confidence="high")
 
         # ── Heure / date ──────────────────────────────────────────────────
-        if any(w in q_norm for w in [
-            "quelle heure", "il est quelle heure",
-            "quelle heure est il", "donne moi l heure",
-            "quel jour sommes", "on est quel jour",
-            "quel mois sommes", "quelle date sommes",
-            "donne moi la date", "c est quoi la date",
-            "on est le combien",
-        ]):
+        if any(_normalize(w) in q_norm for w in TIME_KEYWORDS):
             return IntentResult(intent=Intent.TIME_QUERY, confidence="high")
 
         # ── Recherche web ─────────────────────────────────────────────────
-        if any(w in q_norm for w in [
-            "cherche", "recherche", "google", "web",
-            "actualite", "news", "meteo",
-        ]):
+        if any(_normalize(w) in q_norm for w in WEB_KEYWORDS):
             return IntentResult(intent=Intent.WEB_SEARCH, confidence="high")
 
         # ── Home Assistant ────────────────────────────────────────────────
-        if any(w in q_norm for w in [
-            "allume", "eteins", "thermostat", "lumiere", "volet", "home assistant",
-        ]):
+        if any(_normalize(w) in q_norm for w in HA_KEYWORDS):
             return IntentResult(intent=Intent.HA_ACTION, confidence="high")
 
         # ── Conversation générale (défaut) ────────────────────────────────

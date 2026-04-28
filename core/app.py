@@ -75,7 +75,6 @@ from core.agents.communication.telegram_agent import (
     stop_bot
 )
 from core.agents.communication.web_agent import WebAgent
-from core.agents.communication.twilio_agent import TwilioAgent
 
 # IO
 from core.agents.io.stt_agent import STTAgent
@@ -588,6 +587,8 @@ async def audio_input(file: UploadFile = File(...)):
     start = time.monotonic()
     metrics.record_request_start()
     try:
+        if stt_agent is None:
+            raise HTTPException(503, "STT non disponible (désactivé dans cette configuration)")
         audio_bytes = await file.read()
         result      = await stt_agent.transcribe(audio_bytes, file.filename)
         if not result.success:
@@ -617,6 +618,8 @@ async def voice_input(file: UploadFile = File(...)):
     start = time.monotonic()
     metrics.record_request_start()
     try:
+        if stt_agent is None or tts_agent is None:
+            raise HTTPException(503, "Pipeline vocal non disponible (STT/TTS désactivés dans cette configuration)")
         audio_bytes = await file.read()
         stt_result  = await stt_agent.transcribe(audio_bytes, file.filename)
         if not stt_result.success:

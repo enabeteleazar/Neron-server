@@ -98,7 +98,7 @@ async def _task_daily_report():
     if not _notify_fn:
         return
     try:
-        from core.agents.watchdog_agent import get_status, get_health_score
+        from core.agents.automation.watchdog_agent import get_status, get_health_score
         # FIX: renommé sys_ en sys_status pour éviter la collision avec le module 'sys'
         #      et corriger la NameError sur sys_ vs sys
         sys_status = get_status()
