@@ -46,7 +46,7 @@ def health_check():
 
 
 def send_message(text, stream=True):
-    endpoint = "/input/stream" if stream else "/input"
+    endpoint = "/input/text" if stream else "/input"
 
     try:
         if stream:
@@ -96,7 +96,7 @@ def send_message(text, stream=True):
         return "\n[TIMEOUT] Néron trop lent"
 
     except requests.exceptions.ConnectionError:
-        return "\n[ERROR] neron-server inaccessible"
+        return "\n[ERROR] neron-core inaccessible"
 
     except Exception as e:
         return f"\n[ERROR] {e}"
