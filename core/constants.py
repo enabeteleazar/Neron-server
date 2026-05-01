@@ -1,13 +1,14 @@
 # core/constants.py
 # Source de vérité unique pour tous les mots-clés de détection d'intent.
 # Importé par intent_router.py et telegram_agent.py.
+#
+# v2.0 — Ajout des intents : NEWS_QUERY, WEATHER_QUERY, TODO_ACTION, WIKI_QUERY
+#         Inspiré de J.A.R.V.I.S (GauravSingh9356) — fonctionnalités portées
+#         dans l'architecture agent Néron (sans dépendances Windows/cloud).
 
 from __future__ import annotations
 
 # ── Mots-clés code / développement ───────────────────────────────────────────
-# Expressions explicites uniquement — pas de mots courts ambigus comme
-# "code", "module", "classe" qui génèrent des faux positifs sur des
-# messages conversationnels.
 
 CODE_KEYWORDS: list[str] = [
     # Génération
@@ -54,7 +55,8 @@ HA_KEYWORDS: list[str] = [
 # ── Mots-clés recherche web ───────────────────────────────────────────────────
 
 WEB_KEYWORDS: list[str] = [
-    "cherche", "recherche", "google", "web", "actualite", "news", "meteo",
+    "cherche sur internet", "recherche sur le web", "google",
+    "trouve sur le web", "recherche en ligne",
 ]
 
 # ── Mots-clés heure / date ────────────────────────────────────────────────────
@@ -89,3 +91,58 @@ PERSONALITY_KEYWORDS: list[str] = [
     "mode focus", "concentration", "sois sérieux",
 ]
 
+# ─────────────────────────────────────────────────────────────────────────────
+# NOUVEAUX INTENTS — v2.0  (inspirés de J.A.R.V.I.S)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Mots-clés actualités ──────────────────────────────────────────────────────
+
+NEWS_KEYWORDS: list[str] = [
+    "actualite", "actualités", "actualites",
+    "les news", "les nouvelles", "nouvelles du jour",
+    "quoi de neuf", "headline", "journal du jour",
+    "info du jour", "infos du jour",
+    "dernières nouvelles", "dernieres nouvelles",
+    "actualité tech", "actualite tech",
+    "actualité france", "actualite france",
+    "actualité monde", "actualite monde",
+    "actualité science", "actualite science",
+]
+
+# ── Mots-clés météo ───────────────────────────────────────────────────────────
+
+WEATHER_KEYWORDS: list[str] = [
+    "meteo", "météo",
+    "temperature", "température",
+    "temps qu il fait", "quel temps",
+    "il fait combien", "combien de degrés",
+    "va-t-il pleuvoir", "va t il pleuvoir",
+    "est-ce qu il va pleuvoir", "pluie aujourd",
+    "prevision meteo", "prévision météo",
+    "vent aujourd", "humidite aujourd",
+]
+
+# ── Mots-clés todo list ───────────────────────────────────────────────────────
+
+TODO_KEYWORDS: list[str] = [
+    "ma liste", "mes taches", "mes tâches",
+    "todo", "a faire", "à faire",
+    "ajoute a ma liste", "ajoute à ma liste",
+    "rappelle-moi de", "rappelle moi de",
+    "n oublie pas de", "n'oublie pas de",
+    "note que", "j ai fait", "j'ai fait",
+    "c est fait", "c'est fait", "marque comme termine",
+    "efface tout", "vide la liste",
+]
+
+# ── Mots-clés Wikipédia ───────────────────────────────────────────────────────
+
+WIKI_KEYWORDS: list[str] = [
+    "qu est-ce que", "qu'est-ce que",
+    "c est quoi", "c'est quoi",
+    "definition de", "définition de",
+    "explique-moi", "explique moi",
+    "parle-moi de", "parle moi de",
+    "qui est", "wikipedia", "wiki",
+    "dis-moi ce qu est", "dis moi ce qu est",
+]
