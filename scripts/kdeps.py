@@ -1,15 +1,15 @@
+import importlib.util
 import subprocess
+
 
 def install_packages(packages):
     for pkg in packages:
         subprocess.run(["pip", "install", pkg])
 
+
 def check_package(pkg):
-    try:
-        __import__(pkg)
-        return True
-    except ImportError:
-        return False
+    return importlib.util.find_spec(pkg) is not None
+
 
 if __name__ == "__main__":
     packages = ["ollama", "ragflow", "requests", "python-dotenv", "tqdm", "websockets", "uvicorn"]
