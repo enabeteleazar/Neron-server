@@ -1,10 +1,15 @@
+import importlib.util
 import subprocess
 import sys
 
-def install_packages(packages: list[str]):
+
+def is_installed(package: str) -> bool:
+    return importlib.util.find_spec(package) is not None
+
+
+def install_packages(packages: list[str]) -> None:
     for pkg in packages:
-        try:
-            __import__(pkg)
-        except ImportError:
-            print(f"Module {pkg} manquant, installation...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
+        if is_installed(pkg):
+            continue
+        print(f"Module {pkg} manquant, installation...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", pkg])
