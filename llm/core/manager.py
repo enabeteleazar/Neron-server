@@ -1,4 +1,4 @@
-# neron_llm/core/manager.py
+# llm/core/manager.py
 # LLM Manager — orchestration engine with single/parallel/race modes.
 
 from __future__ import annotations

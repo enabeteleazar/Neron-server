@@ -1,10 +1,10 @@
-# neron_llm/core/strategy.py
+# llm/core/strategy.py
 #Strategy layer — decides execution mode automatically based on task type.
 
 from __future__ import annotations
 import logging
 
-logger = logging.getLogger("neron_llm.strategy")
+logger = logging.getLogger("llm.strategy")
 
 # ── Built-in task → mode defaults ─────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ class StrategyEngine:
         # Load yaml overrides at construction — config is cached by lru_cache
         self._strategies = dict(_DEFAULT_TASK_STRATEGIES)
         try:
-            from neron_llm.config import load_config
+            from llm.config import load_config
             cfg_strategies: dict = load_config().get("strategy", {})
             valid_modes = {"single", "parallel", "race"}
             for task, mode in cfg_strategies.items():

@@ -1,11 +1,11 @@
-# neron_llm/core/router.py
+# llm/core/router.py
 # Intelligent LLM router — selects model and provider based on config.
 
 from __future__ import annotations
 import logging
 from llm.config import get_llm_config, get_routing_config
 
-logger = logging.getLogger("neron_llm.router")
+logger = logging.getLogger("llm.router")
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 

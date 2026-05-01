@@ -1,5 +1,5 @@
-"""neron_llm/api/routes.py
-API routes for neron_llm — fully async.
+"""llm/api/routes.py
+API routes for llm — fully async.
 
 v2.0: POST /llm/generate added as the primary bus endpoint.
       GET  /llm/metrics added.
@@ -92,10 +92,10 @@ def _safe_histogram(name: str, doc: str, labels: list[str] | None = None) -> His
     return Histogram(name, doc, labels or [])
 
 
-_metric_requests  = _safe_counter(  "neron_llm_requests_total",  "Total generate requests", ["task_type"])
-_metric_errors    = _safe_counter(  "neron_llm_errors_total",    "Total errors",            ["task_type"])
-_metric_latency   = _safe_histogram("neron_llm_latency_ms",      "Latency ms",              ["task_type"])
-_metric_fallbacks = _safe_counter(  "neron_llm_fallbacks_total", "Model fallbacks fired",   ["reason"])
+_metric_requests  = _safe_counter(  "llm_requests_total",  "Total generate requests", ["task_type"])
+_metric_errors    = _safe_counter(  "llm_errors_total",    "Total errors",            ["task_type"])
+_metric_latency   = _safe_histogram("llm_latency_ms",      "Latency ms",              ["task_type"])
+_metric_fallbacks = _safe_counter(  "llm_fallbacks_total", "Model fallbacks fired",   ["reason"])
 
 
 # ── Helper: extract correlation ID ────────────────────────────────────────────
@@ -241,7 +241,7 @@ async def health() -> dict:
 
     return {
         "status":    "ok" if ollama_up else "degraded",
-        "service":   "neron_llm",
+        "service":   "llm",
         "version":   "2.0.0",
         "providers": {
             "ollama": "up" if ollama_up else "down",

@@ -10,7 +10,7 @@ import httpx
 from llm.config import get_llm_config
 from llm.providers.base import BaseProvider
 
-logger = logging.getLogger("neron_llm.claude")
+logger = logging.getLogger("llm.claude")
 
 ANTHROPIC_BASE_URL = "https://api.anthropic.com"
 ANTHROPIC_VERSION  = "2023-06-01"

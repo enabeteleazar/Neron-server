@@ -1,4 +1,4 @@
-# neron_llm/main.py
+# llm/main.py
 # Neron LLM microservice — main entry point.
 
 from __future__ import annotations
@@ -48,24 +48,24 @@ app.include_router(router)
 
 @app.on_event("startup")
 async def on_startup() -> None:
-    logging.getLogger("neron_llm").info(
-        json.dumps({"event": "neron_llm_started", "version": "2.0.0", "port": 8765})
+    logging.getLogger("llm").info(
+        json.dumps({"event": "llm_started", "version": "2.0.0", "port": 8765})
     )
 
 
 @app.on_event("shutdown")
 async def on_shutdown() -> None:
-    from neron_llm.api.routes import manager
+    from llm.api.routes import manager
     await manager.aclose()
-    logging.getLogger("neron_llm").info(
-        json.dumps({"event": "neron_llm_stopped"})
+    logging.getLogger("llm").info(
+        json.dumps({"event": "llm_stopped"})
     )
 
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "neron_llm.main:app",
+        "llm.main:app",
         host    = "127.0.0.1",
         port    = 8765,
         workers = 1,

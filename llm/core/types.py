@@ -1,5 +1,5 @@
-# neron_llm/core/types.py
-# Data models for neron_llm — standardized request/response formats.
+# llm/core/types.py
+# Data models for llm — standardized request/response formats.
 
 from __future__ import annotations
 from typing import Dict, Literal, Optional

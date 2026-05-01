@@ -9,7 +9,7 @@ import httpx
 from llm.config import get_llm_config
 from llm.providers.base import BaseProvider
 
-logger = logging.getLogger("neron_llm.ollama")
+logger = logging.getLogger("llm.ollama")
 
 
 class OllamaProvider(BaseProvider):
