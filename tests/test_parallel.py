@@ -150,13 +150,14 @@ def test_router_fallback_chain():
 # ---------------------------------------------------------------------------
 
 
-def test_parallel_execution():
+@pytest.mark.asyncio
+async def test_parallel_execution():
     """Providers run in parallel — total time ≈ max(delay), not sum(delay)."""
     mgr = make_manager_with_slow_providers()
     req = make_request(mode="parallel")
 
     start = time.perf_counter()
-    result = asyncio.run(mgr.handle(req))
+    result = await mgr.handle(req)
     elapsed = time.perf_counter() - start
 
     # Parallel: ≈ 0.4s | Sequential: ≈ 0.9s
@@ -170,13 +171,14 @@ def test_parallel_execution():
     print(f"\n  PARALLEL confirmed: {elapsed:.3f}s (sequential ~0.9s)")
 
 
-def test_race_execution():
+@pytest.mark.asyncio
+async def test_race_execution():
     """In race mode, the fastest provider wins and others are cancelled."""
     mgr = make_manager_with_slow_providers()
     req = make_request(mode="race")
 
     start = time.perf_counter()
-    result = asyncio.run(mgr.handle(req))
+    result = await mgr.handle(req)
     elapsed = time.perf_counter() - start
 
     assert elapsed < 0.35, (
@@ -188,7 +190,8 @@ def test_race_execution():
     print(f"\n  RACE confirmed: {elapsed:.3f}s — winner={result.provider}")
 
 
-def test_single_execution():
+@pytest.mark.asyncio
+async def test_single_execution():
     """Single mode returns structured LLMResponse."""
     mgr = LLMManager()
     mgr.providers = {"ollama": SlowProvider("ollama", 0.05)}
@@ -196,7 +199,7 @@ def test_single_execution():
     mgr.router.select_model = lambda task=None: "test-model"
 
     req = make_request(mode="single")
-    result = asyncio.run(mgr.handle(req))
+    result = await mgr.handle(req)
 
     assert isinstance(result, LLMResponse)
     assert result.provider == "ollama"
@@ -207,7 +210,8 @@ def test_single_execution():
     print(f"\n  SINGLE structured: {result}")
 
 
-def test_sequential_baseline():
+@pytest.mark.asyncio
+async def test_sequential_baseline():
     """Sequential baseline — 3 calls × 0.2s should take > 0.4s."""
     mgr = LLMManager()
     mgr.providers = {"fast": SlowProvider("fast", 0.2)}
@@ -217,9 +221,9 @@ def test_sequential_baseline():
     req = make_request(mode="single")
 
     start = time.perf_counter()
-    asyncio.run(mgr.handle(req))
-    asyncio.run(mgr.handle(req))
-    asyncio.run(mgr.handle(req))
+    await mgr.handle(req)
+    await mgr.handle(req)
+    await mgr.handle(req)
     elapsed = time.perf_counter() - start
 
     assert elapsed > 0.4, f"Sequential too fast: {elapsed:.2f}s, expected > 0.4s"
@@ -232,7 +236,8 @@ def test_sequential_baseline():
 # ---------------------------------------------------------------------------
 
 
-def test_fallback_on_failure():
+@pytest.mark.asyncio
+async def test_fallback_on_failure():
     """If primary provider fails, fallback provider is used."""
     mgr = LLMManager()
     mgr.providers = {
@@ -241,7 +246,7 @@ def test_fallback_on_failure():
     }
 
     req = make_request(mode="single", provider="ollama")
-    result = asyncio.run(mgr.handle(req))
+    result = await mgr.handle(req)
 
     # Should fallback to claude
     assert result.provider == "claude"
@@ -251,7 +256,8 @@ def test_fallback_on_failure():
     print(f"\n  FALLBACK confirmed: ollama → claude, result={result.provider}")
 
 
-def test_retry_then_success():
+@pytest.mark.asyncio
+async def test_retry_then_success():
     """Provider that fails once but succeeds on retry.
 
     The backoff sleep is patched to zero so the test stays fast.
@@ -269,7 +275,7 @@ def test_retry_then_success():
 
     with patch("neron_llm.server.server.server.serverVNext.serverVNext.core.manager.asyncio.sleep") as mock_sleep:
         mock_sleep.return_value = None  # instant
-        result = asyncio.run(mgr.handle(req))
+        result = await mgr.handle(req)
 
     assert result.error is None
     assert result.provider == "ollama"
@@ -300,7 +306,8 @@ def test_retry_no_sleep_after_last_attempt():
     print(f"\n  NO POST-LAST-ATTEMPT SLEEP confirmed: sleep called {mock_sleep.call_count}x")
 
 
-def test_all_providers_fail():
+@pytest.mark.asyncio
+async def test_all_providers_fail():
     """When all providers fail, error is returned."""
     mgr = LLMManager()
     mgr.providers = {
@@ -311,7 +318,7 @@ def test_all_providers_fail():
     req = make_request(mode="single", provider="ollama")
 
     with patch("neron_llm.server.server.server.serverVNext.serverVNext.core.manager.asyncio.sleep"):
-        result = asyncio.run(mgr.handle(req))
+        result = await mgr.handle(req)
 
     assert result.error is not None
     assert "error" in result.error.lower() or "failed" in result.error.lower()
@@ -319,7 +326,8 @@ def test_all_providers_fail():
     print(f"\n  ALL-FAIL handled: error={result.error}")
 
 
-def test_parallel_tolerates_failing_provider():
+@pytest.mark.asyncio
+async def test_parallel_tolerates_failing_provider():
     """In parallel mode, a failing provider doesn't crash others."""
     mgr = LLMManager()
     mgr.providers = {
@@ -328,7 +336,7 @@ def test_parallel_tolerates_failing_provider():
     }
 
     req = make_request(mode="parallel")
-    result = asyncio.run(mgr.handle(req))
+    result = await mgr.handle(req)
 
     assert result.error is None
     assert "good" in result.response
@@ -341,7 +349,8 @@ def test_parallel_tolerates_failing_provider():
 # ---------------------------------------------------------------------------
 
 
-def test_response_format():
+@pytest.mark.asyncio
+async def test_response_format():
     """Every response follows the LLMResponse format."""
     mgr = LLMManager()
     mgr.providers = {"ollama": SlowProvider("ollama", 0.05)}
@@ -350,7 +359,7 @@ def test_response_format():
 
     for mode in ["single", "parallel", "race"]:
         req = make_request(mode=mode)
-        result = asyncio.run(mgr.handle(req))
+        result = await mgr.handle(req)
 
         assert isinstance(result, LLMResponse)
         assert hasattr(result, "model")
