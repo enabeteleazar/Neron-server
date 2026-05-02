@@ -1,4 +1,12 @@
 # =========================
+# SUBMODULE
+# =========================
+core/
+llm/
+doctor/
+client*/
+
+# =========================
 # PYTHON
 # =========================
 pycache/
@@ -96,7 +104,3 @@ venv/
 !/client/homeassistant/.keep
 .claude
 .copilot
-core/
-llm/
-doctor/
-client_vocal/
