@@ -179,8 +179,9 @@ info_services(){
 
   SERVICES=(
     "ollama.service"
-    "neron.service"
+    "neron-core.service"
     "neron-llm.service"
+    "ollama.service"
     "neron-doctor.service"
     "neron-homeassistant.service"
     "cups.service"
