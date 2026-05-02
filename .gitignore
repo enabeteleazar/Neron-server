@@ -96,3 +96,7 @@ venv/
 !/client/homeassistant/.keep
 .claude
 .copilot
+core/
+llm/
+doctor/
+client_vocal/
