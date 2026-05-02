@@ -1,0 +1,66 @@
+../llm/.gitignorevenv/
+__pycache__/
+*.log
+
+""""/
+# =========================
+# Autres fichiers système
+# Docker et conteneurs
+# Données générés par les services
+# Environnements et secrets
+# Fichiers temporaires et logs
+# Modèles et données LLM
+# Node / Frontend
+# Ollama / SSH
+# Python
+# Python virtual environment
+*.DS_Store
+*.bak
+*.egg
+*.egg-info/
+*.log
+*.old
+*.pid
+*.pyc
+*.pyd
+*.pyo
+*.pytest_cache/
+*.save
+*.secret
+*.sock
+*.swp
+*.tmp
+*.wav
+*.yaml
+Data/
+Neron/*/data
+Neron/*/model
+Services/*/data/
+Services/*/model/
+Services/*/n8n/.n8n
+Services/*/node-red/data/
+Services/homeassistant/config/.storage/
+Thumbs.db
+__pycache__/
+build/
+config/searxng/settings.yml
+config/searxng/settings.yml.new
+config_backup_local/
+core/config.py
+data/
+data/ollama/*
+data/ollama/id_ed25519
+data/ollama/id_ed25519.pub
+desktop.ini
+dist/
+docker-compose.override.yml
+labo/
+localai/models/
+modules/neron-*
+node_modules/
+npm-debug.log
+pip-wheel-metadata/
+test.wav
+venv/
+yarn-error.log
+neron.yaml
