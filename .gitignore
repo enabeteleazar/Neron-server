@@ -38,6 +38,8 @@ logs/
 neron.yaml
 neron.yaml.dev
 
+homebox.tail7f8e60.ts.net.*
+
 # =========================
 # TEST / COVERAGE
 # =========================

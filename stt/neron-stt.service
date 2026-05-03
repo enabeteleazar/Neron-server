@@ -1,0 +1,17 @@
+[Unit]
+Description=Neron STT — Service de transcription vocale
+After=network.target
+
+[Service]
+Type=simple
+User=neron
+WorkingDirectory=/etc/neron/stt
+ExecStart=/etc/neron/stt/venv/bin/python src/main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=neron-stt
+
+[Install]
+WantedBy=multi-user.target

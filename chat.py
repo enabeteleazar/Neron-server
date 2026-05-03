@@ -1,25 +1,36 @@
 #!/usr/bin/env python3
 """
-Client CLI Néron vNext (secure)
-- Support API Key (Authorization Bearer)
-- Streaming temps réel
-- Memory integration
-- Health check
+Client CLI Néron vNext++
+- API Key
+- Streaming robuste
+- Memory injectée automatiquement
+- Retry + fallback
+- Debug mode
 """
 
 import requests
 import json
 import os
+import time
 
 # =========================
 # CONFIG
 # =========================
 
-NERON_URL = "http://100.90.194.109:8010"
-MEMORY_URL = "http://100.90.194.109:8002"
+NERON_URL = os.getenv("NERON_URL", "http://100.90.194.109:8010")
+MEMORY_URL = os.getenv("MEMORY_URL", "http://100.90.194.109:8002")
 
-# 🔐 API KEY (env recommandé)
 NERON_API_KEY = os.getenv("NERON_API_KEY", "dev-key")
+
+DEBUG = os.getenv("NERON_DEBUG", "0") == "1"
+
+TIMEOUT = 60
+RETRIES = 2
+
+
+def debug(msg):
+    if DEBUG:
+        print(f"[DEBUG] {msg}")
 
 
 def get_headers():
@@ -27,6 +38,41 @@ def get_headers():
         "Authorization": f"Bearer {NERON_API_KEY}",
         "Content-Type": "application/json"
     }
+
+
+# =========================
+# MEMORY CONTEXT BUILDER
+# =========================
+
+def build_context(user_input):
+    """
+    Injecte automatiquement de la mémoire pertinente
+    """
+    try:
+        r = requests.get(
+            f"{MEMORY_URL}/search",
+            params={"query": user_input},
+            headers=get_headers(),
+            timeout=3
+        )
+
+        if r.status_code != 200:
+            return ""
+
+        results = r.json()
+
+        context = "\n".join([
+            f"- {item.get('input', '')} -> {item.get('response', '')}"
+            for item in results[:3]
+        ])
+
+        if context:
+            return f"\n[Contexte mémoire]\n{context}\n"
+
+        return ""
+
+    except:
+        return ""
 
 
 # =========================
@@ -46,60 +92,87 @@ def health_check():
 
 
 def send_message(text, stream=True):
-    endpoint = "/input/text" if stream else "/input"
+    """
+    Envoi avec:
+    - retry
+    - fallback endpoint
+    - contexte mémoire
+    """
 
-    try:
-        if stream:
-            with requests.post(
-                f"{NERON_URL}{endpoint}",
-                json={"text": text},
-                headers=get_headers(),
-                stream=True,
-                timeout=60
-            ) as r:
-                r.raise_for_status()
+    context = build_context(text)
+    payload = {"text": context + text}
 
-                full_response = ""
+    endpoints = ["/input/text", "/input"] if stream else ["/input"]
 
-                for chunk in r.iter_lines():
-                    if chunk:
-                        decoded = chunk.decode("utf-8")
+    for attempt in range(RETRIES):
+        for endpoint in endpoints:
+            try:
+                debug(f"POST {endpoint} (attempt {attempt})")
 
-                        try:
-                            data = json.loads(decoded)
-                            token = data.get("token") or data.get("response", "")
-                        except:
-                            token = decoded
+                if stream and endpoint == "/input/text":
+                    with requests.post(
+                        f"{NERON_URL}{endpoint}",
+                        json=payload,
+                        headers=get_headers(),
+                        stream=True,
+                        timeout=TIMEOUT
+                    ) as r:
+                        r.raise_for_status()
 
-                        print(token, end="", flush=True)
-                        full_response += token
+                        full = ""
 
-                print()
-                return full_response
+                        for chunk in r.iter_lines():
+                            if not chunk:
+                                continue
 
-        else:
-            r = requests.post(
-                f"{NERON_URL}{endpoint}",
-                json={"text": text},
-                headers=get_headers(),
-                timeout=60
-            )
-            r.raise_for_status()
-            return r.json().get("response", "")
+                            decoded = chunk.decode("utf-8").strip()
 
-    except requests.exceptions.HTTPError as e:
-        if e.response is not None and e.response.status_code == 401:
-            return "\n[AUTH ERROR] API key invalide"
-        return f"\n[HTTP ERROR] {e}"
+                            # Support SSE
+                            if decoded.startswith("data:"):
+                                decoded = decoded[5:].strip()
 
-    except requests.exceptions.Timeout:
-        return "\n[TIMEOUT] Néron trop lent"
+                            try:
+                                data = json.loads(decoded)
+                                token = data.get("token") or data.get("response", "")
+                            except:
+                                token = decoded
 
-    except requests.exceptions.ConnectionError:
-        return "\n[ERROR] neron-core inaccessible"
+                            print(token, end="", flush=True)
+                            full += token
 
-    except Exception as e:
-        return f"\n[ERROR] {e}"
+                        print()
+                        return full
+
+                else:
+                    r = requests.post(
+                        f"{NERON_URL}{endpoint}",
+                        json=payload,
+                        headers=get_headers(),
+                        timeout=TIMEOUT
+                    )
+                    r.raise_for_status()
+
+                    data = r.json()
+                    response = data.get("response", "")
+
+                    print(response)
+                    return response
+
+            except requests.exceptions.Timeout:
+                debug("Timeout...")
+                continue
+
+            except requests.exceptions.ConnectionError:
+                debug("Connection error...")
+                continue
+
+            except requests.exceptions.HTTPError as e:
+                if e.response is not None and e.response.status_code == 401:
+                    return "\n[AUTH ERROR] API key invalide"
+                debug(f"HTTP error: {e}")
+                continue
+
+    return "\n[ERROR] Néron indisponible après retries"
 
 
 # =========================
@@ -111,20 +184,6 @@ def get_history(limit=5):
         r = requests.get(
             f"{MEMORY_URL}/retrieve",
             params={"limit": limit},
-            headers=get_headers(),
-            timeout=5
-        )
-        r.raise_for_status()
-        return r.json()
-    except:
-        return []
-
-
-def search_memory(query):
-    try:
-        r = requests.get(
-            f"{MEMORY_URL}/search",
-            params={"query": query},
             headers=get_headers(),
             timeout=5
         )
@@ -168,24 +227,24 @@ def print_colored(text, color="blue", end="\n"):
 
 def main():
     print("=" * 50)
-    print("NÉRON CLIENT vNEXT (SECURE)")
+    print("NÉRON CLIENT vNEXT++")
     print("=" * 50)
 
-    # Health check
     if health_check():
         print_colored("[OK] neron-server en ligne", "green")
     else:
-        print_colored("[KO] serveur indisponible ou API key invalide", "red")
+        print_colored("[KO] serveur indisponible", "red")
 
     print("""
 Commandes:
-  /history        -> 5 dernières conversations
-  /search <mot>   -> recherche mémoire
-  /stats          -> stats mémoire
-  /health         -> état serveur
-  /clear          -> clear écran
-  /quit           -> quitter
+  /history
+  /stats
+  /health
+  /debug on|off
+  /quit
 """)
+
+    global DEBUG
 
     while True:
         try:
@@ -195,69 +254,37 @@ Commandes:
             if not user_input:
                 continue
 
-            # Quit
             if user_input in ["/quit", "/exit"]:
-                print("\nBye\n")
                 break
 
-            # Clear
-            elif user_input == "/clear":
-                print("\033[2J\033[H")
-                continue
-
-            # Health
             elif user_input == "/health":
-                status = health_check()
-                print_colored("OK" if status else "KO", "green" if status else "red")
+                print_colored("OK" if health_check() else "KO",
+                              "green" if health_check() else "red")
                 continue
 
-            # History
             elif user_input == "/history":
-                history = get_history()
-                print("\n--- Historique ---")
-                for item in history:
-                    print(f"\n[{item.get('timestamp', 'N/A')}]")
-                    print(f"Vous : {item.get('input', '')[:80]}")
-                    print(f"Néron: {item.get('response', '')[:80]}")
+                for item in get_history():
+                    print(f"\n[{item.get('timestamp')}]")
+                    print(f"Vous : {item.get('input')[:80]}")
+                    print(f"Néron: {item.get('response')[:80]}")
                 print()
                 continue
 
-            # Search
-            elif user_input.startswith("/search "):
-                query = user_input.split(" ", 1)[1]
-                results = search_memory(query)
-
-                print(f"\nRésultats pour: {query}")
-                if results:
-                    for item in results[:3]:
-                        print(f"- {item.get('input', '')[:80]}")
-                else:
-                    print("Aucun résultat")
-                print()
-                continue
-
-            # Stats
             elif user_input == "/stats":
                 stats = get_stats()
-                if stats:
-                    print("\nStats mémoire:")
-                    print(f"  Total: {stats.get('total_entries', 0)}")
-                    print(f"  7 jours: {stats.get('recent_entries_7d', 0)}")
-                else:
-                    print("Erreur récupération stats")
-                print()
+                print(stats if stats else "Erreur")
                 continue
 
-            # MESSAGE NORMAL
+            elif user_input.startswith("/debug"):
+                DEBUG = "on" in user_input
+                print(f"DEBUG = {DEBUG}")
+                continue
+
             print_colored("Néron > ", "yellow", end="")
             send_message(user_input, stream=True)
-            print()
 
         except KeyboardInterrupt:
-            print("\nBye\n")
             break
-        except Exception as e:
-            print(f"\nErreur: {e}\n")
 
 
 if __name__ == "__main__":

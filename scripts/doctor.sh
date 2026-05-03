@@ -9,6 +9,7 @@ SERVER_URL="http://localhost:8010"
 LLM_URL="http://localhost:8765"
 API_URL="$SERVER_URL/health"
 
+
 TIMEOUT=5
 DEBUG=0
 DEEP=0
@@ -178,10 +179,10 @@ info_services(){
   step "SERVICES"
 
   SERVICES=(
-    "ollama.service"
     "neron-core.service"
     "neron-llm.service"
     "ollama.service"
+    "neron-stt.service"
     "neron-doctor.service"
     "neron-homeassistant.service"
     "cups.service"
