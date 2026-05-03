@@ -1,189 +1,35 @@
 # ============================================
-# NÉRON AI — CLEAN MAKEFILE (v3)
+# NÉRON AI — MAKEFILE (WRAPPER NERONCTL)
 # ============================================
 
-REPO_DIR := /etc/neron
-VENV_DIR := $(REPO_DIR)/venv
-PYTHON := $(VENV_DIR)/bin/python3
-PIP := $(VENV_DIR)/bin/pip
-SERVICE_SERVER := neron.service
-SERVICE_LLM := neron-llm.service
-
-.PHONY: help install install-core install-systemd start stop restart status logs update clean version telegram ha-config ollama install-client start-client backup restore neron
-
-# ============================================
-# HELP
-# ============================================
+.PHONY: help install update backup restore telegram ollama client-install client-start neron
 
 help:
-	@echo ""
-	@echo "[Server]"
-	@echo "  make start      	-- demarrer le service"
-	@echo "  make stop       	-- arreter le service"
-	@echo "  make restart    	-- redemarrer le service"
-	@echo "  make logs		-- Logs du server"
-	@echo "  make version		-- Info Systeme"
-	@echo ""
-	@echo "[Client]"
-	@echo "  make client-start    	-- demarrer l'application"
-	@echo "  make client-stop	-- arreter l'application "
-	@echo "  make client-restart	-- relance l'application"
-	@echo ""
-	@echo "[Sauvegarde]"
-	@echo "  make backup     	-- sauvegarder DB + neron.yaml"
-	@echo "  make restore    	-- restaurer une sauvegarde"
-	@echo ""
-	@echo "[Integration]"
-	@echo "  make ollama     	-- gerer le modele Ollama"
-	@echo "  make telegram   	-- configurer les bots Telegram"
-	@echo ""
-	@echo "[Home Assistant]"
-	@echo "  make ha-start		-- Demarrer Home Assistant"
-	@echo "  make ha-stop		-- Aretter Home Assistant "
-	@echo "  make ha-restart   	-- Redemarrer Home Assistant"
-	@echo "  make ha-install	-- installer Home Assistant"
-	@echo "  make ha-config  	-- configurer Home Assistant"
-	@echo ""
+	@neron
 
-# ============================================
-# INSTALL
-# ============================================
-
-install: install-core install-systemd
-	@echo "✔ Installation terminée"
-
-install-core:
-	@echo "🔧 Install dépendances..."
-	@sudo apt-get update -qq
-	@sudo apt-get install -y -qq python3-venv git curl make
-
-	@echo "🐍 Setup venv..."
-	@test -d $(VENV_DIR) || python3 -m venv $(VENV_DIR)
-	@$(PIP) install --upgrade pip -q
-
-	@if [ -f $(REPO_DIR)/constraints.txt ]; then \
-		$(PIP) install -r $(REPO_DIR)/constraints.txt -q; \
-	fi
-
-install-systemd:
-	@echo "⚙️ systemd setup..."
-	@printf '[Unit]\nDescription=Néron AI\nAfter=network.target\n\n[Service]\nType=simple\nWorkingDirectory=%s\nExecStart=%s %s/main.py\nRestart=always\nUser=root\nEnvironment=PYTHONUNBUFFERED=1\n\n[Install]\nWantedBy=multi-user.target\n' \
-		"$(REPO_DIR)" "$(PYTHON)" "$(REPO_DIR)" \
-		| sudo tee /etc/systemd/system/neron.service > /dev/null
-	@sudo systemctl daemon-reload
-	@sudo systemctl enable neron
-	@echo "✔ systemd OK"
-
-# ============================================
-# SERVICE CONTROL (delegated to neronctl)
-# ============================================
-
-neronctl:
-	@/usr/local/bin/neronctl $(CMD)
-
-start:
-	@neronctl start
-
-stop:
-	@neronctl stop
-
-restart:
-	@neronctl restart
-
-status:
-	@neronctl status
-
-logs:
-	@neronctl logs
-
-# ============================================
-# UPDATE
-# ============================================
+install:
+	@neron install
 
 update:
-	@echo "🔄 update..."
-	@git -C $(REPO_DIR) pull
-	@$(PIP) install -r $(REPO_DIR)/requirements.txt -q
-	@sudo systemctl restart $(SERVICE)
-	@echo "✔ updated"
-
-# ============================================
-# CLEAN
-# ============================================
-
-clean:
-	@rm -rf $(VENV_DIR)
-	@echo "✔ clean done"
-
-# ============================================
-# VERSION
-# ============================================
-
-version:
-	@bash $(REPO_DIR)/scripts/doctor.sh
-
-# ============================================
-# CLIENT
-# ============================================
-
-client-start:
-	@bash $(REPO_DIR)/scripts/client.sh start
-
-client-stop:
-	@bash $(REPO_DIR)/scripts/client.sh stop
-
-client-restart:
-	@bash $(REPO_DIR)/scripts/client.sh restart
-
-
-# ============================================
-# BACKUP / RESTORE
-# ============================================
+	@neron update
 
 backup:
-	@bash $(REPO_DIR)/scripts/backup.sh backup
+	@neron backup
 
 restore:
-	@bash $(REPO_DIR)/scripts/backup.sh restore
-
-# ============================================
-# CONFIG DISPLAY
-# ============================================
+	@neron restore
 
 neron:
-	@bash $(REPO_DIR)/scripts/neron.sh
-
-# ============================================
-# EXTERNAL MODULES (CLEAN WRAPPERS)
-# ============================================
+	@neron config
 
 telegram:
-	@bash $(REPO_DIR)/scripts/telegram.sh
+	@neron telegram
 
 ollama:
-	@bash $(REPO_DIR)/scripts/ollama.sh
+	@neron ollama
 
-# ============================================
-# HOME ASSISTANT
-# ============================================
+client-install:
+	@neron client-install
 
-ha-install:
-	@bash $(REPO_DIR)/scripts/ha_install.sh
-
-ha-start:
-	@bash $(REPO_DIR)/scripts/ha.sh start
-
-ha-stop:
-	@bash $(REPO_DIR)/scripts/ha.sh stop
-
-ha-restart:
-	@bash $(REPO_DIR)/scripts/ha.sh restart
-
-ha-status:
-	@bash $(REPO_DIR)/scripts/ha.sh status
-
-ha-logs:
-	@bash $(REPO_DIR)/scripts/ha.sh logs
-
-ha-config:
-	@bash $(REPO_DIR)/scripts/ha.sh config
+client-start:
+	@neron client-start

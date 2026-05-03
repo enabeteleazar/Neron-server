@@ -1,5 +1,6 @@
 {
-  "core": "v3.0.0",
-  "llm": "v2.0.1",
-  "doctor": "v1.1.0"
+  "core": "v3.1.0",
+  "llm": "v2.0.2",
+  "doctor": "v1.1.0",
+  "client_vocal": ""v1.0.0"
 }
