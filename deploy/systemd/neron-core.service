@@ -1,16 +1,15 @@
 [Unit]
-Description=Néron Doctor (API)
+Description=Néron autonomous assistant (API)
 After=network.target
 
 [Service]
 Type=simple
 User=neron
 Group=neron-dev
-SupplementaryGroups=systemd-journal
 WorkingDirectory=/etc/neron
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/etc/neron/doctor
-ExecStart=/etc/neron/venv/bin/uvicorn doctor.app:app --host 0.0.0.0 --port 8020 --workers 1
+Environment=PYTHONPATH=/etc/neron/core
+ExecStart=/etc/neron/venv/bin/uvicorn core.app:app --host 0.0.0.0 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536

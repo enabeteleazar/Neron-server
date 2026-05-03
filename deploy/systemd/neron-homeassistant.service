@@ -6,7 +6,7 @@ After=network.target
 Type=simple
 User=eleazar
 WorkingDirectory=/etc/neron/client/homeassistant
-ExecStart=/etc/neron/server/venv/bin/hass -c /etc/neron/client/homeassistant/config
+ExecStart=/etc/neron/venv/bin/hass -c /etc/neron/client/homeassistant/config
 Restart=always
 RestartSec=5
 
