@@ -4,6 +4,7 @@
 core/
 llm/
 doctor/
+llama/
 client*/
 
 # =========================

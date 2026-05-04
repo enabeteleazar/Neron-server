@@ -182,6 +182,7 @@ info_services(){
     "neron-core.service"
     "neron-llm.service"
     "ollama.service"
+    "llama.service"
     "neron-vocal.service"
     "neron-doctor.service"
     "neron-kula.service"
