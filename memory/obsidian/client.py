@@ -16,6 +16,7 @@ class ObsidianMemory:
 
     def write_note(self, folder: str, title: str, content: str, tags=None) -> str:
         tags = tags or []
+
         target_dir = self.vault / folder
         target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -51,9 +52,12 @@ Tags: {" ".join("#" + tag for tag in tags)}
 
         return str(path)
 
-    def search(self, query: str, limit: int = 10):
+    def search(self, query: str, limit: int = 10) -> list[dict]:
         results = []
-        query_lower = query.lower()
+        query_lower = query.lower().strip()
+
+        if not query_lower:
+            return results
 
         for file in self.vault.rglob("*.md"):
             try:
@@ -75,6 +79,8 @@ Tags: {" ".join("#" + tag for tag in tags)}
 
     def read_note(self, relative_path: str) -> str:
         path = self.vault / relative_path
+
         if not path.exists():
             raise FileNotFoundError(f"Note introuvable : {relative_path}")
+
         return path.read_text(encoding="utf-8")
