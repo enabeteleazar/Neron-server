@@ -109,3 +109,18 @@ homeassistant/*
 core_old/
 core_history_clean/
 core_history_fixed/
+
+# databases
+*.db
+*.sqlite
+*.sqlite3
+
+# semantic index
+.semantic_index.json
+
+# backups
+backups/
+
+# python
+__pycache__/
+*.pyc
