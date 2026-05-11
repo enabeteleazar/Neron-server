@@ -557,22 +557,7 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
         elif intent_result.intent == Intent.CODE:
             return await _handle_code(query, intent_result, metadata, start)
 
-        memory_keywords = [
-            "ajoute une idée",
-            "note ceci",
-            "mémorise",
-            "memorise",
-            "sauvegarde ceci",
-            "enregistre ceci",
-            "retient ceci",
-            "cherche dans obsidian",
-            "recherche mémoire",
-            "cherche dans la mémoire",
-            "retrouve mes notes",
-            "mémoire obsidian",
-        ]
-
-        if any(keyword in query.lower() for keyword in memory_keywords):
+        if _is_memory_query(query):
             return await _handle_memory(query, intent_result, metadata, start)
 
         else:
@@ -981,6 +966,12 @@ def _is_memory_query(query: str) -> bool:
         "retrouve mes notes",
         "mémoire obsidian",
         "memoire obsidian",
+        "index vectoriel obsidian",
+        "recherche sémantique",
+        "recherche semantique",
+        "cherche sémantiquement",
+        "cherche semantiquement",
+        "semantic search",
     ]
     return any(keyword in q for keyword in memory_keywords)
 

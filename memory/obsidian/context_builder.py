@@ -1,11 +1,29 @@
 from memory.obsidian.client import ObsidianMemory
+from memory.obsidian.semantic_search import ObsidianSemanticSearch
 
 
 class ObsidianContextBuilder:
     def __init__(self, vault_path: str):
         self.memory = ObsidianMemory(vault_path)
+        self.semantic = ObsidianSemanticSearch(vault_path)
 
     def build_context(self, query: str, limit: int = 3) -> str:
+        semantic_results = self.semantic.search(query, limit=limit)
+
+        if semantic_results:
+            parts = ["Contexte sémantique extrait de la mémoire Obsidian :"]
+
+            for result in semantic_results[:limit]:
+                parts.append(
+                    f"\n---\n"
+                    f"Note: {result['title']}\n"
+                    f"Chemin: {result['path']}\n"
+                    f"Score: {result['score']}\n"
+                    f"Extrait:\n{result['preview']}"
+                )
+
+            return "\n".join(parts)
+
         results = self.memory.search(query, limit=limit)
 
         if not results:
@@ -36,11 +54,14 @@ class ObsidianContextBuilder:
         if not results:
             return ""
 
-        parts = ["Contexte extrait de la mémoire Obsidian :"]
+        parts = ["Contexte texte extrait de la mémoire Obsidian :"]
 
         for result in results[:limit]:
             parts.append(
-                f"\n---\nNote: {result['title']}\nChemin: {result['file']}\nExtrait:\n{result['preview']}"
+                f"\n---\n"
+                f"Note: {result['title']}\n"
+                f"Chemin: {result['file']}\n"
+                f"Extrait:\n{result['preview']}"
             )
 
         return "\n".join(parts)

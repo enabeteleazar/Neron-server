@@ -2,6 +2,7 @@ from memory.obsidian.client import ObsidianMemory
 from memory.obsidian.tagger import extract_tags, classify_folder
 from memory.obsidian.indexer import ObsidianIndexer
 from memory.obsidian.context_builder import ObsidianContextBuilder
+from memory.obsidian.semantic_search import ObsidianSemanticSearch
 
 
 class ObsidianAgent:
@@ -10,6 +11,7 @@ class ObsidianAgent:
         self.memory = ObsidianMemory(vault_path)
         self.indexer = ObsidianIndexer(vault_path)
         self.context_builder = ObsidianContextBuilder(vault_path)
+        self.semantic = ObsidianSemanticSearch(vault_path)
 
     def handle(self, text: str) -> dict:
         lowered = text.lower().strip()
@@ -23,11 +25,17 @@ class ObsidianAgent:
         if self._is_index_intent(lowered):
             return self._handle_index()
 
+        if self._is_vector_index_intent(lowered):
+            return self._handle_vector_index()
+
+        if self._is_semantic_search_intent(lowered):
+            return self._handle_semantic_search(text)
+
         return {
             "response": "Je n’ai pas compris l’action mémoire demandée.",
             "intent": "memory_unknown",
             "agent": "obsidian_agent",
-            "error": "unknown_memory_action"
+            "error": "unknown_memory_action",
         }
 
     def build_context(self, query: str, limit: int = 3) -> str:
@@ -41,7 +49,7 @@ class ObsidianAgent:
                 "response": "Je n’ai pas de contenu à enregistrer.",
                 "intent": "memory_write",
                 "agent": "obsidian_agent",
-                "error": "empty_content"
+                "error": "empty_content",
             }
 
         folder = classify_folder(content)
@@ -54,10 +62,15 @@ class ObsidianAgent:
             folder=folder,
             title=content[:60],
             content=content,
-            tags=tags
+            tags=tags,
         )
 
         self.indexer.build_index()
+
+        try:
+            self.semantic.rebuild()
+        except Exception:
+            pass
 
         return {
             "response": f"Note enregistrée dans Obsidian : {path}",
@@ -68,7 +81,7 @@ class ObsidianAgent:
                 "folder": folder,
                 "tags": tags,
                 "path": path,
-            }
+            },
         }
 
     def _handle_search(self, text: str) -> dict:
@@ -79,7 +92,7 @@ class ObsidianAgent:
                 "response": "Quelle information dois-je chercher dans Obsidian ?",
                 "intent": "memory_search",
                 "agent": "obsidian_agent",
-                "error": "empty_query"
+                "error": "empty_query",
             }
 
         results = self.memory.search(query)
@@ -89,7 +102,7 @@ class ObsidianAgent:
                 "response": "Je n’ai rien trouvé dans la mémoire Obsidian.",
                 "intent": "memory_search",
                 "agent": "obsidian_agent",
-                "error": None
+                "error": None,
             }
 
         formatted = "\n".join(
@@ -106,7 +119,7 @@ class ObsidianAgent:
                 "query": query,
                 "count": len(results),
                 "results": results,
-            }
+            },
         }
 
     def _handle_index(self) -> dict:
@@ -120,6 +133,58 @@ class ObsidianAgent:
             "metadata": index,
         }
 
+    def _handle_vector_index(self) -> dict:
+        index = self.semantic.rebuild()
+
+        return {
+            "response": (
+                f"Index vectoriel Obsidian reconstruit : "
+                f"{index['count']} notes indexées avec {index['model']}."
+            ),
+            "intent": "memory_vector_index",
+            "agent": "obsidian_agent",
+            "error": None,
+            "metadata": index,
+        }
+
+    def _handle_semantic_search(self, text: str) -> dict:
+        query = self._clean_semantic_search_text(text)
+
+        if not query:
+            return {
+                "response": "Quelle information dois-je chercher sémantiquement dans Obsidian ?",
+                "intent": "memory_semantic_search",
+                "agent": "obsidian_agent",
+                "error": "empty_query",
+            }
+
+        results = self.semantic.search(query, limit=5)
+
+        if not results:
+            return {
+                "response": "Je n’ai rien trouvé avec la recherche sémantique Obsidian.",
+                "intent": "memory_semantic_search",
+                "agent": "obsidian_agent",
+                "error": None,
+            }
+
+        formatted = "\n".join(
+            f"- {result['title']} [{result['score']}] : {result['path']}"
+            for result in results
+        )
+
+        return {
+            "response": f"Résultats sémantiques Obsidian :\n{formatted}",
+            "intent": "memory_semantic_search",
+            "agent": "obsidian_agent",
+            "error": None,
+            "metadata": {
+                "query": query,
+                "count": len(results),
+                "results": results,
+            },
+        }
+
     def _is_write_intent(self, text: str) -> bool:
         keywords = [
             "idée",
@@ -131,7 +196,7 @@ class ObsidianAgent:
             "memorise",
             "sauvegarde ceci",
             "retient ceci",
-            "enregistre ceci"
+            "enregistre ceci",
         ]
         return any(keyword in text for keyword in keywords)
 
@@ -145,7 +210,7 @@ class ObsidianAgent:
             "retrouve mes notes",
             "recherche dans obsidian",
             "mémoire obsidian",
-            "memoire obsidian"
+            "memoire obsidian",
         ]
         return any(keyword in text for keyword in keywords)
 
@@ -155,7 +220,27 @@ class ObsidianAgent:
             "reconstruire index obsidian",
             "index obsidian",
             "réindexe obsidian",
-            "reindexe obsidian"
+            "reindexe obsidian",
+        ]
+        return any(keyword in text for keyword in keywords)
+
+    def _is_vector_index_intent(self, text: str) -> bool:
+        keywords = [
+            "index vectoriel obsidian",
+            "reconstruis index vectoriel",
+            "reconstruire index vectoriel",
+            "réindexe vectoriel",
+            "reindexe vectoriel",
+        ]
+        return any(keyword in text for keyword in keywords)
+
+    def _is_semantic_search_intent(self, text: str) -> bool:
+        keywords = [
+            "cherche sémantiquement",
+            "cherche semantiquement",
+            "recherche sémantique",
+            "recherche semantique",
+            "semantic search",
         ]
         return any(keyword in text for keyword in keywords)
 
@@ -172,7 +257,7 @@ class ObsidianAgent:
             "memorise",
             "sauvegarde ceci",
             "retient ceci",
-            "enregistre ceci"
+            "enregistre ceci",
         ]
 
         for item in replacements:
@@ -193,7 +278,29 @@ class ObsidianAgent:
             "retrouve mes notes",
             "recherche dans obsidian",
             "mémoire obsidian",
-            "memoire obsidian"
+            "memoire obsidian",
+        ]
+
+        for prefix in prefixes:
+            if cleaned.startswith(prefix):
+                cleaned = cleaned[len(prefix):]
+                break
+
+        return cleaned.strip(" :,-")
+
+    def _clean_semantic_search_text(self, text: str) -> str:
+        cleaned = text.lower().strip()
+
+        prefixes = [
+            "cherche sémantiquement dans obsidian",
+            "cherche semantiquement dans obsidian",
+            "recherche sémantique obsidian",
+            "recherche semantique obsidian",
+            "cherche sémantiquement",
+            "cherche semantiquement",
+            "recherche sémantique",
+            "recherche semantique",
+            "semantic search",
         ]
 
         for prefix in prefixes:
