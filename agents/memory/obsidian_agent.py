@@ -1,72 +1,27 @@
 from memory.obsidian.client import ObsidianMemory
+from memory.obsidian.tagger import extract_tags, classify_folder
+from memory.obsidian.indexer import ObsidianIndexer
+from memory.obsidian.context_builder import ObsidianContextBuilder
 
 
 class ObsidianAgent:
     def __init__(self, vault_path: str):
+        self.vault_path = vault_path
         self.memory = ObsidianMemory(vault_path)
+        self.indexer = ObsidianIndexer(vault_path)
+        self.context_builder = ObsidianContextBuilder(vault_path)
 
     def handle(self, text: str) -> dict:
         lowered = text.lower().strip()
 
         if self._is_write_intent(lowered):
-            content = self._clean_write_text(text)
-
-            if not content:
-                return {
-                    "response": "Je n’ai pas de contenu à enregistrer.",
-                    "intent": "memory_write",
-                    "agent": "obsidian_agent",
-                    "error": "empty_content"
-                }
-
-            title = content[:60]
-
-            path = self.memory.write_note(
-                folder="Ideas",
-                title=title,
-                content=content,
-                tags=["idee", "neron", "obsidian"]
-            )
-
-            return {
-                "response": f"Idée enregistrée dans Obsidian : {path}",
-                "intent": "memory_write",
-                "agent": "obsidian_agent",
-                "error": None
-            }
+            return self._handle_write(text)
 
         if self._is_search_intent(lowered):
-            query = self._clean_search_text(text)
+            return self._handle_search(text)
 
-            if not query:
-                return {
-                    "response": "Quelle information dois-je chercher dans Obsidian ?",
-                    "intent": "memory_search",
-                    "agent": "obsidian_agent",
-                    "error": "empty_query"
-                }
-
-            results = self.memory.search(query)
-
-            if not results:
-                return {
-                    "response": "Je n’ai rien trouvé dans la mémoire Obsidian.",
-                    "intent": "memory_search",
-                    "agent": "obsidian_agent",
-                    "error": None
-                }
-
-            formatted = "\n".join(
-                f"- {result['title']} : {result['file']}"
-                for result in results
-            )
-
-            return {
-                "response": f"Résultats trouvés dans Obsidian :\n{formatted}",
-                "intent": "memory_search",
-                "agent": "obsidian_agent",
-                "error": None
-            }
+        if self._is_index_intent(lowered):
+            return self._handle_index()
 
         return {
             "response": "Je n’ai pas compris l’action mémoire demandée.",
@@ -75,10 +30,102 @@ class ObsidianAgent:
             "error": "unknown_memory_action"
         }
 
+    def build_context(self, query: str, limit: int = 3) -> str:
+        return self.context_builder.build_context(query, limit=limit)
+
+    def _handle_write(self, text: str) -> dict:
+        content = self._clean_write_text(text)
+
+        if not content:
+            return {
+                "response": "Je n’ai pas de contenu à enregistrer.",
+                "intent": "memory_write",
+                "agent": "obsidian_agent",
+                "error": "empty_content"
+            }
+
+        folder = classify_folder(content)
+        tags = extract_tags(content)
+
+        if "neron" not in tags:
+            tags.append("neron")
+
+        path = self.memory.write_note(
+            folder=folder,
+            title=content[:60],
+            content=content,
+            tags=tags
+        )
+
+        self.indexer.build_index()
+
+        return {
+            "response": f"Note enregistrée dans Obsidian : {path}",
+            "intent": "memory_write",
+            "agent": "obsidian_agent",
+            "error": None,
+            "metadata": {
+                "folder": folder,
+                "tags": tags,
+                "path": path,
+            }
+        }
+
+    def _handle_search(self, text: str) -> dict:
+        query = self._clean_search_text(text)
+
+        if not query:
+            return {
+                "response": "Quelle information dois-je chercher dans Obsidian ?",
+                "intent": "memory_search",
+                "agent": "obsidian_agent",
+                "error": "empty_query"
+            }
+
+        results = self.memory.search(query)
+
+        if not results:
+            return {
+                "response": "Je n’ai rien trouvé dans la mémoire Obsidian.",
+                "intent": "memory_search",
+                "agent": "obsidian_agent",
+                "error": None
+            }
+
+        formatted = "\n".join(
+            f"- {result['title']} : {result['file']}"
+            for result in results
+        )
+
+        return {
+            "response": f"Résultats trouvés dans Obsidian :\n{formatted}",
+            "intent": "memory_search",
+            "agent": "obsidian_agent",
+            "error": None,
+            "metadata": {
+                "query": query,
+                "count": len(results),
+                "results": results,
+            }
+        }
+
+    def _handle_index(self) -> dict:
+        index = self.indexer.build_index()
+
+        return {
+            "response": f"Index Obsidian reconstruit : {index['count']} notes indexées.",
+            "intent": "memory_index",
+            "agent": "obsidian_agent",
+            "error": None,
+            "metadata": index,
+        }
+
     def _is_write_intent(self, text: str) -> bool:
         keywords = [
             "idée",
+            "idee",
             "ajoute une idée",
+            "ajoute une idee",
             "note ceci",
             "mémorise",
             "memorise",
@@ -92,17 +139,34 @@ class ObsidianAgent:
         keywords = [
             "cherche dans obsidian",
             "recherche mémoire",
+            "recherche memoire",
             "cherche dans la mémoire",
+            "cherche dans la memoire",
             "retrouve mes notes",
             "recherche dans obsidian",
-            "mémoire obsidian"
+            "mémoire obsidian",
+            "memoire obsidian"
+        ]
+        return any(keyword in text for keyword in keywords)
+
+    def _is_index_intent(self, text: str) -> bool:
+        keywords = [
+            "reconstruis index obsidian",
+            "reconstruire index obsidian",
+            "index obsidian",
+            "réindexe obsidian",
+            "reindexe obsidian"
         ]
         return any(keyword in text for keyword in keywords)
 
     def _clean_write_text(self, text: str) -> str:
+        cleaned = text.strip()
+
         replacements = [
             "ajoute une idée",
+            "ajoute une idee",
             "idée",
+            "idee",
             "note ceci",
             "mémorise",
             "memorise",
@@ -110,8 +174,6 @@ class ObsidianAgent:
             "retient ceci",
             "enregistre ceci"
         ]
-
-        cleaned = text.strip()
 
         for item in replacements:
             cleaned = cleaned.replace(item, "", 1)
@@ -125,10 +187,13 @@ class ObsidianAgent:
         prefixes = [
             "cherche dans obsidian",
             "recherche mémoire",
+            "recherche memoire",
             "cherche dans la mémoire",
+            "cherche dans la memoire",
             "retrouve mes notes",
             "recherche dans obsidian",
-            "mémoire obsidian"
+            "mémoire obsidian",
+            "memoire obsidian"
         ]
 
         for prefix in prefixes:
