@@ -104,6 +104,7 @@ TOKEN = HA_CONFIG.get("token")
 SYNC_INTERVAL = HA_CONFIG.get("sync_interval", 60)
 
 from agents.memory.obsidian_agent import ObsidianAgent
+from agents.autonomous.planner_agent import AutonomousPlannerAgent
 
 # =========================
 # LOGGER LOCAL (OPTIONNEL PAR MODULE)
@@ -129,7 +130,7 @@ code_audit_agent: CodeAuditAgent  | None = None
 router:           IntentRouter    | None = None
 time_provider:    TimeProvider    | None = None
 obsidian_agent:   ObsidianAgent   | None = None
-
+autonomous_planner_agent: AutonomousPlannerAgent | None = None
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -239,7 +240,8 @@ metrics = Metrics()
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
     global router, time_provider, _startup_time, memory_agent
-    global code_agent, code_audit_agent, _gateway_task, obsidian_agent
+    global code_agent, code_audit_agent, _gateway_task
+    global obsidian_agent, autonomous_planner_agent
 
     _startup_time = time.monotonic()
     logger.info(json.dumps({"event": "startup", "version": VERSION}))
@@ -256,6 +258,7 @@ async def lifespan(app: FastAPI):
     code_agent       = CodeAgent()
     code_audit_agent = CodeAuditAgent()
     obsidian_agent = ObsidianAgent("/etc/neron/obsidian-vault")
+    autonomous_planner_agent = AutonomousPlannerAgent("/etc/neron/obsidian-vault")
 
     await ha_agent.on_start()
     router        = IntentRouter(llm_agent=llm_agent)

@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-05-11T06:54:54",
-  "count": 3,
+  "generated_at": "2026-05-11T18:49:57",
+  "count": 4,
   "notes": [
     {
       "path": "Ideas/créer-un-agent-autonome-pour-neron.md",
@@ -25,6 +25,14 @@
       "size": 180,
       "preview": "# créer une architecture mémoire contextuelle pour Néron\n\nDate: 2026-05-11T06:54:54\nTags: #architecture #memory #neron\n\n---\n\ncréer une architecture mémoire contextuelle pour Néron\n",
       "updated_at": "2026-05-11T06:54:54"
+    },
+    {
+      "path": "Architecture/tâche-autonome-proposée-créer-un-scheduler-natif-pour-néro.md",
+      "title": "tâche-autonome-proposée-créer-un-scheduler-natif-pour-néro",
+      "folder": "Architecture",
+      "size": 949,
+      "preview": "# Tâche autonome proposée : Créer un scheduler natif pour Néro\n\nDate: 2026-05-11T18:49:57\nTags: #agent #ai #architecture #memory #neron #obsidian #security #task\n\n---\n\nTâche autonome proposée : Créer un scheduler natif pour Néron\n\n## Objectif\nCréer un scheduler natif pour Néron\n\n## Statut\nwaiting_va",
+      "updated_at": "2026-05-11T18:49:57"
     }
   ]
 }
