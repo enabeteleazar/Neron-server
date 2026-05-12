@@ -1,6 +1,5 @@
 # core/pipeline/intent/intent_router.py
-# v2.1 — Intégration couche NLP (intent_classifier + entity_extractor)
-#         Backward-compatible : confidence str conservée, entities ajouté.
+# v2.2 — Ajout intents système réels + fallback keyword local
 
 from __future__ import annotations
 
@@ -13,14 +12,11 @@ from core.agents.base_agent import get_logger
 
 logger = get_logger(__name__)
 
-# ── NLP processor (lazy import pour éviter les circulaires) ───────────────────
 
 def _nlp():
     from core.pipeline.nlp.nlp_processor import get_processor
     return get_processor()
 
-
-# ── Intent enum ───────────────────────────────────────────────────────────────
 
 class Intent(str, Enum):
     CONVERSATION         = "conversation"
@@ -30,6 +26,10 @@ class Intent(str, Enum):
     PERSONALITY_FEEDBACK = "personality_feedback"
     CODE                 = "code"
     CODE_AUDIT           = "code_audit"
+
+    SYSTEM_STATUS        = "system_status"
+    NETWORK_STATUS       = "network_status"
+
     NEWS_QUERY           = "news_query"
     WEATHER_QUERY        = "weather_query"
     TODO_ACTION          = "todo_action"
@@ -41,16 +41,15 @@ _INTENT_MAP: Dict[str, Intent] = {i.value: i for i in Intent}
 
 @dataclass
 class IntentResult:
-    intent:           Intent
-    confidence:       str                          # "high" | "medium" | "low" (compat)
-    confidence_score: float = 0.0                 # float [0.0-1.0] via NLP
-    entities:         Dict[str, Any] = field(default_factory=dict)
+    intent: Intent
+    confidence: str
+    confidence_score: float = 0.0
+    entities: Dict[str, Any] = field(default_factory=dict)
 
     def to_nlp_dict(self) -> Dict[str, Any]:
-        """Sortie standard NLP exploitable par les agents."""
         return {
-            "intent":     self.intent.value,
-            "entities":   self.entities,
+            "intent": self.intent.value,
+            "entities": self.entities,
             "confidence": self.confidence_score,
         }
 
@@ -58,7 +57,41 @@ class IntentResult:
 def _normalize(text: str) -> str:
     n = unicodedata.normalize("NFD", text.lower().strip())
     n = "".join(c for c in n if unicodedata.category(c) != "Mn")
-    return n.replace("'", " ").replace("'", " ").replace("`", " ")
+    return n.replace("'", " ").replace("’", " ").replace("`", " ")
+
+
+def _fallback_intent(query: str) -> Intent | None:
+    q = _normalize(query)
+
+    system_keywords = [
+        "statut systeme",
+        "etat systeme",
+        "status systeme",
+        "services actifs",
+        "liste les services",
+        "services systemd",
+        "quels services tournent",
+        "services en cours",
+        "verifie les services",
+    ]
+
+    network_keywords = [
+        "ports ouverts",
+        "ports reseau",
+        "connexions reseau",
+        "etat reseau",
+        "status reseau",
+        "ss -tulpn",
+        "netstat",
+    ]
+
+    if any(k in q for k in system_keywords):
+        return Intent.SYSTEM_STATUS
+
+    if any(k in q for k in network_keywords):
+        return Intent.NETWORK_STATUS
+
+    return None
 
 
 class IntentRouter:
@@ -66,17 +99,25 @@ class IntentRouter:
         self.llm_agent = llm_agent
 
     async def route(self, query: str) -> IntentResult:
-        # ── NLP processing ────────────────────────────────────────────────────
         nlp_result = _nlp().process(query)
         intent_str = nlp_result.intent
-        intent     = _INTENT_MAP.get(intent_str, Intent.CONVERSATION)
-        entities   = nlp_result.entities
-        score      = nlp_result.confidence
+        intent = _INTENT_MAP.get(intent_str, Intent.CONVERSATION)
+        entities = nlp_result.entities
+        score = nlp_result.confidence
+
+        fallback = _fallback_intent(query)
+        if fallback and (intent == Intent.CONVERSATION or score < 0.70):
+            intent = fallback
+            intent_str = fallback.value
+            score = max(score, 0.85)
+
         confidence = "high" if score >= 0.7 else ("medium" if score >= 0.4 else "low")
 
         logger.info(
             "[NLP] intent=%s confidence=%.3f entities=%s",
-            intent_str, score, entities,
+            intent_str,
+            score,
+            entities,
         )
 
         return IntentResult(

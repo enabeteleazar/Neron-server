@@ -528,6 +528,27 @@ async def nlp_parse(input_data: TextInput, _: None = Depends(verify_api_key)):
     return result.to_dict()
 
 
+
+async def _handle_system_status(query, intent_result, metadata, start):
+    from core.agents.core.system_agent import SystemAgent
+
+    agent = SystemAgent()
+    response = await agent.run(query)
+
+    return CoreResponse(
+        response=response,
+        intent=intent_result.intent.value,
+        agent="system_agent",
+        confidence=intent_result.confidence,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+        model=None,
+        error=None,
+        transcription=None,
+        metadata=metadata,
+    )
+
+
 # ── Routes /input ─────────────────────────────────────────────────────────────
 
 @app.post("/input/text", response_model=CoreResponse)
@@ -551,6 +572,8 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             return await _handle_personality_feedback(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.TIME_QUERY:
             return _handle_time_query(intent_result, metadata, start, query)
+        elif intent_result.intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
+            return await _handle_system_status(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.WEB_SEARCH:
             return await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:

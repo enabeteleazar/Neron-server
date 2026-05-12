@@ -1,10 +1,5 @@
 # core/pipeline/routing/agent_router.py
-# v2.0 — Câblage des 4 nouveaux intents (news, météo, todo, wiki)
-#
-# DIFF vs v1 :
-#   + import NewsAgent, WeatherAgent, TodoAgent, WikiAgent
-#   + singletons _news, _weather, _todo, _wiki
-#   + cases Intent.NEWS_QUERY / WEATHER_QUERY / TODO_ACTION / WIKI_QUERY dans route()
+# v2.1 — Ajout routage système réel : system_status / network_status
 
 from __future__ import annotations
 
@@ -15,14 +10,11 @@ from core.pipeline.intent.intent_router import Intent, IntentResult
 
 logger = logging.getLogger("pipeline.agent_router")
 
-# ── Lazy imports (évite les imports circulaires au démarrage) ─────────────────
-
 _llm:     Optional[object] = None
 _memory:  Optional[object] = None
 _system:  Optional[object] = None
 _ha:      Optional[object] = None
 _web:     Optional[object] = None
-# Nouveaux agents
 _news:    Optional[object] = None
 _weather: Optional[object] = None
 _todo:    Optional[object] = None
@@ -101,8 +93,6 @@ def _get_wiki():
     return _wiki
 
 
-# ── Router ────────────────────────────────────────────────────────────────────
-
 class AgentRouter:
     """
     Dispatch une IntentResult vers l'agent approprié et retourne la réponse.
@@ -117,6 +107,11 @@ class AgentRouter:
     async def route(self, intent_result: IntentResult, query: str) -> str:
         intent = intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
+
+        # ── Système local réel ────────────────────────────────────────────────
+        if intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
+            result = await _get_system().run(query)
+            return result.content if result.success else f"⚠️ {result.error}"
 
         # ── Nouveaux intents v2.0 ─────────────────────────────────────────────
         if intent == Intent.NEWS_QUERY:
@@ -145,7 +140,6 @@ class AgentRouter:
             return result.content if result.success else f"⚠️ {result.error}"
 
         if intent in (Intent.CODE, Intent.CODE_AUDIT):
-            # Délégation au code_agent / code_audit_agent existant
             from core.agents.dev.code_audit_agent import CodeAuditAgent
             agent = CodeAuditAgent()
             result = await agent.execute(query)
@@ -156,7 +150,7 @@ class AgentRouter:
             apply_feedback(query)
             return "⚙️ Ajustement de comportement pris en compte."
 
-        # ── Conversation générale (LLM) ───────────────────────────────────────
+        # ── Conversation générale ─────────────────────────────────────────────
         memory  = _get_memory()
         context = await memory.get_context(query) if hasattr(memory, "get_context") else None
         result  = await _get_llm().execute(query, context_data=context)
@@ -168,9 +162,10 @@ class AgentRouter:
 
         return f"⚠️ Erreur LLM : {result.error}"
 
-# ── Stubs de config attendus par app.py ───────────────────────────────────────
-from dataclasses import dataclass, field
+
+from dataclasses import dataclass
 from typing import Any, Dict
+
 
 @dataclass
 class LLMConfig:
@@ -179,6 +174,7 @@ class LLMConfig:
     base_url:    str   = "http://localhost:11434"
     max_tokens:  int   = 2048
     temperature: float = 0.7
+
 
 class ToolRegistry:
     def __init__(self):
@@ -190,4 +186,3 @@ class ToolRegistry:
     def register(self, name: str, tool: Any) -> "ToolRegistry":
         self._tools[name] = tool
         return self
-
