@@ -1,24 +1,24 @@
 # core/pipeline/routing/agent_router.py
-# v2.1 — Ajout routage système réel : system_status / network_status
 
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from core.pipeline.intent.intent_router import Intent, IntentResult
 
 logger = logging.getLogger("pipeline.agent_router")
 
-_llm:     Optional[object] = None
-_memory:  Optional[object] = None
-_system:  Optional[object] = None
-_ha:      Optional[object] = None
-_web:     Optional[object] = None
-_news:    Optional[object] = None
+_llm: Optional[object] = None
+_memory: Optional[object] = None
+_system: Optional[object] = None
+_ha: Optional[object] = None
+_web: Optional[object] = None
+_news: Optional[object] = None
 _weather: Optional[object] = None
-_todo:    Optional[object] = None
-_wiki:    Optional[object] = None
+_todo: Optional[object] = None
+_wiki: Optional[object] = None
+_agent_factory: Optional[object] = None
 
 
 def _get_llm():
@@ -93,27 +93,64 @@ def _get_wiki():
     return _wiki
 
 
+def _get_agent_factory():
+    global _agent_factory
+    if _agent_factory is None:
+        from core.agents.system.agent_factory_agent import AgentFactoryAgent
+        _agent_factory = AgentFactoryAgent()
+    return _agent_factory
+
+
+def _list_dynamic_agents() -> str:
+    from core.agent_factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
+
+    registry = DynamicAgentRegistry()
+    registry.load_generated_agents()
+
+    agents = sorted(AGENT_REGISTRY.keys())
+
+    if not agents:
+        return "Aucun agent dynamique chargé."
+
+    lines = ["Agents dynamiques disponibles :"]
+    lines.extend(f"- {name}" for name in agents)
+
+    return "\n".join(lines)
+
+
 class AgentRouter:
     """
     Dispatch une IntentResult vers l'agent approprié et retourne la réponse.
     """
 
     def __init__(self, sessions=None, skills=None, llm_config=None, tools=None):
-        self.sessions   = sessions
-        self.skills     = skills
+        self.sessions = sessions
+        self.skills = skills
         self.llm_config = llm_config
-        self.tools      = tools
+        self.tools = tools
 
     async def route(self, intent_result: IntentResult, query: str) -> str:
         intent = intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
 
-        # ── Système local réel ────────────────────────────────────────────────
         if intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
             result = await _get_system().run(query)
             return result.content if result.success else f"⚠️ {result.error}"
 
-        # ── Nouveaux intents v2.0 ─────────────────────────────────────────────
+        if intent == Intent.AGENT_CREATION:
+            result = await _get_agent_factory().execute(text=query)
+
+            if isinstance(result, dict):
+                return result.get("response", str(result))
+
+            if hasattr(result, "content"):
+                return result.content if getattr(result, "success", True) else f"⚠️ {result.error}"
+
+            return str(result)
+
+        if intent == Intent.AGENT_LIST:
+            return _list_dynamic_agents()
+
         if intent == Intent.NEWS_QUERY:
             return await _get_news().run(query)
 
@@ -126,7 +163,6 @@ class AgentRouter:
         if intent == Intent.WIKI_QUERY:
             return await _get_wiki().run(query)
 
-        # ── Intents existants ─────────────────────────────────────────────────
         if intent == Intent.TIME_QUERY:
             from core.neron_time.time_provider import get_formatted_time
             return get_formatted_time()
@@ -150,10 +186,9 @@ class AgentRouter:
             apply_feedback(query)
             return "⚙️ Ajustement de comportement pris en compte."
 
-        # ── Conversation générale ─────────────────────────────────────────────
-        memory  = _get_memory()
+        memory = _get_memory()
         context = await memory.get_context(query) if hasattr(memory, "get_context") else None
-        result  = await _get_llm().execute(query, context_data=context)
+        result = await _get_llm().execute(query, context_data=context)
 
         if result.success:
             if hasattr(memory, "save"):
@@ -164,15 +199,14 @@ class AgentRouter:
 
 
 from dataclasses import dataclass
-from typing import Any, Dict
 
 
 @dataclass
 class LLMConfig:
-    provider:    str   = "ollama"
-    model:       str   = "mistral"
-    base_url:    str   = "http://localhost:11434"
-    max_tokens:  int   = 2048
+    provider: str = "ollama"
+    model: str = "mistral"
+    base_url: str = "http://localhost:11434"
+    max_tokens: int = 2048
     temperature: float = 0.7
 
 

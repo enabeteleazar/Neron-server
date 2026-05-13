@@ -298,7 +298,8 @@ async def lifespan(app: FastAPI):
         _sessions     = SessionStore()
         _skills       = SkillRegistry()
         _tools        = ToolRegistry().setup_defaults()
-        _agent_router = AgentRouter(
+        global agent_router
+        agent_router = AgentRouter(
             sessions=_sessions,
             skills=_skills,
             llm_config=llm_cfg,
@@ -313,7 +314,7 @@ async def lifespan(app: FastAPI):
         )
         _gw = NeronGateway(
             config=gw_config,
-            agent_router=_agent_router,
+            agent_router=agent_router,
             session_store=_sessions,
             skill_registry=_skills,
         )
@@ -574,6 +575,37 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             return _handle_time_query(intent_result, metadata, start, query)
         elif intent_result.intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
             return await _handle_system_status(query, intent_result, metadata, start)
+        elif intent_result.intent == Intent.AGENT_CREATION:
+            response_text = await agent_router.route(intent_result, query)
+
+            return CoreResponse(
+                response=response_text,
+                intent=intent_result.intent.value,
+                agent="agent_factory",
+                confidence=intent_result.confidence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata=metadata,
+            )
+        elif intent_result.intent == Intent.AGENT_LIST:
+            response_text = await agent_router.route(intent_result, query)
+
+            return CoreResponse(
+                response=response_text,
+                intent=intent_result.intent.value,
+                agent="agent_registry",
+                confidence=intent_result.confidence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata=metadata,
+            )
+
         elif intent_result.intent == Intent.WEB_SEARCH:
             return await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:

@@ -1,5 +1,4 @@
 # core/pipeline/intent/intent_router.py
-# v2.2 — Ajout intents système réels + fallback keyword local
 
 from __future__ import annotations
 
@@ -26,6 +25,9 @@ class Intent(str, Enum):
     PERSONALITY_FEEDBACK = "personality_feedback"
     CODE                 = "code"
     CODE_AUDIT           = "code_audit"
+
+    AGENT_CREATION       = "agent_creation"
+    AGENT_LIST           = "agent_list"
 
     SYSTEM_STATUS        = "system_status"
     NETWORK_STATUS       = "network_status"
@@ -69,20 +71,27 @@ def _fallback_intent(query: str) -> Intent | None:
         "status systeme",
         "services actifs",
         "liste les services",
-        "services systemd",
-        "quels services tournent",
-        "services en cours",
-        "verifie les services",
     ]
 
     network_keywords = [
         "ports ouverts",
-        "ports reseau",
-        "connexions reseau",
         "etat reseau",
         "status reseau",
-        "ss -tulpn",
-        "netstat",
+    ]
+
+    agent_creation_keywords = [
+        "cree un agent",
+        "crée un agent",
+        "nouvel agent",
+        "genere un agent",
+        "génère un agent",
+    ]
+
+    agent_list_keywords = [
+        "liste les agents",
+        "agents disponibles",
+        "quels agents",
+        "montre les agents",
     ]
 
     if any(k in q for k in system_keywords):
@@ -90,6 +99,12 @@ def _fallback_intent(query: str) -> Intent | None:
 
     if any(k in q for k in network_keywords):
         return Intent.NETWORK_STATUS
+
+    if any(k in q for k in agent_creation_keywords):
+        return Intent.AGENT_CREATION
+
+    if any(k in q for k in agent_list_keywords):
+        return Intent.AGENT_LIST
 
     return None
 
@@ -100,18 +115,25 @@ class IntentRouter:
 
     async def route(self, query: str) -> IntentResult:
         nlp_result = _nlp().process(query)
+
         intent_str = nlp_result.intent
         intent = _INTENT_MAP.get(intent_str, Intent.CONVERSATION)
+
         entities = nlp_result.entities
         score = nlp_result.confidence
 
         fallback = _fallback_intent(query)
+
         if fallback and (intent == Intent.CONVERSATION or score < 0.70):
             intent = fallback
             intent_str = fallback.value
             score = max(score, 0.85)
 
-        confidence = "high" if score >= 0.7 else ("medium" if score >= 0.4 else "low")
+        confidence = (
+            "high"
+            if score >= 0.7
+            else ("medium" if score >= 0.4 else "low")
+        )
 
         logger.info(
             "[NLP] intent=%s confidence=%.3f entities=%s",
