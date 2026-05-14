@@ -606,6 +606,22 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
                 metadata=metadata,
             )
 
+        elif intent_result.intent == Intent.AGENT_RUN:
+            response_text = await agent_router.route(intent_result, query)
+
+            return CoreResponse(
+                response=response_text,
+                intent=intent_result.intent.value,
+                agent="agent_runtime",
+                confidence=intent_result.confidence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata=metadata,
+            )
+
         elif intent_result.intent == Intent.WEB_SEARCH:
             return await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:

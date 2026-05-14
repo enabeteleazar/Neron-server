@@ -28,6 +28,7 @@ class Intent(str, Enum):
 
     AGENT_CREATION       = "agent_creation"
     AGENT_LIST           = "agent_list"
+    AGENT_RUN            = "agent_run"
 
     SYSTEM_STATUS        = "system_status"
     NETWORK_STATUS       = "network_status"
@@ -94,6 +95,18 @@ def _fallback_intent(query: str) -> Intent | None:
         "montre les agents",
     ]
 
+    agent_run_keywords = [
+        "lance l agent",
+        "lance l'agent",
+        "lance agent",
+        "execute l agent",
+        "execute l'agent",
+        "execute agent",
+        "exécute l agent",
+        "exécute l'agent",
+        "run agent",
+    ]
+
     if any(k in q for k in system_keywords):
         return Intent.SYSTEM_STATUS
 
@@ -105,6 +118,9 @@ def _fallback_intent(query: str) -> Intent | None:
 
     if any(k in q for k in agent_list_keywords):
         return Intent.AGENT_LIST
+
+    if any(k in q for k in agent_run_keywords):
+        return Intent.AGENT_RUN
 
     return None
 

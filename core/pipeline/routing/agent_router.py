@@ -118,6 +118,59 @@ def _list_dynamic_agents() -> str:
     return "\n".join(lines)
 
 
+def _extract_agent_name_for_run(query: str) -> str | None:
+    text = query.lower().strip()
+    text = text.replace("'", " ")
+    text = text.replace("’", " ")
+
+    prefixes = [
+        "lance l agent",
+        "lance agent",
+        "execute l agent",
+        "execute agent",
+        "exécute l agent",
+        "exécute agent",
+        "run agent",
+    ]
+
+    for prefix in prefixes:
+        if text.startswith(prefix):
+            name = text.replace(prefix, "", 1).strip()
+            name = name.replace("-", "_").replace(" ", "_")
+            name = "".join(c for c in name if c.isalnum() or c == "_")
+            return name or None
+
+    return None
+
+
+async def _run_dynamic_agent(query: str) -> str:
+    from core.agent_factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
+
+    registry = DynamicAgentRegistry()
+    registry.load_generated_agents()
+
+    agent_name = _extract_agent_name_for_run(query)
+
+    if not agent_name:
+        return "Nom d’agent introuvable. Exemple : lance l agent test_pipeline"
+
+    agent = AGENT_REGISTRY.get(agent_name)
+
+    if agent is None:
+        available = ", ".join(sorted(AGENT_REGISTRY.keys())) or "aucun"
+        return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
+
+    result = await agent.execute(text=query)
+
+    if isinstance(result, dict):
+        return result.get("response", str(result))
+
+    if hasattr(result, "content"):
+        return result.content if getattr(result, "success", True) else f"⚠️ {result.error}"
+
+    return str(result)
+
+
 class AgentRouter:
     """
     Dispatch une IntentResult vers l'agent approprié et retourne la réponse.
@@ -150,6 +203,9 @@ class AgentRouter:
 
         if intent == Intent.AGENT_LIST:
             return _list_dynamic_agents()
+
+        if intent == Intent.AGENT_RUN:
+            return await _run_dynamic_agent(query)
 
         if intent == Intent.NEWS_QUERY:
             return await _get_news().run(query)

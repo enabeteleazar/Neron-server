@@ -1,0 +1,1 @@
+journalctl $(systemctl list-units --type=service --all | grep 'neron-' | awk '{print "-u", $1}') -f | ccze -A
