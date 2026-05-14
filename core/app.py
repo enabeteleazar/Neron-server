@@ -721,11 +721,32 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
         elif intent_result.intent == Intent.WEB_SEARCH:
             return await _handle_web_search(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.HA_ACTION:
-            return await _handle_ha_action(query, intent_result, metadata, start)
+            await _publish_agent_selected(intent_result, "ha_agent")
+
+            result = await _handle_ha_action(query, intent_result, metadata, start)
+
+            await _publish_agent_executed(intent_result, "ha_agent", result)
+            await _publish_response_ready(intent_result, "ha_agent", result)
+
+            return result
         elif intent_result.intent == Intent.CODE_AUDIT:
-            return await _handle_code_audit(intent_result, metadata, start)
+            await _publish_agent_selected(intent_result, "code_audit_agent")
+
+            result = await _handle_code_audit(intent_result, metadata, start)
+
+            await _publish_agent_executed(intent_result, "code_audit_agent", result)
+            await _publish_response_ready(intent_result, "code_audit_agent", result)
+
+            return result
         elif intent_result.intent == Intent.CODE:
-            return await _handle_code(query, intent_result, metadata, start)
+            await _publish_agent_selected(intent_result, "code_agent")
+
+            result = await _handle_code(query, intent_result, metadata, start)
+
+            await _publish_agent_executed(intent_result, "code_agent", result)
+            await _publish_response_ready(intent_result, "code_agent", result)
+
+            return result
 
         if _is_memory_query(query):
             return await _handle_memory(query, intent_result, metadata, start)

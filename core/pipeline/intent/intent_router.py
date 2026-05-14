@@ -107,6 +107,24 @@ def _fallback_intent(query: str) -> Intent | None:
         "run agent",
     ]
 
+    code_audit_keywords = [
+        "audit ce code",
+        "audite ce code",
+        "analyse ce code",
+        "verifie ce code",
+        "vérifie ce code",
+        "relis ce code",
+        "revise ce code",
+        "révise ce code",
+        "controle ce code",
+        "contrôle ce code",
+        "code audit",
+        "audit python",
+    ]
+
+    if any(k in q for k in code_audit_keywords):
+        return Intent.CODE_AUDIT
+
     if any(k in q for k in system_keywords):
         return Intent.SYSTEM_STATUS
 
@@ -140,7 +158,7 @@ class IntentRouter:
 
         fallback = _fallback_intent(query)
 
-        if fallback and (intent == Intent.CONVERSATION or score < 0.70):
+        if fallback:
             intent = fallback
             intent_str = fallback.value
             score = max(score, 0.85)

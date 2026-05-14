@@ -1,0 +1,7 @@
+USER_MESSAGE_RECEIVED = "user.message.received"
+INTENT_DETECTED = "intent.detected"
+AGENT_SELECTED = "agent.selected"
+AGENT_EXECUTED = "agent.executed"
+RESPONSE_READY = "response.ready"
+SYSTEM_ALERT = "system.alert"
+MEMORY_UPDATED = "memory.updated"
