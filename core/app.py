@@ -82,6 +82,10 @@ from core.agents.io.tts_agent import TTSAgent
 
 from core.config import settings
 from core.pipeline.routing.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import USER_MESSAGE_RECEIVED
+from core.events.subscribers import register_default_subscribers
 from core.gateway.gateway import GatewayConfig, NeronGateway
 from core.modules.scheduler import setup as scheduler_setup
 from core.modules.scheduler import start as scheduler_start
@@ -237,7 +241,6 @@ metrics = Metrics()
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
-@asynccontextmanager
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
     global router, time_provider, _startup_time, memory_agent
@@ -250,6 +253,7 @@ async def lifespan(app: FastAPI):
     try:
         _startup_time = time.monotonic()
         logger.info(json.dumps({"event": "startup", "version": VERSION}))
+        register_default_subscribers()
         metrics.update_system_metrics()
 
         llm_agent = LLMAgent()
@@ -587,6 +591,44 @@ async def _handle_system_status(query, intent_result, metadata, start):
     )
 
 
+async def _publish_agent_selected(intent_result, agent_name: str) -> None:
+    await event_bus.publish(Event(
+        type="agent.selected",
+        payload={
+            "intent": intent_result.intent.value,
+            "agent": agent_name,
+        },
+        source="core.agent_router",
+    ))
+
+
+async def _publish_agent_executed(intent_result, agent_name: str, result) -> None:
+    await event_bus.publish(Event(
+        type="agent.executed",
+        payload={
+            "intent": intent_result.intent.value,
+            "agent": agent_name,
+            "success": getattr(result, "error", None) is None,
+            "execution_time_ms": getattr(result, "execution_time_ms", None),
+        },
+        source="core.agent_router",
+    ))
+
+
+async def _publish_response_ready(intent_result, agent_name: str, result) -> None:
+    await event_bus.publish(Event(
+        type="response.ready",
+        payload={
+            "intent": intent_result.intent.value,
+            "agent": agent_name,
+            "response_length": len(getattr(result, "response", "") or ""),
+            "execution_time_ms": getattr(result, "execution_time_ms", None),
+        },
+        source="core.response",
+    ))
+
+
+
 # ── Routes /input ─────────────────────────────────────────────────────────────
 
 @app.post("/input/text", response_model=CoreResponse)
@@ -595,8 +637,18 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     start = time.monotonic()
     metrics.record_request_start()
     logger.info(json.dumps({"event": "request_received", "query": query[:80]}))
+    await event_bus.publish(Event(type=USER_MESSAGE_RECEIVED, payload={"text": query}, source="api.input.text"))
 
     intent_result = await router.route(query)
+    await event_bus.publish(Event(
+        type="intent.detected",
+        payload={
+            "intent": intent_result.intent.value,
+            "confidence": intent_result.confidence,
+            "entities": intent_result.entities,
+        },
+        source="core.intent_router",
+    ))
     metrics.record_intent(intent_result.intent.value)
 
     metadata = {
@@ -611,7 +663,14 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
         elif intent_result.intent == Intent.TIME_QUERY:
             return _handle_time_query(intent_result, metadata, start, query)
         elif intent_result.intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
-            return await _handle_system_status(query, intent_result, metadata, start)
+            await _publish_agent_selected(intent_result, "system_agent")
+
+            result = await _handle_system_status(query, intent_result, metadata, start)
+
+            await _publish_agent_executed(intent_result, "system_agent", result)
+            await _publish_response_ready(intent_result, "system_agent", result)
+
+            return result
         elif intent_result.intent == Intent.AGENT_CREATION:
             response_text = await agent_router.route(intent_result, query)
 
@@ -672,7 +731,14 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             return await _handle_memory(query, intent_result, metadata, start)
 
         else:
-            return await _handle_conversation(query, intent_result, metadata, start)
+            await _publish_agent_selected(intent_result, "llm_agent")
+
+            result = await _handle_conversation(query, intent_result, metadata, start)
+
+            await _publish_agent_executed(intent_result, "llm_agent", result)
+            await _publish_response_ready(intent_result, "llm_agent", result)
+
+            return result
     finally:
         elapsed = round((time.monotonic() - start) * 1000, 2)
         metrics.record_request_end(elapsed)

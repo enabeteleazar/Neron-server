@@ -17,7 +17,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
 if TYPE_CHECKING:
-    from core.modules.agent_router import AgentRouter
+    from core.pipeline.routing.agent_router import AgentRouter
     from core.modules.sessions import SessionStore
     from core.modules.skills import SkillRegistry
 
