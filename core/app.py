@@ -112,7 +112,7 @@ from agents.autonomous.planner_agent import AutonomousPlannerAgent
 
 logger = get_logger("neron.core")
 
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
