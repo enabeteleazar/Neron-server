@@ -237,145 +237,182 @@ metrics = Metrics()
 # ── Lifespan ──────────────────────────────────────────────────────────────────
 
 @asynccontextmanager
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
     global router, time_provider, _startup_time, memory_agent
     global code_agent, code_audit_agent, _gateway_task
     global obsidian_agent, autonomous_planner_agent
 
-    _startup_time = time.monotonic()
-    logger.info(json.dumps({"event": "startup", "version": VERSION}))
-    metrics.update_system_metrics()
-
-    llm_agent    = LLMAgent()
-    web_agent    = WebAgent()
-    memory_init_db()
-    memory_agent = MemoryAgent()
-    ha_agent     = HAAgent()
-    stt_agent    = STTAgent()
-    await asyncio.get_event_loop().run_in_executor(None, load_model)
-
-    code_agent       = CodeAgent()
-    code_audit_agent = CodeAuditAgent()
-    obsidian_agent = ObsidianAgent("/etc/neron/obsidian-vault")
-    autonomous_planner_agent = AutonomousPlannerAgent("/etc/neron/obsidian-vault")
-
-    await ha_agent.on_start()
-    router        = IntentRouter(llm_agent=llm_agent)
-    time_provider = TimeProvider()
-
-    if _personality_available():
-        try:
-            from personality import get_current_state
-            state = get_current_state()
-            logger.info(json.dumps({
-                "event":  "personality_loaded",
-                "mood":   state.get("mood"),
-                "energy": state.get("energy_level"),
-                "tone":   state.get("communication", {}).get("tone"),
-            }))
-        except Exception as e:
-            logger.warning("Personality charge mais etat illisible : %s", e)
-    else:
-        logger.warning("Module personality non disponible — system prompt statique actif")
-
-    logger.info(json.dumps({"event": "agents_ready"}))
-
-    scheduler_setup(
-        agents={"code": code_agent, "memory": memory_agent},
-        notify_fn=send_watchdog_notification,
-    )
-    scheduler_start()
+    telegram_enabled = False
+    telegram_token = ""
 
     try:
-        llm_cfg = LLMConfig(
-            provider="ollama",
-            model=settings.OLLAMA_MODEL,
-            base_url=settings.OLLAMA_HOST,
-            max_tokens=settings.LLM_MAX_TOKENS,
-            temperature=settings.LLM_TEMPERATURE,
-        )
-        _sessions     = SessionStore()
-        _skills       = SkillRegistry()
-        _tools        = ToolRegistry().setup_defaults()
-        global agent_router
-        agent_router = AgentRouter(
-            sessions=_sessions,
-            skills=_skills,
-            llm_config=llm_cfg,
-            tools=_tools,
-        )
-        gw_config = GatewayConfig(
-            host=settings.SERVER_HOST,
-            port=18789,
-            token=settings.API_KEY or None,
-            ping_interval=60.0,
-            ping_timeout=120.0,
-        )
-        _gw = NeronGateway(
-            config=gw_config,
-            agent_router=agent_router,
-            session_store=_sessions,
-            skill_registry=_skills,
-        )
-        _gateway_task = asyncio.create_task(_gw.start())
-        logger.info("Gateway WebSocket demarre sur ws://0.0.0.0:18789")
-    except Exception as e:
-        logger.warning("Gateway WebSocket non demarre : %s", e)
+        _startup_time = time.monotonic()
+        logger.info(json.dumps({"event": "startup", "version": VERSION}))
+        metrics.update_system_metrics()
 
-    set_agents({
-        "llm":        llm_agent,
-        "stt":        stt_agent,
-        "tts":        tts_agent,
-        "memory":     memory_agent,
-        "ha":         ha_agent,
-        "code":       code_agent,
-        "code_audit": code_audit_agent,
-    })
+        llm_agent = LLMAgent()
+        web_agent = WebAgent()
 
-    telegram_enabled = getattr(settings, "TELEGRAM_ENABLED", False)
-    telegram_token   = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+        memory_init_db()
+        memory_agent = MemoryAgent()
 
-    if telegram_enabled and telegram_token not in ("", "votre_token_ici", None):
-        try:
-            await start_bot()
-        except Exception as e:
-            logger.warning("Impossible de demarrer Telegram : %s", e)
-    else:
-        logger.info("Telegram desactive ou token non configure")
+        ha_agent = HAAgent()
 
-    if getattr(settings, "WATCHDOG_ENABLED", False):
-        watchdog_setup(
-            agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
+        stt_agent = STTAgent()
+        await asyncio.get_event_loop().run_in_executor(None, load_model)
+
+        tts_agent = TTSAgent()
+
+        code_agent = CodeAgent()
+        code_audit_agent = CodeAuditAgent()
+
+        obsidian_agent = ObsidianAgent("/etc/neron/obsidian-vault")
+        autonomous_planner_agent = AutonomousPlannerAgent("/etc/neron/obsidian-vault")
+
+        await ha_agent.on_start()
+
+        router = IntentRouter(llm_agent=llm_agent)
+        time_provider = TimeProvider()
+
+        if _personality_available():
+            try:
+                from personality import get_current_state
+                state = get_current_state()
+                logger.info(json.dumps({
+                    "event": "personality_loaded",
+                    "mood": state.get("mood"),
+                    "energy": state.get("energy_level"),
+                    "tone": state.get("communication", {}).get("tone"),
+                }))
+            except Exception as e:
+                logger.warning("Personality charge mais etat illisible : %s", e)
+        else:
+            logger.warning("Module personality non disponible — system prompt statique actif")
+
+        logger.info(json.dumps({"event": "agents_ready"}))
+
+        scheduler_setup(
+            agents={"code": code_agent, "memory": memory_agent},
             notify_fn=send_watchdog_notification,
         )
-        await start_watchdog()
-        await start_watchdog_bot()
+        scheduler_start()
 
-    yield
-
-    scheduler_stop()
-    await ha_agent.on_stop()
-
-    if _gateway_task and not _gateway_task.done():
-        _gateway_task.cancel()
         try:
-            await _gateway_task
-        except asyncio.CancelledError:
-            pass
+            llm_cfg = LLMConfig(
+                provider="ollama",
+                model=settings.OLLAMA_MODEL,
+                base_url=settings.OLLAMA_HOST,
+                max_tokens=settings.LLM_MAX_TOKENS,
+                temperature=settings.LLM_TEMPERATURE,
+            )
 
-    if getattr(settings, "WATCHDOG_ENABLED", False):
-        await stop_watchdog_bot()
-        await stop_watchdog()
+            _sessions = SessionStore()
+            _skills = SkillRegistry()
+            _tools = ToolRegistry().setup_defaults()
 
-    if telegram_enabled and telegram_token not in ("", "votre_token_ici", None):
-        try:
-            await stop_bot()
+            global agent_router
+            agent_router = AgentRouter(
+                sessions=_sessions,
+                skills=_skills,
+                llm_config=llm_cfg,
+                tools=_tools,
+            )
+
+            gw_config = GatewayConfig(
+                host=settings.SERVER_HOST,
+                port=18789,
+                token=settings.API_KEY or None,
+                ping_interval=60.0,
+                ping_timeout=120.0,
+            )
+
+            _gw = NeronGateway(
+                config=gw_config,
+                agent_router=agent_router,
+                session_store=_sessions,
+                skill_registry=_skills,
+            )
+
+            _gateway_task = asyncio.create_task(_gw.start())
+            logger.info("Gateway WebSocket demarre sur ws://0.0.0.0:18789")
+
         except Exception as e:
-            logger.warning("Impossible d'arreter Telegram : %s", e)
+            logger.warning("Gateway WebSocket non demarre : %s", e)
 
-    logger.info(json.dumps({"event": "shutdown"}))
+        set_agents({
+            "llm": llm_agent,
+            "stt": stt_agent,
+            "tts": tts_agent,
+            "memory": memory_agent,
+            "ha": ha_agent,
+            "code": code_agent,
+            "code_audit": code_audit_agent,
+        })
 
+        telegram_enabled = getattr(settings, "TELEGRAM_ENABLED", False)
+        telegram_token = getattr(settings, "TELEGRAM_BOT_TOKEN", "")
+
+        if telegram_enabled and telegram_token not in ("", "votre_token_ici", None):
+            try:
+                await start_bot()
+            except Exception as e:
+                logger.warning("Impossible de demarrer Telegram : %s", e)
+        else:
+            logger.info("Telegram desactive ou token non configure")
+
+        if getattr(settings, "WATCHDOG_ENABLED", False):
+            watchdog_setup(
+                agents={"llm": llm_agent, "stt": stt_agent, "tts": tts_agent},
+                notify_fn=send_watchdog_notification,
+            )
+            await start_watchdog()
+            await start_watchdog_bot()
+
+        yield
+
+    finally:
+        logger.info(json.dumps({"event": "shutdown_started"}))
+
+        try:
+            scheduler_stop()
+        except Exception as e:
+            logger.warning("Erreur arrêt scheduler : %s", e)
+
+        if ha_agent:
+            try:
+                await ha_agent.on_stop()
+            except Exception as e:
+                logger.warning("Erreur arrêt HAAgent : %s", e)
+
+        if _gateway_task and not _gateway_task.done():
+            _gateway_task.cancel()
+            try:
+                await _gateway_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning("Erreur arrêt Gateway WebSocket : %s", e)
+
+        if getattr(settings, "WATCHDOG_ENABLED", False):
+            try:
+                await stop_watchdog_bot()
+            except Exception as e:
+                logger.warning("Erreur arrêt watchdog bot : %s", e)
+
+            try:
+                await stop_watchdog()
+            except Exception as e:
+                logger.warning("Erreur arrêt watchdog : %s", e)
+
+        if telegram_enabled and telegram_token not in ("", "votre_token_ici", None):
+            try:
+                await stop_bot()
+            except Exception as e:
+                logger.warning("Impossible d'arreter Telegram : %s", e)
+
+        logger.info(json.dumps({"event": "shutdown"}))
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
