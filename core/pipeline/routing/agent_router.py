@@ -206,17 +206,22 @@ def _is_promote_request(query: str) -> bool:
         )
     )
 
-
 async def _run_dynamic_agent(query: str) -> str:
-    from core.agent_factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
+    from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
-    registry = DynamicAgentRegistry()
-    registry.load_generated_agents()
-
+    manager = get_agent_runtime_manager()
     agent_name = _extract_agent_name_for_run(query)
 
     if not agent_name:
         return "Nom d’agent introuvable. Exemple : lance l agent meteo"
+
+    result = await manager.run(agent_name, query)
+
+    if not result["ok"]:
+        available = ", ".join(result.get("available", [])) or "aucun"
+        return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
+
+    return result["response"]
 
     lookup_names = [agent_name, f"{agent_name}_agent"]
 
