@@ -104,6 +104,7 @@ venv/
 # DIVERS
 # =========================
 homeassistant/*
+workspace/*
 .claude
 .copilot
 core_old/

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import unicodedata
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from core.pipeline.intent.intent_router import Intent, IntentResult
@@ -19,6 +21,36 @@ _weather: Optional[object] = None
 _todo: Optional[object] = None
 _wiki: Optional[object] = None
 _agent_factory: Optional[object] = None
+
+
+def _normalize(text: str) -> str:
+    text = text.lower().strip()
+    text = text.replace("'", " ").replace("’", " ")
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(c for c in text if unicodedata.category(c) != "Mn")
+    return text
+
+
+def _clean_agent_name(name: str) -> str:
+    name = _normalize(name)
+    name = name.replace("-", "_").replace(" ", "_")
+    name = "".join(c for c in name if c.isalnum() or c == "_")
+    if name.endswith("_agent"):
+        name = name[:-6]
+    return name.strip("_")
+
+
+def _result_to_text(result: Any) -> str:
+    if isinstance(result, str):
+        return result
+
+    if isinstance(result, dict):
+        return result.get("response", str(result))
+
+    if hasattr(result, "content"):
+        return result.content if getattr(result, "success", True) else f"⚠️ {result.error}"
+
+    return str(result)
 
 
 def _get_llm():
@@ -96,7 +128,7 @@ def _get_wiki():
 def _get_agent_factory():
     global _agent_factory
     if _agent_factory is None:
-        from core.agents.system.agent_factory_agent import AgentFactoryAgent
+        from core.agent_factory.factory_agent import AgentFactoryAgent
         _agent_factory = AgentFactoryAgent()
     return _agent_factory
 
@@ -118,29 +150,61 @@ def _list_dynamic_agents() -> str:
     return "\n".join(lines)
 
 
-def _extract_agent_name_for_run(query: str) -> str | None:
-    text = query.lower().strip()
-    text = text.replace("'", " ")
-    text = text.replace("’", " ")
-
-    prefixes = [
-        "lance l agent",
-        "lance agent",
-        "execute l agent",
-        "execute agent",
-        "exécute l agent",
-        "exécute agent",
-        "run agent",
-    ]
+def _extract_agent_name(query: str, prefixes: list[str]) -> str | None:
+    text = _normalize(query)
 
     for prefix in prefixes:
-        if text.startswith(prefix):
-            name = text.replace(prefix, "", 1).strip()
-            name = name.replace("-", "_").replace(" ", "_")
-            name = "".join(c for c in name if c.isalnum() or c == "_")
+        prefix_norm = _normalize(prefix)
+        if text.startswith(prefix_norm):
+            raw_name = text.replace(prefix_norm, "", 1).strip()
+            name = _clean_agent_name(raw_name)
             return name or None
 
     return None
+
+
+def _extract_agent_name_for_run(query: str) -> str | None:
+    return _extract_agent_name(
+        query,
+        [
+            "lance l agent",
+            "lance agent",
+            "execute l agent",
+            "execute agent",
+            "exécute l agent",
+            "exécute agent",
+            "run agent",
+        ],
+    )
+
+
+def _extract_agent_name_for_promote(query: str) -> str | None:
+    return _extract_agent_name(
+        query,
+        [
+            "valide l agent",
+            "valide agent",
+            "promeut l agent",
+            "promeut agent",
+            "active l agent",
+            "active agent",
+        ],
+    )
+
+
+def _is_promote_request(query: str) -> bool:
+    text = _normalize(query)
+    return any(
+        text.startswith(_normalize(prefix))
+        for prefix in (
+            "valide l agent",
+            "valide agent",
+            "promeut l agent",
+            "promeut agent",
+            "active l agent",
+            "active agent",
+        )
+    )
 
 
 async def _run_dynamic_agent(query: str) -> str:
@@ -152,23 +216,64 @@ async def _run_dynamic_agent(query: str) -> str:
     agent_name = _extract_agent_name_for_run(query)
 
     if not agent_name:
-        return "Nom d’agent introuvable. Exemple : lance l agent test_pipeline"
+        return "Nom d’agent introuvable. Exemple : lance l agent meteo"
 
-    agent = AGENT_REGISTRY.get(agent_name)
+    lookup_names = [agent_name, f"{agent_name}_agent"]
+
+    agent = None
+    selected_name = None
+
+    for name in lookup_names:
+        agent = AGENT_REGISTRY.get(name)
+        if agent is not None:
+            selected_name = name
+            break
 
     if agent is None:
         available = ", ".join(sorted(AGENT_REGISTRY.keys())) or "aucun"
         return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
 
     result = await agent.execute(text=query)
+    return _result_to_text(result)
 
-    if isinstance(result, dict):
-        return result.get("response", str(result))
 
-    if hasattr(result, "content"):
-        return result.content if getattr(result, "success", True) else f"⚠️ {result.error}"
+async def _promote_dynamic_agent(query: str) -> str:
+    from pathlib import Path
 
-    return str(result)
+    from core.agent_factory.promoter import promote_agent
+    from core.agent_factory.validator import validate_agent
+
+    agent_name = _extract_agent_name_for_promote(query)
+
+    if not agent_name:
+        return "Nom d’agent introuvable. Exemple : valide l agent meteo"
+
+    candidates = [
+        Path(f"/etc/neron/workspace/agents/{agent_name}_agent.py"),
+        Path(f"/etc/neron/workspace/agents/{agent_name}.py"),
+    ]
+
+    source = next((path for path in candidates if path.exists()), None)
+
+    if source is None:
+        checked = ", ".join(str(path) for path in candidates)
+        return f"Agent brouillon introuvable : {agent_name}. Chemins vérifiés : {checked}"
+
+    validation = validate_agent(str(source))
+
+    if not validation["ok"]:
+        return f"Validation échouée : {validation['error']}"
+
+    result = promote_agent(str(source))
+
+    if not result["ok"]:
+        return f"Promotion échouée : {result['error']}"
+
+    return (
+        f"✅ Agent promu : {agent_name}\n"
+        f"Source : {result['source']}\n"
+        f"Destination : {result['destination']}"
+    )
 
 
 class AgentRouter:
@@ -186,20 +291,16 @@ class AgentRouter:
         intent = intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
 
+        if _is_promote_request(query):
+            return await _promote_dynamic_agent(query)
+
         if intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
             result = await _get_system().run(query)
-            return result.content if result.success else f"⚠️ {result.error}"
+            return _result_to_text(result)
 
         if intent == Intent.AGENT_CREATION:
             result = await _get_agent_factory().execute(text=query)
-
-            if isinstance(result, dict):
-                return result.get("response", str(result))
-
-            if hasattr(result, "content"):
-                return result.content if getattr(result, "success", True) else f"⚠️ {result.error}"
-
-            return str(result)
+            return _result_to_text(result)
 
         if intent == Intent.AGENT_LIST:
             return _list_dynamic_agents()
@@ -208,16 +309,20 @@ class AgentRouter:
             return await _run_dynamic_agent(query)
 
         if intent == Intent.NEWS_QUERY:
-            return await _get_news().run(query)
+            result = await _get_news().run(query)
+            return _result_to_text(result)
 
         if intent == Intent.WEATHER_QUERY:
-            return await _get_weather().run(query)
+            result = await _get_weather().run(query)
+            return _result_to_text(result)
 
         if intent == Intent.TODO_ACTION:
-            return await _get_todo().run(query)
+            result = await _get_todo().run(query)
+            return _result_to_text(result)
 
         if intent == Intent.WIKI_QUERY:
-            return await _get_wiki().run(query)
+            result = await _get_wiki().run(query)
+            return _result_to_text(result)
 
         if intent == Intent.TIME_QUERY:
             from core.neron_time.time_provider import get_formatted_time
@@ -225,17 +330,17 @@ class AgentRouter:
 
         if intent == Intent.HA_ACTION:
             result = await _get_ha().execute(query)
-            return result.content if result.success else f"⚠️ {result.error}"
+            return _result_to_text(result)
 
         if intent == Intent.WEB_SEARCH:
             result = await _get_web().execute(query)
-            return result.content if result.success else f"⚠️ {result.error}"
+            return _result_to_text(result)
 
         if intent in (Intent.CODE, Intent.CODE_AUDIT):
             from core.agents.dev.code_audit_agent import CodeAuditAgent
             agent = CodeAuditAgent()
             result = await agent.execute(query)
-            return result.content if result.success else f"⚠️ {result.error}"
+            return _result_to_text(result)
 
         if intent == Intent.PERSONALITY_FEEDBACK:
             from core.personality.updater import apply_feedback
@@ -246,15 +351,12 @@ class AgentRouter:
         context = await memory.get_context(query) if hasattr(memory, "get_context") else None
         result = await _get_llm().execute(query, context_data=context)
 
-        if result.success:
+        if getattr(result, "success", False):
             if hasattr(memory, "save"):
                 await memory.save(query, result.content)
             return result.content
 
-        return f"⚠️ Erreur LLM : {result.error}"
-
-
-from dataclasses import dataclass
+        return f"⚠️ Erreur LLM : {getattr(result, 'error', 'erreur inconnue')}"
 
 
 @dataclass

@@ -107,6 +107,18 @@ def _fallback_intent(query: str) -> Intent | None:
         "run agent",
     ]
 
+    agent_promote_keywords = [
+        "valide l agent",
+        "valide l'agent",
+        "valide agent",
+        "promeut l agent",
+        "promeut l'agent",
+        "promeut agent",
+        "active l agent",
+        "active l'agent",
+        "active agent",
+    ]
+
     code_audit_keywords = [
         "audit ce code",
         "audite ce code",
@@ -138,6 +150,9 @@ def _fallback_intent(query: str) -> Intent | None:
         return Intent.AGENT_LIST
 
     if any(k in q for k in agent_run_keywords):
+        return Intent.AGENT_RUN
+
+    if any(k in q for k in agent_promote_keywords):
         return Intent.AGENT_RUN
 
     return None
