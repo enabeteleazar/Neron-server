@@ -130,13 +130,30 @@ def _rollback(path: Path) -> bool:
 
 def _strip_markdown_fences(code: str) -> str:
     """
-    Supprime les balises markdown que certains modèles ajoutent.
-    FIX: fonction dédiée et testable au lieu de triple re.sub inline.
+    Extrait du code Python même si le modèle ajoute du texte autour.
     """
-    code = re.sub(r"^```python\s*\n?", "", code.strip())
-    code = re.sub(r"^```\s*\n?",       "", code.strip())
-    code = re.sub(r"\n?```$",          "", code.strip())
-    return code.strip()
+    raw = code.strip()
+
+    fenced = re.search(r"```(?:python)?\s*\n(.*?)\n?```", raw, re.DOTALL | re.IGNORECASE)
+    if fenced:
+        return fenced.group(1).strip()
+
+    markers = (
+        "def ",
+        "class ",
+        "import ",
+        "from ",
+        "#",
+        "@",
+    )
+
+    lines = raw.splitlines()
+    for idx, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith(markers):
+            return "\n".join(lines[idx:]).strip()
+
+    return raw
 
 
 async def _sandbox_test(code: str) -> dict:
