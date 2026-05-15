@@ -8,6 +8,8 @@ from core.events import event_types
 from core.events.persistence import persist_event
 from core.events.analyzer import analyze_event
 from core.self_model.subscriber import update_self_model_from_event
+from core.events.alert_notifier import notify_system_alert
+from core.self_repair.subscriber import handle_system_alert_for_repair
 
 logger = logging.getLogger("neron.events.subscribers")
 
@@ -71,3 +73,7 @@ def register_default_subscribers() -> None:
         event_bus.subscribe(event_type, persist_event)
         event_bus.subscribe(event_type, analyze_event)
         event_bus.subscribe(event_type, update_self_model_from_event)
+
+        if event_type == event_types.SYSTEM_ALERT:
+            event_bus.subscribe(event_type, notify_system_alert)
+            event_bus.subscribe(event_type, handle_system_alert_for_repair)

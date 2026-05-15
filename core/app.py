@@ -94,6 +94,7 @@ from core.modules.sessions import SessionStore
 from core.modules.skills import SkillRegistry
 from core.neron_time.time_provider import TimeProvider
 from core.pipeline.intent.intent_router import Intent, IntentRouter
+from core.self_model.monitor import get_self_monitor
 
 from core.integrations.homeassistant.client import HomeAssistantClient
 from core.integrations.homeassistant.registry import HARegistry
@@ -122,6 +123,7 @@ VERSION = "3.2.1"
 
 _startup_time: float               = 0.0
 _gateway_task: asyncio.Task | None = None
+_self_monitor_task: asyncio.Task | None = None
 
 llm_agent:        LLMAgent        | None = None
 memory_agent:     MemoryAgent     | None = None
@@ -244,7 +246,7 @@ metrics = Metrics()
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
     global router, time_provider, _startup_time, memory_agent
-    global code_agent, code_audit_agent, _gateway_task
+    global code_agent, code_audit_agent, _gateway_task, _self_monitor_task
     global obsidian_agent, autonomous_planner_agent
 
     telegram_enabled = False
@@ -254,6 +256,10 @@ async def lifespan(app: FastAPI):
         _startup_time = time.monotonic()
         logger.info(json.dumps({"event": "startup", "version": VERSION}))
         register_default_subscribers()
+
+        _self_monitor_task = asyncio.create_task(get_self_monitor().start())
+        logger.info("SelfMonitor demarre")
+
         metrics.update_system_metrics()
 
         llm_agent = LLMAgent()
@@ -378,6 +384,20 @@ async def lifespan(app: FastAPI):
 
     finally:
         logger.info(json.dumps({"event": "shutdown_started"}))
+
+        try:
+            await get_self_monitor().stop()
+        except Exception as e:
+            logger.warning("Erreur arrêt SelfMonitor : %s", e)
+
+        if _self_monitor_task and not _self_monitor_task.done():
+            _self_monitor_task.cancel()
+            try:
+                await _self_monitor_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning("Erreur tâche SelfMonitor : %s", e)
 
         try:
             scheduler_stop()
@@ -747,6 +767,9 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             await _publish_response_ready(intent_result, "code_agent", result)
 
             return result
+
+        if _is_repair_query(query):
+            return await _handle_repairs(query, intent_result, metadata, start)
 
         if _is_memory_query(query):
             return await _handle_memory(query, intent_result, metadata, start)
@@ -1158,6 +1181,72 @@ async def _handle_code(query, intent_result, metadata, start) -> CoreResponse:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=settings.SERVER_HOST, port=settings.SERVER_PORT)
+
+
+# ── Handler SelfRepair ────────────────────────────────────────────────────────
+
+def _is_repair_query(query: str) -> bool:
+    q = query.lower()
+    keywords = [
+        "réparations proposées",
+        "reparations proposees",
+        "montre les réparations",
+        "montre les reparations",
+        "liste les réparations",
+        "liste les reparations",
+        "self repair",
+        "repair proposed",
+    ]
+    return any(keyword in q for keyword in keywords)
+
+
+async def _handle_repairs(query, intent_result, metadata, start) -> CoreResponse:
+    import json
+    from pathlib import Path
+
+    repair_dir = Path("/etc/neron/workspace/repairs")
+    files = sorted(
+        repair_dir.glob("*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )[:5]
+
+    if not files:
+        response = "Aucune réparation proposée actuellement."
+    else:
+        lines = ["Réparations proposées :"]
+
+        for file in files:
+            data = json.loads(file.read_text(encoding="utf-8"))
+
+            proposal = data.get("proposal", {})
+            diagnostic = data.get("diagnostic", {})
+            alert = data.get("alert", {})
+
+            lines.append(
+                f"- {proposal.get('title', 'Sans titre')} "
+                f"[risque={proposal.get('risk', '?')}] "
+                f"agent={alert.get('agent', '?')} "
+                f"raison={alert.get('reason', '?')}\n"
+                f"  Diagnostic : {diagnostic.get('summary', 'n/a')}\n"
+                f"  Rapport : {file}"
+            )
+
+        response = "\n".join(lines)
+
+    return CoreResponse(
+        response=response,
+        intent="self_repair",
+        agent="self_repair",
+        confidence=intent_result.confidence,
+        timestamp=utc_now_iso(),
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+        model=None,
+        error=None,
+        transcription=None,
+        metadata=metadata,
+    )
+
 
 # ── Handler Obsidian Memory ───────────────────────────────────────────────────
 
