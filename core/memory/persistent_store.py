@@ -1,6 +1,6 @@
 # core/memory/persistent_store.py
 # Mémoire persistante SQLite — zéro ORM, thread-safe, WAL mode.
-# Tables : sessions | turns | facts
+# Tables : sessions | turns | facts | events
 from __future__ import annotations
 
 import json
@@ -59,6 +59,18 @@ CREATE TABLE IF NOT EXISTS facts (
     UNIQUE(session_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_facts_session ON facts(session_id);
+
+CREATE TABLE IF NOT EXISTS events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id      TEXT    NOT NULL UNIQUE,
+    type          TEXT    NOT NULL,
+    source        TEXT    NOT NULL,
+    payload_json  TEXT    NOT NULL DEFAULT '{}',
+    created_at    TEXT    NOT NULL,
+    ts            REAL    NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(type, ts DESC);
+CREATE INDEX IF NOT EXISTS idx_events_ts ON events(ts DESC);
 """
 
 
@@ -238,6 +250,61 @@ class PersistentStore:
                 result[r["key"]] = json.loads(r["value"])
             except (json.JSONDecodeError, TypeError):
                 result[r["key"]] = r["value"]
+        return result
+
+    # ── Events (journal cognitif) ─────────────────────────────────────────────
+
+    def push_event(
+        self,
+        event_id: str,
+        event_type: str,
+        source: str,
+        payload: Dict[str, Any],
+        created_at: str,
+    ) -> int:
+        """Persiste un événement interne de Néron."""
+        now = time.time()
+        payload_json = json.dumps(payload or {}, ensure_ascii=False, default=str)
+
+        with self._lock, _conn() as c:
+            cur = c.execute(
+                """INSERT OR IGNORE INTO events(event_id, type, source, payload_json, created_at, ts)
+                   VALUES(?,?,?,?,?,?)""",
+                (event_id, event_type, source, payload_json, created_at, now),
+            )
+            return cur.lastrowid or 0
+
+    def get_recent_events(
+        self,
+        limit: int = 50,
+        event_type: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Retourne les événements récents, optionnellement filtrés par type."""
+        limit = min(max(1, limit), 500)
+
+        with _conn() as c:
+            if event_type:
+                rows = c.execute(
+                    """SELECT event_id, type, source, payload_json, created_at, ts
+                       FROM events WHERE type=? ORDER BY ts DESC LIMIT ?""",
+                    (event_type, limit),
+                ).fetchall()
+            else:
+                rows = c.execute(
+                    """SELECT event_id, type, source, payload_json, created_at, ts
+                       FROM events ORDER BY ts DESC LIMIT ?""",
+                    (limit,),
+                ).fetchall()
+
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item.pop("payload_json"))
+            except (json.JSONDecodeError, TypeError):
+                item["payload"] = {}
+            result.append(item)
+
         return result
 
     # ── GC ───────────────────────────────────────────────────────────────────

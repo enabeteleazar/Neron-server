@@ -5,6 +5,7 @@ import logging
 from core.events.event import Event
 from core.events.event_bus import event_bus
 from core.events import event_types
+from core.events.persistence import persist_event
 
 logger = logging.getLogger("neron.events.subscribers")
 
@@ -54,3 +55,4 @@ def register_default_subscribers() -> None:
         event_types.MEMORY_UPDATED,
     ):
         event_bus.subscribe(event_type, log_event)
+        event_bus.subscribe(event_type, persist_event)
