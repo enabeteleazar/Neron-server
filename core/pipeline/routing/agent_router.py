@@ -133,6 +133,11 @@ def _get_agent_factory():
     return _agent_factory
 
 
+def _get_self_model():
+    from core.self_model.self_model import get_self_model
+    return get_self_model()
+
+
 def _list_dynamic_agents() -> str:
     from core.agent_factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
 
@@ -298,6 +303,17 @@ class AgentRouter:
 
         if _is_promote_request(query):
             return await _promote_dynamic_agent(query)
+
+        if intent == Intent.SELF_STATUS:
+            from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+
+            runtime = get_agent_runtime_manager()
+            runtime.reload()
+
+            model = _get_self_model()
+            model.set_agents_available(runtime.list_agents())
+
+            return model.summary()
 
         if intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
             result = await _get_system().run(query)

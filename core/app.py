@@ -751,6 +751,22 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
         if _is_memory_query(query):
             return await _handle_memory(query, intent_result, metadata, start)
 
+        elif intent_result.intent == Intent.SELF_STATUS:
+            response_text = await agent_router.route(intent_result, query)
+
+            return CoreResponse(
+                response=response_text,
+                intent=intent_result.intent.value,
+                agent="self_model",
+                confidence=intent_result.confidence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata=metadata,
+            )
+
         else:
             await _publish_agent_selected(intent_result, "llm_agent")
 

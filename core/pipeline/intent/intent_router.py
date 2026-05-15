@@ -32,6 +32,7 @@ class Intent(str, Enum):
 
     SYSTEM_STATUS        = "system_status"
     NETWORK_STATUS       = "network_status"
+    SELF_STATUS          = "self_status"
 
     NEWS_QUERY           = "news_query"
     WEATHER_QUERY        = "weather_query"
@@ -65,6 +66,23 @@ def _normalize(text: str) -> str:
 
 def _fallback_intent(query: str) -> Intent | None:
     q = _normalize(query)
+
+    self_status_keywords = [
+        "etat interne",
+        "etat conscience",
+        "etat cognitif",
+        "self status",
+        "self model",
+        "selfmodel",
+        "que sais tu de toi",
+        "que sais-tu de toi",
+        "qui es tu",
+        "qui es-tu",
+        "tes capacites",
+        "tes capacités",
+        "capacites de neron",
+        "capacités de neron",
+    ]
 
     system_keywords = [
         "statut systeme",
@@ -133,6 +151,9 @@ def _fallback_intent(query: str) -> Intent | None:
         "code audit",
         "audit python",
     ]
+
+    if any(k in q for k in self_status_keywords):
+        return Intent.SELF_STATUS
 
     if any(k in q for k in code_audit_keywords):
         return Intent.CODE_AUDIT
