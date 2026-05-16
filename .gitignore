@@ -13,6 +13,7 @@ client*/
 pycache/
 *.py[cod]
 *.pyo
+*.pyc
 *.pyd
 *.so
 
