@@ -299,10 +299,16 @@ class AgentRouter:
 
     async def route(self, intent_result, query: str):
         model = _get_self_model()
-        intent_name = getattr(
+        raw_intent = getattr(
             intent_result,
             "intent",
-            str(intent_result),
+            intent_result,
+        )
+
+        intent_name = getattr(
+            raw_intent,
+            "value",
+            str(raw_intent).replace("Intent.", "").lower(),
         )
         intent_confidence = getattr(
             intent_result,
@@ -313,6 +319,7 @@ class AgentRouter:
             intent_name,
             intent_confidence,
         )
+        model.add_recent_activity(f"Intent détecté : {intent_name}")
 
         intent = intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
@@ -328,12 +335,20 @@ class AgentRouter:
 
             model.set_agents_available(runtime.list_agents())
             model.set_last_agent("self_model")
+            model.set_last_action("consultation du Self-Model")
+            model.set_last_decision("répondre depuis l'état interne réel")
+            model.set_last_reasoning("l'intention self_status nécessite une réponse issue du Self-Model")
+            model.add_recent_activity("self_model exécuté")
             model.set_last_error(None)
 
             return model.full_status_text() if hasattr(model, 'full_status_text') else model.summary()
 
         if intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
             model.set_last_agent("system_agent")
+            model.set_last_action("analyse système exécutée")
+            model.set_last_decision("retourner l'état système")
+            model.set_last_reasoning("l'intention system_status nécessite un diagnostic système")
+            model.add_recent_activity("system_agent exécuté")
             model.set_last_error(None)
             result = await _get_system().run(query)
             return _result_to_text(result)

@@ -20,16 +20,13 @@ class SelfModel:
     runtime: dict[str, Any] = field(default_factory=dict)
     services: dict[str, str] = field(default_factory=dict)
     cognitive_state: dict[str, Any] = field(default_factory=dict)
-
     diagnostics: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
 
     active_goal: str = "maintenir la stabilité système"
-
     health_realtime: str = "unknown"
     health_historical: str = "unknown"
     health_global: str = "unknown"
-
     last_update: float | None = None
 
     def __post_init__(self) -> None:
@@ -42,7 +39,6 @@ class SelfModel:
 
     def collect_runtime(self) -> None:
         disk = shutil.disk_usage("/")
-
         self.runtime = {
             "cpu_usage": psutil.cpu_percent(interval=0.2),
             "ram_usage": psutil.virtual_memory().percent,
@@ -51,18 +47,25 @@ class SelfModel:
         }
 
     def collect_services(self) -> None:
-        tracked_services = [
+        tracked = [
             "neron-core",
             "neron-llm",
             "neron-doctor",
             "neron-cognitive-loop",
             "neron-self-model-loop",
+            "neron-cognitive-daemon",
+            "neron-cognitive-loop",
+            "neron-core",
+            "neron-core",
+            "neron-doctor",
+            "neron-homeassistant",
+            "neron-kula",
+            "neron-llm",
+            "neron-self-model-loop",
+            "neron-stt",
+            "neron-vocal",
         ]
-
-        self.services = {}
-
-        for service in tracked_services:
-            self.services[service] = self._systemctl_is_active(service)
+        self.services = {name: self._systemctl_is_active(name) for name in tracked}
 
     def _systemctl_is_active(self, service: str) -> str:
         try:
@@ -72,14 +75,7 @@ class SelfModel:
                 text=True,
                 timeout=2,
             )
-
-            status = result.stdout.strip()
-
-            if not status:
-                return "unknown"
-
-            return status
-
+            return result.stdout.strip() or "unknown"
         except Exception:
             return "unknown"
 
@@ -87,34 +83,19 @@ class SelfModel:
         self.health_realtime = "excellent"
         self.health_historical = "excellent"
 
-        cpu_usage = self.runtime.get("cpu_usage", 0)
-        ram_usage = self.runtime.get("ram_usage", 0)
-        disk_usage = self.runtime.get("disk_usage", 0)
-
-        if cpu_usage >= 90:
+        if self.runtime.get("cpu_usage", 0) >= 90:
+            self.health_realtime = "warning"
+        if self.runtime.get("ram_usage", 0) >= 90:
+            self.health_realtime = "warning"
+        if self.runtime.get("disk_usage", 0) >= 90:
             self.health_realtime = "warning"
 
-        if ram_usage >= 90:
-            self.health_realtime = "warning"
-
-        if disk_usage >= 90:
-            self.health_realtime = "warning"
-
-        critical_services = [
-            "neron-core",
-            "neron-llm",
-            "neron-doctor",
-            "neron-self-model-loop",
-        ]
-
-        for service in critical_services:
+        critical = ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]
+        for service in critical:
             if self.services.get(service) != "active":
                 self.health_realtime = "warning"
 
-        if self.health_realtime == "excellent":
-            self.health_global = "stable"
-        else:
-            self.health_global = "stable_with_warning"
+        self.health_global = "stable" if self.health_realtime == "excellent" else "stable_with_warning"
 
     def compute_cognitive_state(self) -> None:
         self.cognitive_state = {
@@ -131,30 +112,16 @@ class SelfModel:
     def compute_diagnostics(self) -> None:
         self.diagnostics = []
 
-        cpu_usage = self.runtime.get("cpu_usage", 0)
-        ram_usage = self.runtime.get("ram_usage", 0)
-        disk_usage = self.runtime.get("disk_usage", 0)
-
-        if cpu_usage >= 90:
+        if self.runtime.get("cpu_usage", 0) >= 90:
             self.diagnostics.append("Charge CPU élevée.")
-
-        if ram_usage >= 90:
+        if self.runtime.get("ram_usage", 0) >= 90:
             self.diagnostics.append("Utilisation RAM élevée.")
-
-        if disk_usage >= 90:
+        if self.runtime.get("disk_usage", 0) >= 90:
             self.diagnostics.append("Espace disque critique.")
 
-        if self.services.get("neron-core") != "active":
-            self.diagnostics.append("Le service neron-core est inactif.")
-
-        if self.services.get("neron-llm") != "active":
-            self.diagnostics.append("Le service neron-llm est inactif.")
-
-        if self.services.get("neron-doctor") != "active":
-            self.diagnostics.append("Le service neron-doctor est inactif.")
-
-        if self.services.get("neron-self-model-loop") != "active":
-            self.diagnostics.append("Le Self-Model loop est inactif.")
+        for service in ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]:
+            if self.services.get(service) != "active":
+                self.diagnostics.append(f"Le service {service} est inactif.")
 
         if self.services.get("neron-cognitive-loop") != "active":
             self.diagnostics.append("La boucle cognitive autonome est inactive.")
@@ -162,198 +129,237 @@ class SelfModel:
     def compute_recommendations(self) -> None:
         self.recommendations = []
 
-        cpu_usage = self.runtime.get("cpu_usage", 0)
-        ram_usage = self.runtime.get("ram_usage", 0)
-        disk_usage = self.runtime.get("disk_usage", 0)
+        if self.runtime.get("cpu_usage", 0) >= 90:
+            self.recommendations.append("Réduire la charge LLM ou basculer vers un modèle plus léger.")
+        if self.runtime.get("ram_usage", 0) >= 90:
+            self.recommendations.append("Libérer de la mémoire ou réduire les services non essentiels.")
+        if self.runtime.get("disk_usage", 0) >= 90:
+            self.recommendations.append("Nettoyer les logs, caches ou anciens paquets système.")
 
-        if cpu_usage >= 90:
-            self.recommendations.append(
-                "Réduire la charge LLM ou basculer vers un modèle plus léger."
-            )
+        for service in ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]:
+            if self.services.get(service) != "active":
+                self.recommendations.append(f"Redémarrer le service {service}.")
 
-        if ram_usage >= 90:
-            self.recommendations.append(
-                "Libérer de la mémoire ou réduire les services non essentiels."
-            )
+    def refresh(self) -> None:
+        self.collect_runtime()
+        self.collect_services()
+        self.compute_health()
+        self.compute_cognitive_state()
+        self.compute_diagnostics()
+        self.compute_recommendations()
+        self.last_update = time.time()
 
-        if disk_usage >= 90:
-            self.recommendations.append(
-                "Nettoyer les logs, caches ou anciens paquets système."
-            )
-
-        if self.services.get("neron-core") != "active":
-            self.recommendations.append("Redémarrer le service neron-core.")
-
-        if self.services.get("neron-llm") != "active":
-            self.recommendations.append("Redémarrer le service neron-llm.")
-
-        if self.services.get("neron-doctor") != "active":
-            self.recommendations.append("Redémarrer le service neron-doctor.")
-
-        if self.services.get("neron-self-model-loop") != "active":
-            self.recommendations.append("Démarrer le service neron-self-model-loop.")
-
-        if self.services.get("neron-cognitive-loop") != "active":
-            self.recommendations.append("Démarrer le service neron-cognitive-loop.")
-
-    def update_from_event(self, event) -> None:
-        try:
-            self.last_event = {
-                "type": getattr(event, "type", None),
-                "source": getattr(event, "source", None),
-                "event_id": getattr(event, "event_id", None),
-            }
-        except Exception:
-            self.last_event = {"raw": str(event)}
-
-    def set_agents_available(self, agents) -> None:
-        try:
-            self.agents_available = list(agents)
-        except Exception:
-            self.agents_available = []
-
-    def set_last_intent(self, intent: str, confidence: float | None = None) -> None:
-        self.last_intent = {
-            "intent": intent,
-            "confidence": confidence,
-        }
-
-    def record_agent_run(self, agent_name: str, success: bool = True) -> None:
-        if not hasattr(self, "agent_runs"):
-            self.agent_runs = {}
-
-        current = self.agent_runs.get(
-            agent_name,
-            {"runs": 0, "failures": 0},
-        )
-
-        current["runs"] += 1
-
-        if not success:
-            current["failures"] += 1
-
-        self.agent_runs[agent_name] = current
-
-    def _merge_state(self, patch: dict) -> None:
+    def _merge_state(self, patch: dict[str, Any]) -> None:
         data = load_self_model_state()
         data.update(patch)
-
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = STATE_PATH.with_suffix(".json.tmp")
-        tmp_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-        tmp_path.replace(STATE_PATH)
+        tmp = STATE_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(STATE_PATH)
 
-    def set_last_intent(self, intent: str, confidence: float | None = None) -> None:
+    def set_last_intent(self, intent: str, confidence: Any = None) -> None:
         data = load_self_model_state()
-
         event_count = int(data.get("event_count", 0)) + 1
 
-        intent_entry = {
+        entry = {
             "intent": intent,
             "confidence": confidence,
             "timestamp": time.time(),
         }
 
         history = data.get("intent_history", [])
-
         if not isinstance(history, list):
             history = []
 
-        history.append(intent_entry)
+        history.append(entry)
         history = history[-5:]
 
-        self.last_intent = intent_entry
-        self.intent_history = history
-        self.event_count = event_count
+        self._merge_state({
+            "last_intent": entry,
+            "intent_history": history,
+            "event_count": event_count,
+        })
 
-        self._merge_state(
-            {
-                "last_intent": intent_entry,
-                "intent_history": history,
-                "event_count": event_count,
+    def set_last_agent(self, agent: str | None) -> None:
+        self._merge_state({
+            "last_agent": {
+                "agent": agent,
+                "timestamp": time.time(),
             }
-        )
-
-    def set_last_agent(self, agent_name: str) -> None:
-        self.last_agent = {
-            "agent": agent_name,
-            "timestamp": time.time(),
-        }
-        self._merge_state({"last_agent": self.last_agent})
+        })
 
     def set_last_error(self, error: str | None) -> None:
-        self.last_error = {
-            "error": error,
-            "timestamp": time.time(),
-        }
-        self._merge_state({"last_error": self.last_error})
+        self._merge_state({
+            "last_error": {
+                "error": error,
+                "timestamp": time.time(),
+            }
+        })
 
-    def set_agents_available(self, agents) -> None:
+    def set_agents_available(self, agents: Any) -> None:
         try:
-            self.agents_available = list(agents)
+            value = list(agents)
         except Exception:
-            self.agents_available = []
+            value = []
+        self._merge_state({"agents_available": value})
 
-        self._merge_state({"agents_available": self.agents_available})
+    def set_last_action(self, action: str | None) -> None:
+        self._merge_state({"last_action": {"action": action, "timestamp": time.time()}})
+
+    def set_last_decision(self, decision: str | None) -> None:
+        self._merge_state({"last_decision": {"decision": decision, "timestamp": time.time()}})
+
+    def set_last_reasoning(self, reasoning: str | None) -> None:
+        self._merge_state({"last_reasoning": {"reasoning": reasoning, "timestamp": time.time()}})
+
+    def add_recent_activity(self, activity: str) -> None:
+        data = load_self_model_state()
+        activities = data.get("recent_activity", [])
+        if not isinstance(activities, list):
+            activities = []
+
+        activity = activity.replace("Intent.SELF_STATUS", "self_status")
+        activity = activity.replace("Intent.SYSTEM_STATUS", "system_status")
+
+        activities.append({"activity": activity, "timestamp": time.time()})
+        self._merge_state({"recent_activity": activities[-8:]})
+
+    def compute_stability_score(self) -> float:
+        score = 100.0
+        cpu = self.runtime.get("cpu_usage", 0) or 0
+        ram = self.runtime.get("ram_usage", 0) or 0
+        disk = self.runtime.get("disk_usage", 0) or 0
+
+        if cpu >= 90:
+            score -= 20
+        elif cpu >= 70:
+            score -= 10
+
+        if ram >= 90:
+            score -= 20
+        elif ram >= 70:
+            score -= 10
+
+        if disk >= 90:
+            score -= 20
+        elif disk >= 85:
+            score -= 10
+
+        score -= min(len(self.diagnostics) * 10, 30)
+        return max(0.0, round(score, 1))
+
+    def update_cognitive_snapshot(self) -> None:
+        cpu = self.runtime.get("cpu_usage", 0) or 0
+        ram = self.runtime.get("ram_usage", 0) or 0
+
+        if cpu >= 85 or ram >= 85:
+            load = "élevée"
+        elif cpu >= 50 or ram >= 60:
+            load = "modérée"
+        else:
+            load = "faible"
+
+        mental = "diagnostic" if self.diagnostics else "monitoring"
+
+        self._merge_state({
+            "cognitive_load": load,
+            "mental_state": mental,
+            "stability_score": self.compute_stability_score(),
+        })
 
     def _format_duration(self, seconds: float | int | None) -> str:
         if seconds is None:
             return "inconnu"
-
         try:
             seconds = int(seconds)
         except Exception:
             return "inconnu"
 
-        days, remainder = divmod(seconds, 86400)
-        hours, remainder = divmod(remainder, 3600)
-        minutes, _ = divmod(remainder, 60)
+        days, rem = divmod(seconds, 86400)
+        hours, rem = divmod(rem, 3600)
+        minutes, _ = divmod(rem, 60)
 
         parts = []
-
         if days:
             parts.append(f"{days}j")
-
         if hours:
             parts.append(f"{hours}h")
-
         if minutes or not parts:
             parts.append(f"{minutes}min")
-
         return " ".join(parts)
 
     def _state_age_text(self, last_update: float | None) -> str:
         if not last_update:
             return "inconnu"
-
         age = max(0, time.time() - float(last_update))
-
         if age < 60:
             return f"mis à jour il y a {int(age)} secondes"
-
         if age < 3600:
             return f"mis à jour il y a {int(age // 60)} minutes"
-
         return f"mis à jour il y a {int(age // 3600)} heures"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "identity": self.identity,
+            "runtime": self.runtime,
+            "services": self.services,
+            "health_realtime": self.health_realtime,
+            "health_historical": self.health_historical,
+            "health_global": self.health_global,
+            "active_goal": self.active_goal,
+            "cognitive_state": self.cognitive_state,
+            "diagnostics": self.diagnostics,
+            "recommendations": self.recommendations,
+            "last_update": self.last_update,
+        }
+
+    def save_state(self) -> None:
+        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        existing = {}
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        data = existing | self.to_dict()
+
+        for key in (
+            "last_intent",
+            "intent_history",
+            "event_count",
+            "last_agent",
+            "last_error",
+            "agents_available",
+            "last_action",
+            "last_decision",
+            "last_reasoning",
+            "recent_activity",
+            "cognitive_load",
+            "mental_state",
+            "stability_score",
+        ):
+            if key in existing and data.get(key) in (None, [], {}, 0):
+                data[key] = existing[key]
+
+        tmp = STATE_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(STATE_PATH)
 
     def summary(self) -> str:
         data = load_self_model_state()
-
         runtime = data.get("runtime", {})
         cognitive = data.get("cognitive_state", {})
         services = data.get("services", {})
         diagnostics = data.get("diagnostics", [])
         recommendations = data.get("recommendations", [])
         last_intent = data.get("last_intent", {})
-        last_agent_data = data.get("last_agent", {})
-        last_error_data = data.get("last_error", {})
+        last_agent = data.get("last_agent", {})
+        last_error = data.get("last_error", {})
         agents = data.get("agents_available", [])
         intent_history = data.get("intent_history", [])
-        event_count = data.get("event_count", 0)
-        last_update = data.get("last_update")
+        recent_activity = data.get("recent_activity", [])
 
         health_global = data.get("health_global", "unknown")
         health_realtime = data.get("health_realtime", "unknown")
@@ -361,67 +367,47 @@ class SelfModel:
 
         uptime = runtime.get("uptime")
         uptime_text = self._format_duration(uptime)
-        state_age = self._state_age_text(last_update)
+        state_age = self._state_age_text(data.get("last_update"))
+
         cpu = runtime.get("cpu_usage")
         ram = runtime.get("ram_usage")
         disk = runtime.get("disk_usage")
 
-        autonomous = cognitive.get("autonomous_loop", False)
-        loop_state = "active" if autonomous else "inactive"
+        loop_state = "active" if cognitive.get("autonomous_loop") else "inactive"
 
-        watchdog_score = 100.0 if health_global == "stable" else 75.0
-        watchdog_state = "🟢 Excellent" if watchdog_score >= 90 else "🟠 Warning"
-
-        last_intent_name = (
-            last_intent.get("intent")
-            if isinstance(last_intent, dict)
-            else None
-        )
-
-        last_agent_name = (
-            last_agent_data.get("agent")
-            if isinstance(last_agent_data, dict)
-            else None
-        )
-
-        last_error_text = (
-            last_error_data.get("error")
-            if isinstance(last_error_data, dict)
-            else None
-        ) or "aucune"
-
-        active_agents = ", ".join(agents) if agents else "aucun"
-
-        diagnostics_text = (
-            "\n".join(f"  • {item}" for item in diagnostics)
-            if diagnostics
-            else "aucun"
-        )
-
-        recommendations_text = (
-            "\n".join(f"  • {item}" for item in recommendations)
-            if recommendations
-            else "aucune"
-        )
-
-        active_services = [
-            name
-            for name, status in services.items()
-            if status == "active"
-        ]
-
-        services_text = ", ".join(active_services) if active_services else "aucun"
-
+        history_text = "aucun"
         if isinstance(intent_history, list) and intent_history:
-            history_items = []
+            items = []
             for item in intent_history[-5:]:
                 if isinstance(item, dict):
-                    name = item.get("intent", "unknown")
-                    conf = item.get("confidence")
-                    history_items.append(f"{name} ({conf})")
-            intent_history_text = ", ".join(history_items) if history_items else "aucun"
-        else:
-            intent_history_text = "aucun"
+                    items.append(f"{item.get('intent')} ({item.get('confidence')})")
+            history_text = ", ".join(items) if items else "aucun"
+
+        activity_text = "aucune"
+        if isinstance(recent_activity, list) and recent_activity:
+            lines = []
+            for item in recent_activity[-5:]:
+                if isinstance(item, dict):
+                    lines.append(f"  • {item.get('activity')}")
+            activity_text = "\n".join(lines) if lines else "aucune"
+
+        active_services = [name for name, status in services.items() if status == "active"]
+        services_text = ", ".join(active_services) if active_services else "aucun"
+
+        diagnostics_text = "\n".join(f"  • {d}" for d in diagnostics) if diagnostics else "aucun"
+        recommendations_text = "\n".join(f"  • {r}" for r in recommendations) if recommendations else "aucune"
+
+        last_intent_name = last_intent.get("intent") if isinstance(last_intent, dict) else None
+        last_agent_name = last_agent.get("agent") if isinstance(last_agent, dict) else None
+        last_error_text = (last_error.get("error") if isinstance(last_error, dict) else None) or "aucune"
+
+        last_action = data.get("last_action", {})
+        last_decision = data.get("last_decision", {})
+        last_reasoning = data.get("last_reasoning", {})
+
+        last_action_text = last_action.get("action") if isinstance(last_action, dict) else None
+        last_decision_text = last_decision.get("decision") if isinstance(last_decision, dict) else None
+        last_reasoning_text = last_reasoning.get("reasoning") if isinstance(last_reasoning, dict) else None
 
         summary_line = (
             f"Néron est {health_global}. "
@@ -439,99 +425,42 @@ class SelfModel:
 - CPU : {cpu}%
 - RAM : {ram}%
 - Disque : {disk}%
-- Watchdog : {watchdog_state} ({watchdog_score}/100)
+- Watchdog : 🟢 Excellent ({data.get("stability_score", 100.0)}/100)
 - Boucle cognitive : {loop_state}
 - Dernière intention : {last_intent_name}
-- Historique intents : {intent_history_text}
-- Compteur événements : {event_count}
+- Historique intents : {history_text}
+- Compteur événements : {data.get("event_count", 0)}
 - État : {state_age}
 - Dernier agent : {last_agent_name}
-- Agents disponibles : {active_agents}
+- Agents disponibles : {", ".join(agents) if agents else "aucun"}
 - Services actifs : {services_text}
 - Diagnostics : {diagnostics_text}
 - Recommandations : {recommendations_text}
-- Dernière erreur : {last_error_text}"""
+- Dernière erreur : {last_error_text}
 
-    def refresh(self) -> None:
-        self.collect_runtime()
-        self.collect_services()
-        self.compute_health()
-        self.compute_cognitive_state()
-        self.compute_diagnostics()
-        self.compute_recommendations()
-        self.last_update = time.time()
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "identity": self.identity,
-            "runtime": self.runtime,
-            "services": self.services,
-            "health_realtime": self.health_realtime,
-            "health_historical": self.health_historical,
-            "health_global": self.health_global,
-            "active_goal": self.active_goal,
-            "cognitive_state": self.cognitive_state,
-            "diagnostics": self.diagnostics,
-            "recommendations": self.recommendations,
-            "last_update": self.last_update,
-            "last_event": getattr(self, "last_event", None),
-            "last_intent": getattr(self, "last_intent", None),
-            "agents_available": getattr(self, "agents_available", []),
-            "agent_runs": getattr(self, "agent_runs", {}),
-        }
-
-    def save_state(self) -> None:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-
-        existing = {}
-
-        if STATE_PATH.exists():
-            try:
-                existing = json.loads(
-                    STATE_PATH.read_text(encoding="utf-8")
-                )
-            except Exception:
-                existing = {}
-
-        data = existing | self.to_dict()
-
-        for key in (
-            "last_intent",
-            "intent_history",
-            "event_count",
-            "last_agent",
-            "last_error",
-            "agents_available",
-        ):
-            if key in existing and data.get(key) in (None, [], {}, 0):
-                data[key] = existing[key]
-
-        tmp_path = STATE_PATH.with_suffix(".json.tmp")
-
-        tmp_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
-
-        tmp_path.replace(STATE_PATH)
+Mémoire cognitive :
+- Objectif actif : {data.get("active_goal", self.active_goal)}
+- Dernière action : {last_action_text or "aucune"}
+- Dernière décision : {last_decision_text or "aucune"}
+- Dernier raisonnement : {last_reasoning_text or "aucun"}
+- Activité récente :
+{activity_text}
+- Charge cognitive : {data.get("cognitive_load", "inconnue")}
+- État mental : {data.get("mental_state", "inconnu")}
+- Score de stabilité : {data.get("stability_score", "inconnu")}/100"""
 
 
 def load_self_model_state() -> dict[str, Any]:
-    if not STATE_PATH.exists():
-        model = SelfModel()
-        model.refresh()
-        model.save_state()
-        return model.to_dict()
+    if STATE_PATH.exists():
+        try:
+            return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            pass
 
-    try:
-        return json.loads(
-            STATE_PATH.read_text(encoding="utf-8")
-        )
-    except Exception:
-        model = SelfModel()
-        model.refresh()
-        model.save_state()
-        return model.to_dict()
+    model = SelfModel()
+    model.refresh()
+    model.save_state()
+    return model.to_dict()
 
 
 _SELF_MODEL: SelfModel | None = None
