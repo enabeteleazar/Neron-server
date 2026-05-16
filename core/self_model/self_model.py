@@ -360,11 +360,61 @@ class SelfModel:
         self.last_update = time.time()
 
     def _merge_state(self, patch: dict[str, Any]) -> None:
-        data = load_self_model_state()
-        data.update(patch)
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        data = {}
+
+        if STATE_PATH.exists():
+            try:
+                data = json.loads(
+                    STATE_PATH.read_text(encoding="utf-8")
+                )
+            except Exception:
+                data = {}
+
+        for key, value in patch.items():
+            if key in ("recent_events", "recent_activity", "intent_history"):
+                existing = data.get(key, [])
+
+                if not isinstance(existing, list):
+                    existing = []
+
+                if not isinstance(value, list):
+                    value = []
+
+                merged = existing + value
+
+                seen = set()
+                unique = []
+
+                for item in merged:
+                    marker = json.dumps(
+                        item,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    )
+
+                    if marker in seen:
+                        continue
+
+                    seen.add(marker)
+                    unique.append(item)
+
+                if key == "recent_events":
+                    data[key] = unique[-10:]
+                elif key == "recent_activity":
+                    data[key] = unique[-8:]
+                else:
+                    data[key] = unique[-5:]
+
+            else:
+                data[key] = value
+
         tmp = STATE_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         tmp.replace(STATE_PATH)
 
     def set_last_intent(self, intent: str, confidence: Any = None) -> None:
@@ -377,16 +427,9 @@ class SelfModel:
             "timestamp": time.time(),
         }
 
-        history = data.get("intent_history", [])
-        if not isinstance(history, list):
-            history = []
-
-        history.append(entry)
-        history = history[-5:]
-
         self._merge_state({
             "last_intent": entry,
-            "intent_history": history,
+            "intent_history": [entry],
             "event_count": event_count,
         })
 
