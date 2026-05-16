@@ -6,113 +6,234 @@ from typing import Any
 
 
 @dataclass
-class SelfModelState:
+class SelfModel:
     started_at: float = field(default_factory=time.time)
-    events_seen: int = 0
-    last_event_type: str | None = None
-    last_event_at: str | None = None
 
-    agents_available: list[str] = field(default_factory=list)
-    agents_runs: dict[str, int] = field(default_factory=dict)
-    agents_failures: dict[str, int] = field(default_factory=dict)
+    identity: dict[str, Any] = field(default_factory=lambda: {
+        "name": "Néron",
+        "role": "Assistant IA personnel",
+        "language": "fr",
+        "version": "0.2.0",
+    })
+
+    active_goal: str = "restaurer la boucle cognitive autonome"
+
+    health_realtime: str = "unknown"
+    health_historical: str = "unknown"
+    health_global: str = "unknown"
+
+    observed_events: list[dict[str, Any]] = field(default_factory=list)
+    diagnostics: list[str] = field(default_factory=list)
+    recommendations: list[str] = field(default_factory=list)
 
     last_intent: str | None = None
     last_agent: str | None = None
     last_error: str | None = None
-    alerts: list[dict[str, Any]] = field(default_factory=list)
 
-    capabilities: list[str] = field(default_factory=lambda: [
-        "input_text",
-        "intent_routing",
-        "agent_routing",
-        "dynamic_agents",
-        "event_bus",
-        "event_persistence",
-        "event_analyzer",
-        "obsidian_memory",
-        "code_generation",
-        "agent_runtime",
-    ])
+    available_agents: list[str] = field(default_factory=list)
 
+    runtime: dict[str, Any] = field(default_factory=dict)
 
-class SelfModel:
-    def __init__(self) -> None:
-        self.state = SelfModelState()
+    def collect_runtime(self) -> None:
+        self.runtime["uptime_seconds"] = round(time.time() - self.started_at, 2)
 
-    def update_from_event(self, event_type: str, payload: dict[str, Any], created_at: str) -> None:
-        self.state.events_seen += 1
-        self.state.last_event_type = event_type
-        self.state.last_event_at = created_at
+        if not self.health_realtime:
+            self.health_realtime = "unknown"
 
-        if event_type == "intent.detected":
-            self.state.last_intent = payload.get("intent")
+        if not self.health_historical:
+            self.health_historical = "unknown"
 
-        elif event_type == "agent.selected":
-            self.state.last_agent = payload.get("agent")
+        if self.health_realtime == "warning":
+            self.health_global = "stable_with_warning"
+        elif self.health_realtime == "critical":
+            self.health_global = "critical"
+        elif self.health_realtime in {"ok", "healthy", "excellent"}:
+            self.health_global = "stable"
+        else:
+            self.health_global = "unknown"
 
-        elif event_type == "agent.executed":
-            agent = payload.get("agent")
-            success = payload.get("success")
+    def update_from_event(self, event: Any = None, **kwargs: Any) -> None:
+        if hasattr(event, "type"):
+            event_dict = {
+                "type": getattr(event, "type", None),
+                "source": getattr(event, "source", None),
+                "payload": getattr(event, "payload", {}),
+                "details": getattr(event, "details", {}),
+                "error": getattr(event, "error", None),
+            }
+        elif kwargs:
+            if event is None:
+                event = kwargs
+            elif isinstance(event, dict):
+                event = {**event, **kwargs}
 
-            if agent:
-                self.state.agents_runs[agent] = self.state.agents_runs.get(agent, 0) + 1
+        if isinstance(event, dict):
+            event_dict = event
+        else:
+            event_dict = {"type": str(event)}
 
-                if success is False:
-                    self.state.agents_failures[agent] = self.state.agents_failures.get(agent, 0) + 1
-                    self.state.last_error = f"Échec agent : {agent}"
+        payload = event_dict.get("payload") or {}
+        details = event_dict.get("details") or {}
 
-        elif event_type == "system.alert":
-            alert = dict(payload)
-            alert["created_at"] = created_at
-            self.state.alerts.append(alert)
-            self.state.alerts = self.state.alerts[-20:]
-            self.state.last_error = payload.get("reason")
-
-    def set_agents_available(self, agents: list[str]) -> None:
-        self.state.agents_available = sorted(agents)
-
-    def to_dict(self) -> dict[str, Any]:
-        uptime = round(time.time() - self.state.started_at, 2)
-
-        return {
-            "uptime_seconds": uptime,
-            "events_seen": self.state.events_seen,
-            "last_event_type": self.state.last_event_type,
-            "last_event_at": self.state.last_event_at,
-            "last_intent": self.state.last_intent,
-            "last_agent": self.state.last_agent,
-            "last_error": self.state.last_error,
-            "agents_available": self.state.agents_available,
-            "agents_runs": self.state.agents_runs,
-            "agents_failures": self.state.agents_failures,
-            "alerts_count": len(self.state.alerts),
-            "recent_alerts": self.state.alerts[-5:],
-            "capabilities": self.state.capabilities,
+        normalized_event = {
+            "type": event_dict.get("type"),
+            "source": event_dict.get("source"),
+            "intent": details.get("intent") or payload.get("intent"),
+            "agent": details.get("agent") or payload.get("agent"),
+            "error": event_dict.get("error") or details.get("error") or payload.get("error"),
         }
 
-    def summary(self) -> str:
+        self.observe_event(normalized_event)
+
+    def observe_event(self, event: dict[str, Any]) -> None:
+        self.observed_events.append(event)
+
+        if len(self.observed_events) > 100:
+            self.observed_events = self.observed_events[-100:]
+
+        intent = event.get("intent")
+        agent = event.get("agent")
+        error = event.get("error")
+
+        if intent:
+            self.last_intent = intent
+
+        if agent:
+            self.last_agent = agent
+
+        if error:
+            self.last_error = error
+
+    def set_available_agents(self, agents: list[str]) -> None:
+        self.available_agents = sorted(set(agents))
+
+    def set_agents_available(self, agents: list[str]) -> None:
+        self.set_available_agents(agents)
+
+
+    def set_agents_available(self, agents: list[str]) -> None:
+        self.set_available_agents(agents)
+
+    def update_from_event(self, event: Any = None, **kwargs: Any) -> None:
+        if kwargs:
+            if event is None:
+                event = kwargs
+            elif isinstance(event, dict):
+                event = {**event, **kwargs}
+
+        if isinstance(event, dict):
+            event_dict = event
+        else:
+            event_dict = {
+                "type": getattr(event, "type", None),
+                "source": getattr(event, "source", None),
+                "payload": getattr(event, "payload", {}),
+                "details": getattr(event, "details", {}),
+                "error": getattr(event, "error", None),
+            }
+
+        payload = event_dict.get("payload") or {}
+        details = event_dict.get("details") or {}
+
+        self.observe_event({
+            "type": event_dict.get("type"),
+            "source": event_dict.get("source"),
+            "intent": (
+                event_dict.get("intent")
+                or details.get("intent")
+                or payload.get("intent")
+            ),
+            "agent": (
+                event_dict.get("agent")
+                or details.get("agent")
+                or payload.get("agent")
+            ),
+            "error": (
+                event_dict.get("error")
+                or details.get("error")
+                or payload.get("error")
+            ),
+        })
+
+    def internal_status_text(self) -> str:
         data = self.to_dict()
 
-        agents = ", ".join(data["agents_available"]) or "aucun"
-        last_error = data["last_error"] or "aucune"
+        uptime = data.get("runtime", {}).get("uptime_seconds", 0)
+        events_count = data.get("observed_events_count", 0)
+        last_intent = data.get("last_intent") or "aucune"
+        last_agent = data.get("last_agent") or "self_model"
+        last_error = data.get("last_error") or "aucune"
+
+        agents = data.get("available_agents") or []
+        agents_text = ", ".join(agents) if agents else "aucun agent déclaré"
+
+        recent_alerts = len(data.get("diagnostics", []))
 
         return (
             "État interne de Néron :\n"
-            f"- Uptime : {data['uptime_seconds']}s\n"
-            f"- Événements observés : {data['events_seen']}\n"
-            f"- Dernière intention : {data['last_intent']}\n"
-            f"- Dernier agent : {data['last_agent']}\n"
-            f"- Agents disponibles : {agents}\n"
-            f"- Alertes récentes : {data['alerts_count']}\n"
+            f"- Uptime : {uptime}s\n"
+            f"- Événements observés : {events_count}\n"
+            f"- Dernière intention : {last_intent}\n"
+            f"- Dernier agent : {last_agent}\n"
+            f"- Agents disponibles : {agents_text}\n"
+            f"- Alertes récentes : {recent_alerts}\n"
             f"- Dernière erreur : {last_error}"
         )
 
+    def set_health(
+        self,
+        realtime: str | None = None,
+        historical: str | None = None,
+        global_status: str | None = None,
+    ) -> None:
+        if realtime:
+            self.health_realtime = realtime
+        if historical:
+            self.health_historical = historical
+        if global_status:
+            self.health_global = global_status
 
-_self_model: SelfModel | None = None
+    def to_dict(self) -> dict[str, Any]:
+        self.collect_runtime()
+
+        return {
+            "identity": self.identity,
+            "active_goal": self.active_goal,
+            "health_realtime": self.health_realtime,
+            "health_historical": self.health_historical,
+            "health_global": self.health_global,
+            "observed_events": self.observed_events,
+            "observed_events_count": len(self.observed_events),
+            "diagnostics": self.diagnostics,
+            "recommendations": self.recommendations,
+            "last_intent": self.last_intent,
+            "last_agent": self.last_agent,
+            "last_error": self.last_error,
+            "available_agents": self.available_agents,
+            "runtime": self.runtime,
+            "cognitive_summary": self.build_summary(),
+        }
+
+
+    def summary(self) -> str:
+        if hasattr(self, "internal_status_text"):
+            return self.internal_status_text()
+
+        data = self.to_dict()
+        return data.get("cognitive_summary") or "État interne indisponible."
+
+    def build_summary(self) -> str:
+        if self.health_global == "stable_with_warning":
+            return "Système stable, mais autonomie cognitive partielle."
+        if self.health_global == "stable":
+            return "Système stable."
+        if self.health_global == "critical":
+            return "Système en état critique."
+        return "État interne partiellement connu."
+
+
+_SELF_MODEL = SelfModel()
 
 
 def get_self_model() -> SelfModel:
-    global _self_model
-    if _self_model is None:
-        _self_model = SelfModel()
-    return _self_model
+    return _SELF_MODEL

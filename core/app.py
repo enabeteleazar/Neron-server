@@ -1,6 +1,8 @@
+from __future__ import annotations
+from core.self_model.self_model import get_self_model
+from core.api.self_model_context_routes import router as self_model_router
 # core/app.py
 
-from __future__ import annotations
 
 # =========================
 # INIT LOGGING (PRIORITAIRE)
@@ -446,6 +448,9 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan,
 )
+
+app.include_router(self_model_router)
+
 
 app.add_middleware(
     CORSMiddleware,
