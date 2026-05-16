@@ -212,6 +212,17 @@ class IntentRouter:
             entities,
         )
 
+        try:
+            from core.self_model.self_model import get_self_model
+
+            model = get_self_model()
+            model.set_last_intent(
+                str(intent_str),
+                score,
+            )
+        except Exception:
+            pass
+
         return IntentResult(
             intent=intent,
             confidence=confidence,

@@ -297,7 +297,23 @@ class AgentRouter:
         self.llm_config = llm_config
         self.tools = tools
 
-    async def route(self, intent_result: IntentResult, query: str) -> str:
+    async def route(self, intent_result, query: str):
+        model = _get_self_model()
+        intent_name = getattr(
+            intent_result,
+            "intent",
+            str(intent_result),
+        )
+        intent_confidence = getattr(
+            intent_result,
+            "confidence",
+            None,
+        )
+        model.set_last_intent(
+            intent_name,
+            intent_confidence,
+        )
+
         intent = intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
 
@@ -310,12 +326,15 @@ class AgentRouter:
             runtime = get_agent_runtime_manager()
             runtime.reload()
 
-            model = _get_self_model()
             model.set_agents_available(runtime.list_agents())
+            model.set_last_agent("self_model")
+            model.set_last_error(None)
 
-            return model.summary()
+            return model.full_status_text() if hasattr(model, 'full_status_text') else model.summary()
 
         if intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
+            model.set_last_agent("system_agent")
+            model.set_last_error(None)
             result = await _get_system().run(query)
             return _result_to_text(result)
 

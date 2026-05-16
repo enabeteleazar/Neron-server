@@ -1,147 +1,90 @@
-# core/pipeline/nlp/intent_classifier.py
-# v2.2 — Classifier NLP compatible avec nlp_processor.py
-
 from __future__ import annotations
 
-import unicodedata
-from typing import Dict
 
-
-def _normalize(text: str) -> str:
-    n = unicodedata.normalize("NFD", text.lower().strip())
-    n = "".join(c for c in n if unicodedata.category(c) != "Mn")
-    return n.replace("'", " ").replace("’", " ").replace("`", " ")
-
-
-_RULES: Dict[str, list[str]] = {
+KEYWORDS: dict[str, list[str]] = {
+    "self_status": [
+        "etat interne",
+        "état interne",
+        "self model",
+        "self-model",
+        "statut cognitif",
+        "comment vas tu",
+        "comment vas-tu",
+        "qui es tu",
+        "qui es-tu",
+    ],
     "system_status": [
         "statut systeme",
+        "statut système",
         "etat systeme",
+        "état système",
         "status systeme",
-        "liste les services",
         "services actifs",
-        "services systemd",
-        "quels services tournent",
-        "services en cours",
-        "verifie les services",
+        "liste les services",
     ],
-
     "network_status": [
         "ports ouverts",
-        "ports reseau",
-        "connexions reseau",
         "etat reseau",
+        "état réseau",
         "status reseau",
-        "ss -tulpn",
-        "netstat",
     ],
-
-    "time_query": [
-        "quelle heure",
-        "donne l heure",
-        "il est quelle heure",
-        "date actuelle",
-        "date du jour",
+    "agent_creation": [
+        "cree un agent",
+        "crée un agent",
+        "nouvel agent",
+        "genere un agent",
+        "génère un agent",
     ],
-
-    "ha_action": [
-        "allume",
-        "eteins",
-        "éteins",
-        "active",
-        "desactive",
-        "désactive",
-        "lumiere",
-        "lampes",
+    "agent_list": [
+        "liste les agents",
+        "agents disponibles",
+        "quels agents",
+        "montre les agents",
     ],
-
-    "news_query": [
-        "actualite",
-        "actualites",
-        "news",
-        "dernieres nouvelles",
-    ],
-
-    "weather_query": [
-        "meteo",
-        "météo",
-        "temps aujourd hui",
-        "temperature",
-    ],
-
-    "todo_action": [
-        "ajoute une tache",
-        "liste mes taches",
-        "todo",
-        "rappel",
-    ],
-
-    "wiki_query": [
-        "c est quoi",
-        "qui est",
-        "definition",
-        "définition",
-        "explique moi",
-    ],
-
-    "code": [
-        "code",
-        "script",
-        "python",
-        "bash",
-        "fonction",
-    ],
-
-    "code_audit": [
-        "analyse ce code",
-        "audite ce code",
-        "corrige ce code",
-        "bug",
-        "erreur python",
-    ],
-
-    "web_search": [
-        "cherche sur internet",
-        "recherche web",
-        "sur le web",
-    ],
-
-    "personality_feedback": [
-        "parle plus",
-        "sois plus",
-        "reponds plus",
-        "réponds plus",
+    "agent_run": [
+        "lance l agent",
+        "lance l'agent",
+        "lance agent",
+        "execute l agent",
+        "execute l'agent",
+        "execute agent",
+        "exécute l agent",
     ],
 }
 
 
-def scores_all(text: str) -> Dict[str, float]:
-    q = _normalize(text)
-    scores: Dict[str, float] = {}
+def _normalize(text: str) -> str:
+    return text.lower().strip()
 
-    for intent, patterns in _RULES.items():
-        score = 0.0
 
-        for pattern in patterns:
-            p = _normalize(pattern)
-            if p in q:
-                score += 1.0
+def scores_all(text: str) -> dict[str, float]:
+    normalized = _normalize(text)
+    scores: dict[str, float] = {}
 
-        if score > 0:
-            scores[intent] = min(0.40 + score * 0.25, 1.0)
+    for intent, keywords in KEYWORDS.items():
+        matched = any(
+            keyword in normalized
+            for keyword in keywords
+        )
 
-    if not scores:
-        scores["conversation"] = 0.40
+        scores[intent] = 0.95 if matched else 0.0
+
+    scores["conversation"] = 0.40
 
     return scores
 
-
 def classify(text: str) -> tuple[str, float]:
     scores = scores_all(text)
-    intent = max(scores, key=scores.get)
-    confidence = scores[intent]
 
-    if confidence < 0.40:
-        return "conversation", confidence
+    best_intent = max(scores, key=scores.get)
+    best_confidence = scores.get(best_intent, 0.0)
 
-    return intent, confidence
+    if best_confidence <= 0:
+        return "conversation", 0.40
+
+    return best_intent, best_confidence
+
+
+class IntentClassifier:
+    def classify(self, text: str) -> tuple[str, float]:
+        return classify(text)

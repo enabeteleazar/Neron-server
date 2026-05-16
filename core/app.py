@@ -119,7 +119,7 @@ from agents.autonomous.planner_agent import AutonomousPlannerAgent
 
 logger = get_logger("neron.core")
 
-VERSION = "3.2.1"
+VERSION = "3.3.0"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
@@ -688,6 +688,19 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
         elif intent_result.intent == Intent.TIME_QUERY:
             return _handle_time_query(intent_result, metadata, start, query)
         elif intent_result.intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
+            try:
+                from core.self_model.self_model import get_self_model
+
+                model = get_self_model()
+                model.set_last_intent(
+                    getattr(intent_result.intent, "value", str(intent_result.intent)),
+                    getattr(intent_result, "confidence", None),
+                )
+                model.set_last_agent("system_agent")
+                model.set_last_error(None)
+            except Exception:
+                pass
+
             await _publish_agent_selected(intent_result, "system_agent")
 
             result = await _handle_system_status(query, intent_result, metadata, start)
