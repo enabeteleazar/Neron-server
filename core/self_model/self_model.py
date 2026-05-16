@@ -37,6 +37,216 @@ class SelfModel:
             "version": "0.3.0",
         }
 
+    def update_from_event(self, event: Any) -> None:
+        event_type = (
+            getattr(event, "type", None)
+            or getattr(event, "event_type", None)
+            or "unknown"
+        )
+
+        source = getattr(event, "source", None) or "unknown"
+        event_id = getattr(event, "event_id", None) or getattr(event, "id", None)
+
+        payload = getattr(event, "payload", None)
+        details = getattr(event, "details", None)
+
+        if payload is None:
+            payload = {}
+
+        if details is None:
+            details = {}
+
+        if not isinstance(payload, dict):
+            payload = {"raw": str(payload)}
+
+        if not isinstance(details, dict):
+            details = {"raw": str(details)}
+
+        data = load_self_model_state()
+
+        event_count = int(data.get("event_count", 0)) + 1
+
+        last_event = {
+            "type": event_type,
+            "source": source,
+            "event_id": event_id,
+            "payload_keys": list(payload.keys()),
+            "details": details,
+            "timestamp": time.time(),
+        }
+
+        recent_events = data.get("recent_events", [])
+        if not isinstance(recent_events, list):
+            recent_events = []
+
+        recent_events.append(last_event)
+        recent_events = recent_events[-10:]
+
+        recent_activity = data.get("recent_activity", [])
+        recent_events = data.get("recent_events", [])
+        if not isinstance(recent_activity, list):
+            recent_activity = []
+
+        activity = self._activity_from_event(event_type, source, payload, details)
+
+        if activity:
+            recent_activity.append({
+                "activity": activity,
+                "timestamp": time.time(),
+            })
+
+        recent_activity = recent_activity[-8:]
+
+        patch: dict[str, Any] = {
+            "last_event": last_event,
+            "recent_events": recent_events,
+            "recent_activity": recent_activity,
+            "event_count": event_count,
+        }
+
+        if event_type == "intent.detected":
+            intent_name = (
+                details.get("intent")
+                or payload.get("intent")
+                or "unknown"
+            )
+
+            intent_name = self._normalize_intent_name(intent_name)
+
+            confidence = (
+                details.get("confidence")
+                or payload.get("confidence")
+                or payload.get("confidence_score")
+            )
+
+            intent_entry = {
+                "intent": intent_name,
+                "confidence": confidence,
+                "timestamp": time.time(),
+            }
+
+            history = data.get("intent_history", [])
+            if not isinstance(history, list):
+                history = []
+
+            history.append(intent_entry)
+            history = history[-5:]
+
+            patch["last_intent"] = intent_entry
+            patch["intent_history"] = history
+
+        elif event_type in ("agent.selected", "agent.executed"):
+            agent_name = (
+                details.get("agent")
+                or payload.get("agent")
+                or payload.get("agent_name")
+                or "unknown"
+            )
+
+            patch["last_agent"] = {
+                "agent": agent_name,
+                "timestamp": time.time(),
+            }
+
+        elif event_type in ("system.service.error", "agent.error", "self.repair.failed"):
+            error = (
+                details.get("error")
+                or payload.get("error")
+                or payload.get("message")
+                or f"Erreur événement : {event_type}"
+            )
+
+            patch["last_error"] = {
+                "error": error,
+                "timestamp": time.time(),
+            }
+
+        elif event_type in ("system.service.started", "system.service.recovered"):
+            patch["last_error"] = {
+                "error": None,
+                "timestamp": time.time(),
+            }
+
+        self._merge_state(patch)
+
+    def _normalize_intent_name(self, intent: Any) -> str:
+        value = getattr(intent, "value", None)
+
+        if value:
+            return str(value)
+
+        text = str(intent)
+
+        if text.startswith("Intent."):
+            return text.replace("Intent.", "").lower()
+
+        return text
+
+    def _activity_from_event(
+        self,
+        event_type: str,
+        source: str,
+        payload: dict[str, Any],
+        details: dict[str, Any],
+    ) -> str | None:
+        if event_type == "user.message.received":
+            return "message utilisateur reçu"
+
+        if event_type == "intent.detected":
+            intent_name = (
+                details.get("intent")
+                or payload.get("intent")
+                or "unknown"
+            )
+
+            return f"Intent détecté : {self._normalize_intent_name(intent_name)}"
+
+        if event_type == "agent.selected":
+            agent_name = (
+                details.get("agent")
+                or payload.get("agent")
+                or payload.get("agent_name")
+                or "unknown"
+            )
+
+            return f"Agent sélectionné : {agent_name}"
+
+        if event_type == "agent.executed":
+            agent_name = (
+                details.get("agent")
+                or payload.get("agent")
+                or payload.get("agent_name")
+                or "unknown"
+            )
+
+            return f"Agent exécuté : {agent_name}"
+
+        if event_type == "response.ready":
+            return "réponse prête"
+
+        if event_type == "system.service.error":
+            service = (
+                details.get("service")
+                or payload.get("service")
+                or source
+            )
+
+            return f"Erreur service : {service}"
+
+        if event_type == "system.service.started":
+            service = (
+                details.get("service")
+                or payload.get("service")
+                or source
+            )
+
+            return f"Service démarré : {service}"
+
+        if event_type.startswith("self.repair"):
+            return f"SelfRepair : {event_type}"
+
+        return f"Événement : {event_type}"
+
     def collect_runtime(self) -> None:
         disk = shutil.disk_usage("/")
         self.runtime = {
@@ -360,6 +570,13 @@ class SelfModel:
         agents = data.get("agents_available", [])
         intent_history = data.get("intent_history", [])
         recent_activity = data.get("recent_activity", [])
+        recent_events = data.get("recent_events", [])
+
+        try:
+            from core.world_model.world_model import load_world_model_state
+            world = load_world_model_state()
+        except Exception:
+            world = {}
 
         health_global = data.get("health_global", "unknown")
         health_realtime = data.get("health_realtime", "unknown")
@@ -391,6 +608,16 @@ class SelfModel:
                     lines.append(f"  • {item.get('activity')}")
             activity_text = "\n".join(lines) if lines else "aucune"
 
+        events_text = "aucun"
+        if isinstance(recent_events, list) and recent_events:
+            lines = []
+            for item in recent_events[-5:]:
+                if isinstance(item, dict):
+                    lines.append(
+                        f"  • {item.get('type')} depuis {item.get('source')}"
+                    )
+            events_text = "\n".join(lines) if lines else "aucun"
+
         active_services = [name for name, status in services.items() if status == "active"]
         services_text = ", ".join(active_services) if active_services else "aucun"
 
@@ -409,10 +636,30 @@ class SelfModel:
         last_decision_text = last_decision.get("decision") if isinstance(last_decision, dict) else None
         last_reasoning_text = last_reasoning.get("reasoning") if isinstance(last_reasoning, dict) else None
 
+        world_services = world.get("external_services", {})
+        world_network = world.get("network", {})
+
+        world_internet = (
+            "accessible"
+            if world_network.get("default_gateway_reachable")
+            else "indisponible"
+        )
+
+        world_dns = (
+            "fonctionnel"
+            if world_network.get("dns_reachable")
+            else "indisponible"
+        )
+
+        def _world_service_status(name: str) -> str:
+            state = world_services.get(name, {})
+            return "actif" if state.get("reachable") else "indisponible"
+
         summary_line = (
             f"Néron est {health_global}. "
             f"CPU {cpu}%, RAM {ram}%, disque {disk}%. "
-            f"Boucle cognitive {loop_state}."
+            f"Boucle cognitive {loop_state}. "
+            f"Environnement {world.get('environment_status', 'unknown')}."
         )
 
         return f"""{summary_line}
@@ -438,6 +685,15 @@ class SelfModel:
 - Recommandations : {recommendations_text}
 - Dernière erreur : {last_error_text}
 
+Monde externe :
+- Environnement : {world.get("environment_status", "unknown")}
+- Internet : {world_internet}
+- DNS : {world_dns}
+- Home Assistant : {_world_service_status("home_assistant")}
+- Ollama : {_world_service_status("ollama")}
+- Néron LLM API : {_world_service_status("neron_llm_api")}
+- Néron Core API : {_world_service_status("neron_core_api")}
+
 Mémoire cognitive :
 - Objectif actif : {data.get("active_goal", self.active_goal)}
 - Dernière action : {last_action_text or "aucune"}
@@ -445,6 +701,8 @@ Mémoire cognitive :
 - Dernier raisonnement : {last_reasoning_text or "aucun"}
 - Activité récente :
 {activity_text}
+- Événements récents :
+{events_text}
 - Charge cognitive : {data.get("cognitive_load", "inconnue")}
 - État mental : {data.get("mental_state", "inconnu")}
 - Score de stabilité : {data.get("stability_score", "inconnu")}/100"""

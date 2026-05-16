@@ -59,7 +59,18 @@ async def log_event(event: Event) -> None:
     )
 
 
+_SUBSCRIBERS_REGISTERED = False
+
+
 def register_default_subscribers() -> None:
+    global _SUBSCRIBERS_REGISTERED
+
+    if _SUBSCRIBERS_REGISTERED:
+        logger.info("default_event_subscribers_already_registered")
+        return
+
+    logger.info("default_event_subscribers_registering")
+
     for event_type in (
         event_types.USER_MESSAGE_RECEIVED,
         event_types.INTENT_DETECTED,
@@ -77,3 +88,6 @@ def register_default_subscribers() -> None:
         if event_type == event_types.SYSTEM_ALERT:
             event_bus.subscribe(event_type, notify_system_alert)
             event_bus.subscribe(event_type, handle_system_alert_for_repair)
+
+    _SUBSCRIBERS_REGISTERED = True
+    logger.info("default_event_subscribers_registered")

@@ -1,6 +1,8 @@
 from __future__ import annotations
 from core.self_model.self_model import get_self_model
 from core.api.self_model_context_routes import router as self_model_router
+from core.api.world_model_routes import router as world_model_router
+
 # core/app.py
 
 
@@ -88,6 +90,7 @@ from core.events.event import Event
 from core.events.event_bus import event_bus
 from core.events.event_types import USER_MESSAGE_RECEIVED
 from core.events.subscribers import register_default_subscribers
+register_default_subscribers()
 from core.gateway.gateway import GatewayConfig, NeronGateway
 from core.modules.scheduler import setup as scheduler_setup
 from core.modules.scheduler import start as scheduler_start
@@ -450,7 +453,7 @@ app = FastAPI(
 )
 
 app.include_router(self_model_router)
-
+app.include_router(world_model_router)
 
 app.add_middleware(
     CORSMiddleware,

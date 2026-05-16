@@ -22,12 +22,18 @@ class EventBus:
 
     async def publish(self, event: Event) -> None:
         handlers = list(self._subscribers.get(event.type, []))
+        handler_names = [
+            getattr(handler, "__name__", str(handler))
+            for handler in handlers
+        ]
+
         logger.info(
-            "event_published type=%s source=%s event_id=%s handlers=%s",
+            "event_published type=%s source=%s event_id=%s handlers=%s handler_names=%s",
             event.type,
             event.source,
             event.event_id,
             len(handlers),
+            handler_names,
         )
 
         if not handlers:
@@ -38,9 +44,15 @@ class EventBus:
             return_exceptions=True,
         )
 
-        for result in results:
+        for handler, result in zip(handlers, results):
             if isinstance(result, Exception):
-                logger.exception("event_handler_failed type=%s error=%s", event.type, result)
+                logger.error(
+                    "event_handler_failed type=%s handler=%s error=%r",
+                    event.type,
+                    getattr(handler, "__name__", str(handler)),
+                    result,
+                    exc_info=result,
+                )
 
 
 event_bus = EventBus()
