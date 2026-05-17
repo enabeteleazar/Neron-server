@@ -675,6 +675,19 @@ class SelfModel:
         last_decision = data.get("last_decision", {})
         last_reasoning = data.get("last_reasoning", {})
 
+        try:
+            from core.goals.goal_manager import get_goal_manager
+
+            active_goal = get_goal_manager().get_active_goal()
+        except Exception:
+            active_goal = None
+
+        active_goal_title = (
+            active_goal.get("title")
+            if isinstance(active_goal, dict)
+            else data.get("active_goal", self.active_goal)
+        )
+
         last_action_text = last_action.get("action") if isinstance(last_action, dict) else None
         last_decision_text = last_decision.get("decision") if isinstance(last_decision, dict) else None
         last_reasoning_text = last_reasoning.get("reasoning") if isinstance(last_reasoning, dict) else None
@@ -738,7 +751,7 @@ Monde externe :
 - Néron Core API : {_world_service_status("neron_core_api")}
 
 Mémoire cognitive :
-- Objectif actif : {data.get("active_goal", self.active_goal)}
+- Objectif actif : {active_goal_title}
 - Dernière action : {last_action_text or "aucune"}
 - Dernière décision : {last_decision_text or "aucune"}
 - Dernier raisonnement : {last_reasoning_text or "aucun"}

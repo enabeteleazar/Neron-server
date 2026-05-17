@@ -2,6 +2,7 @@ from __future__ import annotations
 from core.self_model.self_model import get_self_model
 from core.api.self_model_context_routes import router as self_model_router
 from core.api.world_model_routes import router as world_model_router
+from core.goals.routes import router as goals_router
 
 # core/app.py
 
@@ -122,7 +123,7 @@ from agents.autonomous.planner_agent import AutonomousPlannerAgent
 
 logger = get_logger("neron.core")
 
-VERSION = "3.3.0"
+VERSION = "3.5.0"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
@@ -261,6 +262,13 @@ async def lifespan(app: FastAPI):
         _startup_time = time.monotonic()
         logger.info(json.dumps({"event": "startup", "version": VERSION}))
         register_default_subscribers()
+
+        try:
+            from core.goals.goal_manager import get_goal_manager
+            get_goal_manager().ensure_core_goals()
+            logger.info("GoalSystem initialise")
+        except Exception as exc:
+            logger.warning("GoalSystem init failed: %s", exc)
 
         _self_monitor_task = asyncio.create_task(get_self_monitor().start())
         logger.info("SelfMonitor demarre")
@@ -454,6 +462,7 @@ app = FastAPI(
 
 app.include_router(self_model_router)
 app.include_router(world_model_router)
+app.include_router(goals_router)
 
 app.add_middleware(
     CORSMiddleware,
