@@ -402,6 +402,16 @@ class AgentRouter:
             apply_feedback(query)
             return "⚙️ Ajustement de comportement pris en compte."
 
+        if intent == Intent.GREETING:
+            model.set_last_agent("conversation_agent")
+            model.set_last_action("salutation utilisateur")
+            model.set_last_decision("répondre localement sans LLM")
+            model.set_last_reasoning("les salutations simples ne nécessitent pas de raisonnement LLM")
+            model.add_recent_activity("conversation_agent exécuté")
+            model.set_last_error(None)
+
+            return "Salut, je suis là. Que veux-tu faire ?"
+
         memory = _get_memory()
         context = await memory.get_context(query) if hasattr(memory, "get_context") else None
         result = await _get_llm().execute(query, context_data=context)

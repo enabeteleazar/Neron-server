@@ -1,5 +1,3 @@
-# core/pipeline/intent/intent_router.py
-
 from __future__ import annotations
 
 import unicodedata
@@ -19,6 +17,10 @@ def _nlp():
 
 class Intent(str, Enum):
     CONVERSATION         = "conversation"
+    GREETING             = "greeting"
+    THANKS               = "thanks"
+    GOODBYE              = "goodbye"
+    STATUS_SMALLTALK     = "status_smalltalk"
     WEB_SEARCH           = "web_search"
     HA_ACTION            = "ha_action"
     TIME_QUERY           = "time_query"
@@ -61,11 +63,57 @@ class IntentResult:
 def _normalize(text: str) -> str:
     n = unicodedata.normalize("NFD", text.lower().strip())
     n = "".join(c for c in n if unicodedata.category(c) != "Mn")
-    return n.replace("'", " ").replace("’", " ").replace("`", " ")
+
+    for char in ["?", "!", ".", ",", ";", ":"]:
+        n = n.replace(char, " ")
+
+    n = n.replace("'", " ").replace("’", " ").replace("`", " ")
+
+    return " ".join(n.split())
 
 
 def _fallback_intent(query: str) -> Intent | None:
     q = _normalize(query)
+
+    greeting_keywords = [
+        "salut",
+        "salut neron",
+        "bonjour",
+        "bonjour neron",
+        "hello",
+        "hello neron",
+        "coucou",
+        "coucou neron",
+        "hey",
+        "hey neron",
+        "tu es la",
+        "tu es la neron",
+        "neron tu es la",
+    ]
+
+
+    thanks_keywords = [
+        "merci",
+        "merci neron",
+        "thanks",
+        "thank you",
+    ]
+
+    goodbye_keywords = [
+        "au revoir",
+        "bye",
+        "a plus",
+        "à plus",
+        "bonne nuit",
+    ]
+
+    status_smalltalk_keywords = [
+        "ca va",
+        "ça va",
+        "tu vas bien",
+        "comment vas tu",
+        "comment vas-tu",
+    ]
 
     self_status_keywords = [
         "etat interne",
@@ -152,6 +200,18 @@ def _fallback_intent(query: str) -> Intent | None:
         "audit python",
     ]
 
+    if q in greeting_keywords:
+        return Intent.GREETING
+
+    if q in thanks_keywords:
+        return Intent.THANKS
+
+    if q in goodbye_keywords:
+        return Intent.GOODBYE
+
+    if q in status_smalltalk_keywords:
+        return Intent.STATUS_SMALLTALK
+
     if any(k in q for k in self_status_keywords):
         return Intent.SELF_STATUS
 
@@ -197,7 +257,7 @@ class IntentRouter:
         if fallback:
             intent = fallback
             intent_str = fallback.value
-            score = max(score, 0.85)
+            score = max(score, 0.98 if fallback == Intent.GREETING else 0.85)
 
         confidence = (
             "high"

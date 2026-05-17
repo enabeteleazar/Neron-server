@@ -820,6 +820,44 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
                 metadata=metadata,
             )
 
+        elif intent_result.intent in (
+            Intent.GREETING,
+            Intent.THANKS,
+            Intent.GOODBYE,
+            Intent.STATUS_SMALLTALK,
+        ):
+            from core.agents.conversation.conversation_agent import ConversationAgent
+
+            agent = ConversationAgent()
+
+            if intent_result.intent == Intent.GREETING:
+                response_text = await agent.greeting()
+
+            elif intent_result.intent == Intent.THANKS:
+                response_text = await agent.thanks()
+
+            elif intent_result.intent == Intent.GOODBYE:
+                response_text = await agent.goodbye()
+
+            else:
+                response_text = await agent.status_smalltalk()
+
+            return CoreResponse(
+                response=response_text,
+                intent=intent_result.intent.value,
+                agent="conversation_agent",
+                confidence=intent_result.confidence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata={
+                    **metadata,
+                    "obsidian_context_used": False,
+                },
+            )
+
         else:
             await _publish_agent_selected(intent_result, "llm_agent")
 
