@@ -372,6 +372,72 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent == Intent.TODO_ACTION:
+            q = query.lower()
+
+            if (
+                "état des tâches" in q
+                or "etat des tâches" in q
+                or "etat des taches" in q
+                or "status des tâches" in q
+                or "status des taches" in q
+            ):
+                from core.task_system.task_manager import get_task_manager
+
+                manager = get_task_manager()
+                summary = manager.get_status_summary()
+
+                return (
+                    "État des tâches : "
+                    f"{summary['pending']} en attente, "
+                    f"{summary['running']} en cours, "
+                    f"{summary['done']} terminées, "
+                    f"{summary['failed']} échouées, "
+                    f"{summary['cancelled']} annulées, "
+                    f"{summary['total']} au total."
+                )
+
+            if (
+                "prochaine tâche" in q
+                or "prochaine tache" in q
+                or "tâche suivante" in q
+                or "tache suivante" in q
+            ):
+                from core.task_system.task_manager import get_task_manager
+
+                manager = get_task_manager()
+                task = manager.get_next_task()
+
+                if not task:
+                    return "Aucune tâche en attente."
+
+                return (
+                    "Prochaine tâche : "
+                    f"{task['title']} "
+                    f"(priorité {task['priority']}, statut {task['status']})."
+                )
+
+            if (
+                "lance la prochaine tâche" in q
+                or "lance la prochaine tache" in q
+                or "démarre la prochaine tâche" in q
+                or "demarre la prochaine tache" in q
+                or "commence la prochaine tâche" in q
+                or "commence la prochaine tache" in q
+            ):
+                from core.task_system.task_manager import get_task_manager
+
+                manager = get_task_manager()
+                task = manager.start_next_task()
+
+                if not task:
+                    return "Aucune tâche en attente à démarrer."
+
+                return (
+                    "Tâche démarrée : "
+                    f"{task['title']} "
+                    f"(priorité {task['priority']})."
+                )
+
             result = await _get_todo().run(query)
             return _result_to_text(result)
 

@@ -6,7 +6,6 @@ from core.goals.routes import router as goals_router
 
 # core/app.py
 
-
 # =========================
 # INIT LOGGING (PRIORITAIRE)
 # =========================
@@ -116,6 +115,8 @@ SYNC_INTERVAL = HA_CONFIG.get("sync_interval", 60)
 
 from agents.memory.obsidian_agent import ObsidianAgent
 from agents.autonomous.planner_agent import AutonomousPlannerAgent
+from core.api.task_routes import router as task_router
+from core.api.goal_task_routes import router as goal_task_router
 
 # =========================
 # LOGGER LOCAL (OPTIONNEL PAR MODULE)
@@ -463,6 +464,7 @@ app = FastAPI(
 app.include_router(self_model_router)
 app.include_router(world_model_router)
 app.include_router(goals_router)
+app.include_router(task_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -666,11 +668,99 @@ async def _publish_response_ready(intent_result, agent_name: str, result) -> Non
 
 
 
+
+
+def _handle_task_command_from_input(query: str) -> str | None:
+    q = query.lower().strip()
+
+    if (
+        "état des tâches" in q
+        or "etat des tâches" in q
+        or "etat des taches" in q
+        or "status des tâches" in q
+        or "status des taches" in q
+    ):
+        from core.task_system.task_manager import get_task_manager
+
+        manager = get_task_manager()
+        summary = manager.get_status_summary()
+
+        return (
+            "État des tâches : "
+            f"{summary['pending']} en attente, "
+            f"{summary['running']} en cours, "
+            f"{summary['done']} terminées, "
+            f"{summary['failed']} échouées, "
+            f"{summary['cancelled']} annulées, "
+            f"{summary['total']} au total."
+        )
+
+    if (
+        "lance la prochaine tâche" in q
+        or "lance la prochaine tache" in q
+        or "démarre la prochaine tâche" in q
+        or "demarre la prochaine tache" in q
+        or "commence la prochaine tâche" in q
+        or "commence la prochaine tache" in q
+    ):
+        from core.task_system.task_manager import get_task_manager
+
+        manager = get_task_manager()
+        task = manager.start_next_task()
+
+        if not task:
+            return "Aucune tâche en attente à démarrer."
+
+        return (
+            "Tâche démarrée : "
+            f"{task['title']} "
+            f"(priorité {task['priority']})."
+        )
+
+    if (
+        "prochaine tâche" in q
+        or "prochaine tache" in q
+        or "tâche suivante" in q
+        or "tache suivante" in q
+    ):
+        from core.task_system.task_manager import get_task_manager
+
+        manager = get_task_manager()
+        task = manager.get_next_task()
+
+        if not task:
+            return "Aucune tâche en attente."
+
+        return (
+            "Prochaine tâche : "
+            f"{task['title']} "
+            f"(priorité {task['priority']}, statut {task['status']})."
+        )
+
+    return None
+
+
 # ── Routes /input ─────────────────────────────────────────────────────────────
 
 @app.post("/input/text", response_model=CoreResponse)
 async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     query = input_data.text.strip()
+
+    task_command = _handle_task_command_from_input(query)
+    if task_command is not None:
+        return CoreResponse(
+            response=task_command,
+            intent="task_system",
+            agent="task_manager",
+            confidence="high",
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            execution_time_ms=0.0,
+            model=None,
+            error=None,
+            transcription=None,
+            metadata={"source": "task_system_direct_input"},
+        )
+
     start = time.monotonic()
     metrics.record_request_start()
     logger.info(json.dumps({"event": "request_received", "query": query[:80]}))
@@ -1362,3 +1452,8 @@ async def _handle_memory(query, intent_result, metadata, start) -> CoreResponse:
         transcription=None,
         metadata={**metadata, "memory": result},
     )
+
+app.include_router(task_router)
+
+
+app.include_router(goal_task_router)
