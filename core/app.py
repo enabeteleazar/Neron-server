@@ -3,6 +3,11 @@ from core.self_model.self_model import get_self_model
 from core.api.self_model_context_routes import router as self_model_router
 from core.api.world_model_routes import router as world_model_router
 from core.goals.routes import router as goals_router
+from core.api.task_routes import router as task_router
+from core.api.goal_task_routes import router as goal_task_router
+from core.goals.routes import router as goals_router
+from core.api.cognitive_core_routes import router as cognitive_core_router
+
 
 # core/app.py
 
@@ -115,8 +120,6 @@ SYNC_INTERVAL = HA_CONFIG.get("sync_interval", 60)
 
 from agents.memory.obsidian_agent import ObsidianAgent
 from agents.autonomous.planner_agent import AutonomousPlannerAgent
-from core.api.task_routes import router as task_router
-from core.api.goal_task_routes import router as goal_task_router
 
 # =========================
 # LOGGER LOCAL (OPTIONNEL PAR MODULE)
@@ -465,6 +468,7 @@ app.include_router(self_model_router)
 app.include_router(world_model_router)
 app.include_router(goals_router)
 app.include_router(task_router)
+app.include_router(cognitive_core_router)
 
 app.add_middleware(
     CORSMiddleware,

@@ -352,6 +352,7 @@ class SelfModel:
 
     def refresh(self) -> None:
         self.collect_runtime()
+        self._compute_health()
         self.collect_services()
         self.compute_health()
         self.compute_cognitive_state()
@@ -550,6 +551,32 @@ class SelfModel:
         if age < 3600:
             return f"mis à jour il y a {int(age // 60)} minutes"
         return f"mis à jour il y a {int(age // 3600)} heures"
+
+    def _compute_health(self) -> None:
+        runtime = getattr(self, "runtime", {}) or {}
+
+        cpu = runtime.get("cpu_usage", 0) or 0
+        ram = runtime.get("ram_usage", 0) or 0
+        disk = runtime.get("disk_usage", 0) or 0
+
+        if cpu >= 90 or ram >= 90 or disk >= 90:
+            realtime = "critical"
+        elif cpu >= 75 or ram >= 80 or disk >= 85:
+            realtime = "warning"
+        else:
+            realtime = "stable"
+
+        self.health_realtime = realtime
+
+        if self.health_historical in {None, "unknown"}:
+            self.health_historical = "stable"
+
+        if realtime == "critical":
+            self.health_global = "critical"
+        elif realtime == "warning":
+            self.health_global = "stable_with_warning"
+        else:
+            self.health_global = "stable"
 
     def to_dict(self) -> dict[str, Any]:
         return {
