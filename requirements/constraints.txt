@@ -4,7 +4,7 @@ pydantic==2.13.2
 SQLAlchemy==2.0.36
 
 requests==2.31.0
-httpx==0.28.0
+httpx==0.28.1
 
 APScheduler==3.11.2
 websockets==16.0

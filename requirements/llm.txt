@@ -1,0 +1,10 @@
+# Neron LLM microservice.
+
+fastapi==0.136.0
+httpx==0.28.1
+prometheus_client==0.25.0
+pydantic==2.13.2
+PyYAML==6.0.3
+rich==15.0.0
+typer==0.24.1
+uvicorn==0.44.0
