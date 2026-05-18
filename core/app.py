@@ -7,6 +7,9 @@ from core.api.task_routes import router as task_router
 from core.api.goal_task_routes import router as goal_task_router
 from core.goals.routes import router as goals_router
 from core.api.cognitive_core_routes import router as cognitive_core_router
+from core.api.cognitive_report_routes import router as cognitive_report_router
+from core.api.action_history_routes import router as action_history_router
+from core.api.critic_history_routes import router as critic_history_router
 
 
 # core/app.py
@@ -469,6 +472,9 @@ app.include_router(world_model_router)
 app.include_router(goals_router)
 app.include_router(task_router)
 app.include_router(cognitive_core_router)
+app.include_router(cognitive_report_router)
+app.include_router(action_history_router)
+app.include_router(critic_history_router)
 
 app.add_middleware(
     CORSMiddleware,
