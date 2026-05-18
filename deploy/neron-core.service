@@ -9,7 +9,7 @@ Group=neron-dev
 WorkingDirectory=/etc/neron
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/etc/neron/core
-ExecStart=/etc/neron/venv/bin/uvicorn core.app:app  --reload --reload-dir . --host 0.0.0.0 --port 8010 --workers 1
+ExecStart=/etc/neron/venv/bin/uvicorn core.app:app --host 0.0.0.0 --port 8010 --workers 1
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=65536
