@@ -34,7 +34,7 @@ home_assistant:
   token:   HIDDEN
   url:     http://100.90.194.109:8123
 
-# ── Service LLM Ollama (lu par neron/server) ──────────────────────────────────
+# ── Service LLM local / provider Ollama ───────────────────────────────────────
 llm:
   host:             http://localhost:11434
   timeout:          300
@@ -45,7 +45,7 @@ llm:
     race_timeout: 120
     timeout:      300
 
-# ── Client LLM (lu par neron/server → neron/llm) ─────────────────────────────
+# ── Client LLM (lu par core → service llm) ───────────────────────────────────
 neron_llm:
   url:     http://localhost:8765
   timeout: 120

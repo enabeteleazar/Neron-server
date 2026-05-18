@@ -76,8 +76,9 @@ class Config:
     LLM_TEMPERATURE = float(_get(_cfg, "llm", "temperature",                             default=0.7))
     LLM_MAX_TOKENS  = int(_get(_cfg, "llm",   "max_tokens",                              default=2048))
 
-    # Section lue par NéronLLMClient
-    _neron_llm_cfg = _cfg.get("llm", {})
+    # Section lue par NéronLLMClient.
+    # Canonique: neron_llm. Fallback legacy: llm.url/timeout/retry.
+    _neron_llm_cfg = _cfg.get("neron_llm") or _cfg.get("llm", {})
     NERON_LLM: dict = {
         "url":     _neron_llm_cfg.get("url",     "http://localhost:8765"),
         "timeout": float(_neron_llm_cfg.get("timeout", 30)),
@@ -128,10 +129,12 @@ class Config:
     SEARXNG_MAX_RESULTS = int(_get(_cfg, "searxng", "max_results", fallback_env="SEARXNG_MAX_RESULTS", default=5))
 
     # ── Home Assistant ────────────────────────────────────────────────────
-    HA_ENABLED  = str(_get(_cfg, "home_assistant", "enabled", fallback_env="HA_ENABLED", default=False)).lower() == "true"
-    HA_URL      = _get(_cfg, "home_assistant", "url",   fallback_env="HA_URL",   default="http://homeassistant.local:8123")
-    HA_TOKEN    = _get(_cfg, "home_assistant", "token", fallback_env="HA_TOKEN", default="")
-    HA_TIMEOUT  = float(_get(_cfg, "home_assistant", "timeout", fallback_env="HA_TIMEOUT", default=10.0))
+    # Canonique: home_assistant. Fallback legacy: homeassistant.
+    _ha_cfg = _cfg.get("home_assistant") or _cfg.get("homeassistant") or {}
+    HA_ENABLED  = str(_ha_cfg.get("enabled") if _ha_cfg.get("enabled") is not None else os.getenv("HA_ENABLED", False)).lower() == "true"
+    HA_URL      = _ha_cfg.get("url") or os.getenv("HA_URL") or "http://homeassistant.local:8123"
+    HA_TOKEN    = _ha_cfg.get("token") or os.getenv("HA_TOKEN") or ""
+    HA_TIMEOUT  = float(_ha_cfg.get("timeout") or os.getenv("HA_TIMEOUT") or 10.0)
 
     # ── Code Agent ────────────────────────────────────────────────────────
     CODE_AGENT_MODEL = (
@@ -195,4 +198,3 @@ def print_config() -> None:
 
 if __name__ == "__main__":
     print_config()
-

@@ -116,7 +116,7 @@ from core.integrations.homeassistant.room_learner import RoomLearner
 from core.integrations.homeassistant.synonym_learner import SynonymLearner
 from core.integrations.homeassistant.sync import sync
 from core.config_loader import config
-HA_CONFIG = config.get("homeassistant", {})
+HA_CONFIG = config.get("home_assistant", config.get("homeassistant", {}))
 BASE_URL = HA_CONFIG.get("url")
 TOKEN = HA_CONFIG.get("token")
 SYNC_INTERVAL = HA_CONFIG.get("sync_interval", 60)
