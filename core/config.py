@@ -21,6 +21,14 @@ YAML_PATH = Path("/etc/neron/neron.yaml")
 # Niveaux de log valides — utilisé pour valider LOG_LEVEL
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "https://homebox.tail7f8e60.ts.net:8443",
+]
+
 
 def _load_yaml() -> dict:
     if yaml is None:
@@ -51,6 +59,15 @@ def _get(cfg: dict, *keys: str, fallback_env: str = "", default: Any = None) -> 
     return default
 
 
+def _get_list(cfg: dict, *keys: str, fallback_env: str = "", default: list[str] | None = None) -> list[str]:
+    value = _get(cfg, *keys, fallback_env=fallback_env, default=default or [])
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [item.strip() for item in value.split(",") if item.strip()]
+    return list(default or [])
+
+
 # Exposé pour scheduler.py qui accède à settings._cfg
 _cfg = _load_yaml()
 
@@ -67,6 +84,13 @@ class Config:
     # ── Serveur ───────────────────────────────────────────────────────────
     SERVER_HOST = _get(_cfg, "server", "host", fallback_env="SERVER_HOST",     default="0.0.0.0")
     SERVER_PORT = int(_get(_cfg, "server", "port", fallback_env="NERON_CORE_HTTP", default=8010))
+    CORS_ORIGINS = _get_list(
+        _cfg,
+        "server",
+        "cors_origins",
+        fallback_env="CORS_ORIGINS",
+        default=_DEFAULT_CORS_ORIGINS,
+    )
 
     # ── LLM ───────────────────────────────────────────────────────────────
     OLLAMA_MODEL    = _get(_cfg, "llm", "model",       fallback_env="OLLAMA_MODEL", default="llama3.2:1b")

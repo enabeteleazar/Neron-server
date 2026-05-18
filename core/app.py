@@ -1,11 +1,9 @@
 from __future__ import annotations
-from core.self_model.self_model import get_self_model
 from core.api.self_model_context_routes import router as self_model_router
 from core.api.world_model_routes import router as world_model_router
 from core.goals.routes import router as goals_router
 from core.api.task_routes import router as task_router
 from core.api.goal_task_routes import router as goal_task_router
-from core.goals.routes import router as goals_router
 from core.api.cognitive_core_routes import router as cognitive_core_router
 from core.api.cognitive_report_routes import router as cognitive_report_router
 from core.api.action_history_routes import router as action_history_router
@@ -49,7 +47,7 @@ from prometheus_client import (
     Histogram,
     generate_latest,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # =========================
 # IMPORTS NÉRON (APRÈS LOGGING)
@@ -471,6 +469,7 @@ app.include_router(self_model_router)
 app.include_router(world_model_router)
 app.include_router(goals_router)
 app.include_router(task_router)
+app.include_router(goal_task_router)
 app.include_router(cognitive_core_router)
 app.include_router(cognitive_report_router)
 app.include_router(action_history_router)
@@ -478,7 +477,7 @@ app.include_router(critic_history_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -499,7 +498,7 @@ class CoreResponse(BaseModel):
     model:             Optional[str] = None
     error:             Optional[str] = None
     transcription:     Optional[str] = None
-    metadata:          dict          = {}
+    metadata:          dict          = Field(default_factory=dict)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────────────
@@ -1462,8 +1461,3 @@ async def _handle_memory(query, intent_result, metadata, start) -> CoreResponse:
         transcription=None,
         metadata={**metadata, "memory": result},
     )
-
-app.include_router(task_router)
-
-
-app.include_router(goal_task_router)
