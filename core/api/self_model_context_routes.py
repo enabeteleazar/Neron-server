@@ -13,12 +13,48 @@ async def self_model_context() -> dict:
     model = get_self_model()
     task_manager = get_task_manager()
 
-    model.collect_runtime()
+    model.refresh()
 
     data = model.to_dict()
-    task_summary = task_manager.get_status_summary()
-    next_task = task_manager.get_next_task()
-    running_tasks = task_manager.list_running_tasks()
+    runtime = data.get("runtime", {}) or {}
+
+    try:
+        tasks_all = task_manager.list_tasks()
+    except Exception:
+        tasks_all = []
+
+    try:
+        active_tasks = task_manager.list_active_tasks()
+    except Exception:
+        try:
+            active_tasks = task_manager.get_active_tasks()
+        except Exception:
+            active_tasks = []
+
+    pending_tasks = [
+        task for task in tasks_all
+        if task.get("status") in {"pending", "todo", "queued"}
+    ]
+
+    failed_tasks = [
+        task for task in tasks_all
+        if task.get("status") in {"failed", "error"}
+    ]
+
+    running_tasks = [
+        task for task in tasks_all
+        if task.get("status") in {"running", "in_progress"}
+    ]
+
+    next_task = pending_tasks[0] if pending_tasks else None
+
+    task_summary = {
+        "total": len(tasks_all),
+        "active": len(active_tasks),
+        "pending": len(pending_tasks),
+        "running": len(running_tasks),
+        "failed": len(failed_tasks),
+    }
 
     return {
         "identity": data.get("identity"),
@@ -36,12 +72,7 @@ async def self_model_context() -> dict:
         "diagnostics": data.get("diagnostics", []),
         "recommendations": data.get("recommendations", []),
         "summary": data.get("cognitive_summary"),
-        "runtime": {
-            "cpu_usage": data.get("runtime", {}).get("cpu_usage"),
-            "ram_usage": data.get("runtime", {}).get("ram_usage"),
-            "disk_usage": data.get("runtime", {}).get("disk_usage"),
-            "uptime_seconds": data.get("runtime", {}).get("uptime_seconds"),
-        },
+        "runtime": runtime,
         "last_activity": {
             "last_event": data.get("last_event"),
             "last_intent": data.get("last_intent"),

@@ -9,6 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import psutil
+import os
+import platform
+import socket
+import sys
 
 
 STATE_PATH = Path("/etc/neron/data/self_model_state.json")
@@ -249,11 +253,32 @@ class SelfModel:
 
     def collect_runtime(self) -> None:
         disk = shutil.disk_usage("/")
+        memory = psutil.virtual_memory()
+        swap = psutil.swap_memory()
+        boot_time = psutil.boot_time()
+        uptime_seconds = round(time.time() - boot_time, 2)
+
+        try:
+            load_average = list(os.getloadavg())
+        except (AttributeError, OSError):
+            load_average = []
+
+        process = psutil.Process()
+
         self.runtime = {
             "cpu_usage": psutil.cpu_percent(interval=0.2),
-            "ram_usage": psutil.virtual_memory().percent,
+            "ram_usage": memory.percent,
             "disk_usage": round((disk.used / disk.total) * 100, 2),
-            "uptime": round(time.time() - psutil.boot_time(), 2),
+            "swap_usage": swap.percent,
+            "uptime": uptime_seconds,
+            "uptime_seconds": uptime_seconds,
+            "boot_time": boot_time,
+            "load_average": load_average,
+            "hostname": socket.gethostname(),
+            "platform": platform.platform(),
+            "python_version": sys.version.split()[0],
+            "process_pid": process.pid,
+            "process_memory_mb": round(process.memory_info().rss / 1024 / 1024, 2),
         }
 
     def collect_services(self) -> None:
