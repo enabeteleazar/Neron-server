@@ -282,25 +282,68 @@ class SelfModel:
         }
 
     def collect_services(self) -> None:
-        tracked = [
+        critical = [
             "neron-core",
             "neron-llm",
             "neron-doctor",
             "neron-cognitive-loop",
             "neron-self-model-loop",
             "neron-cognitive-daemon",
-            "neron-cognitive-loop",
-            "neron-core",
-            "neron-core",
-            "neron-doctor",
+        ]
+
+        optional = [
             "neron-homeassistant",
             "neron-kula",
-            "neron-llm",
-            "neron-self-model-loop",
             "neron-stt",
             "neron-vocal",
         ]
-        self.services = {name: self._systemctl_is_active(name) for name in tracked}
+
+        tracked = critical + optional
+
+        statuses = {
+            name: self._systemctl_is_active(name)
+            for name in tracked
+        }
+
+        critical_statuses = {
+            name: statuses.get(name, "unknown")
+            for name in critical
+        }
+
+        optional_statuses = {
+            name: statuses.get(name, "unknown")
+            for name in optional
+        }
+
+        active_count = sum(1 for status in statuses.values() if status == "active")
+        inactive_count = sum(1 for status in statuses.values() if status != "active")
+        critical_inactive = [
+            name for name, status in critical_statuses.items()
+            if status != "active"
+        ]
+        optional_inactive = [
+            name for name, status in optional_statuses.items()
+            if status != "active"
+        ]
+
+        self.services = {
+            "items": statuses,
+            "critical": critical_statuses,
+            "optional": optional_statuses,
+            "summary": {
+                "total": len(statuses),
+                "active": active_count,
+                "inactive": inactive_count,
+                "critical_total": len(critical_statuses),
+                "critical_inactive": len(critical_inactive),
+                "critical_inactive_services": critical_inactive,
+                "optional_total": len(optional_statuses),
+                "optional_inactive": len(optional_inactive),
+                "optional_inactive_services": optional_inactive,
+                "all_critical_active": len(critical_inactive) == 0,
+                "all_active": inactive_count == 0,
+            },
+        }
 
     def _systemctl_is_active(self, service: str) -> str:
         try:
@@ -327,18 +370,18 @@ class SelfModel:
 
         critical = ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]
         for service in critical:
-            if self.services.get(service) != "active":
+            if self.services.get("items", {}).get(service) != "active":
                 self.health_realtime = "warning"
 
         self.health_global = "stable" if self.health_realtime == "excellent" else "stable_with_warning"
 
     def compute_cognitive_state(self) -> None:
         self.cognitive_state = {
-            "self_model_loop": self.services.get("neron-self-model-loop") == "active",
-            "autonomous_loop": self.services.get("neron-cognitive-loop") == "active",
-            "core_online": self.services.get("neron-core") == "active",
-            "llm_online": self.services.get("neron-llm") == "active",
-            "doctor_online": self.services.get("neron-doctor") == "active",
+            "self_model_loop": self.services.get("items", {}).get("neron-self-model-loop") == "active",
+            "autonomous_loop": self.services.get("items", {}).get("neron-cognitive-loop") == "active",
+            "core_online": self.services.get("items", {}).get("neron-core") == "active",
+            "llm_online": self.services.get("items", {}).get("neron-llm") == "active",
+            "doctor_online": self.services.get("items", {}).get("neron-doctor") == "active",
             "decision_engine": True,
             "memory_online": True,
             "reasoning_online": True,
@@ -355,10 +398,10 @@ class SelfModel:
             self.diagnostics.append("Espace disque critique.")
 
         for service in ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]:
-            if self.services.get(service) != "active":
+            if self.services.get("items", {}).get(service) != "active":
                 self.diagnostics.append(f"Le service {service} est inactif.")
 
-        if self.services.get("neron-cognitive-loop") != "active":
+        if self.services.get("items", {}).get("neron-cognitive-loop") != "active":
             self.diagnostics.append("La boucle cognitive autonome est inactive.")
 
     def compute_recommendations(self) -> None:
@@ -372,7 +415,7 @@ class SelfModel:
             self.recommendations.append("Nettoyer les logs, caches ou anciens paquets système.")
 
         for service in ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]:
-            if self.services.get(service) != "active":
+            if self.services.get("items", {}).get(service) != "active":
                 self.recommendations.append(f"Redémarrer le service {service}.")
 
     def refresh(self) -> None:
