@@ -64,13 +64,67 @@ class CognitiveCore:
         world_status = self._get_world_status()
         active_goal = self._get_active_goal()
 
+        cognitive_state = {}
+
+        if self.self_model and hasattr(self.self_model, "to_dict"):
+            cognitive_state = (
+                self.self_model.to_dict().get("cognitive_state", {})
+                or {}
+            )
+
+        runtime_mode = cognitive_state.get(
+            "runtime_mode",
+            "normal",
+        )
+
+        planner_enabled = cognitive_state.get(
+            "planner_enabled",
+            True,
+        )
+
+        heavy_reasoning_allowed = cognitive_state.get(
+            "heavy_reasoning_allowed",
+            True,
+        )
+
+        max_parallel_agents = cognitive_state.get(
+            "max_parallel_agents",
+            3,
+        )
+
+        autonomous_actions_allowed = cognitive_state.get(
+            "autonomous_actions_allowed",
+            True,
+        )
+
         planner = get_planner()
 
-        generated_tasks = planner.generate_plan(
-            active_goal
-        ) or []
+        if planner_enabled and active_goal:
+            generated_tasks = planner.generate_plan(
+                active_goal
+            ) or []
+        else:
+            generated_tasks = []
 
         generated_plan = generated_tasks
+
+        diagnostics.append(
+            f"Mode runtime actif : {runtime_mode}"
+        )
+
+        if not heavy_reasoning_allowed:
+            recommendations.append(
+                "Limiter les raisonnements complexes tant que le mode runtime reste restrictif."
+            )
+
+        if not autonomous_actions_allowed:
+            recommendations.append(
+                "Les actions autonomes sont temporairement limitées."
+            )
+
+        recommendations.append(
+            f"Nombre maximal d'agents parallèles recommandé : {max_parallel_agents}."
+        )
 
         if (
             self.task_manager
