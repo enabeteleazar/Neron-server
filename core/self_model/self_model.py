@@ -376,12 +376,91 @@ class SelfModel:
         self.health_global = "stable" if self.health_realtime == "excellent" else "stable_with_warning"
 
     def compute_cognitive_state(self) -> None:
+        services = self.services.get("items", {}) or {}
+        service_summary = self.services.get("summary", {}) or {}
+
+        cpu = self.runtime.get("cpu_usage", 0) or 0
+        ram = self.runtime.get("ram_usage", 0) or 0
+        disk = self.runtime.get("disk_usage", 0) or 0
+        swap = self.runtime.get("swap_usage", 0) or 0
+
+        self_model_loop = services.get("neron-self-model-loop") == "active"
+        autonomous_loop = services.get("neron-cognitive-loop") == "active"
+        core_online = services.get("neron-core") == "active"
+        llm_online = services.get("neron-llm") == "active"
+        doctor_online = services.get("neron-doctor") == "active"
+
+        critical_services_ok = bool(service_summary.get("all_critical_active", False))
+
+        runtime_pressure = "normal"
+        primary_issue = None
+        severity_score = 0
+
+        if cpu >= 90:
+            runtime_pressure = "high"
+            primary_issue = "cpu_overload"
+            severity_score = max(severity_score, 70)
+        elif cpu >= 75:
+            runtime_pressure = "moderate"
+            primary_issue = "cpu_pressure"
+            severity_score = max(severity_score, 45)
+
+        if ram >= 90:
+            runtime_pressure = "high"
+            primary_issue = primary_issue or "ram_overload"
+            severity_score = max(severity_score, 75)
+        elif ram >= 80:
+            runtime_pressure = "moderate"
+            primary_issue = primary_issue or "ram_pressure"
+            severity_score = max(severity_score, 45)
+
+        if disk >= 90:
+            runtime_pressure = "high"
+            primary_issue = primary_issue or "disk_pressure"
+            severity_score = max(severity_score, 80)
+
+        if swap >= 50:
+            runtime_pressure = "moderate"
+            primary_issue = primary_issue or "swap_usage_high"
+            severity_score = max(severity_score, 50)
+
+        if not critical_services_ok:
+            primary_issue = "critical_service_down"
+            severity_score = max(severity_score, 85)
+
+        autonomy_available = (
+            self_model_loop
+            and autonomous_loop
+            and core_online
+            and llm_online
+            and doctor_online
+            and critical_services_ok
+        )
+
+        degraded_mode = not autonomy_available or severity_score >= 70
+
+        if severity_score >= 85:
+            state = "critical"
+        elif severity_score >= 70:
+            state = "degraded"
+        elif severity_score >= 45:
+            state = "warning"
+        else:
+            state = "stable"
+
         self.cognitive_state = {
-            "self_model_loop": self.services.get("items", {}).get("neron-self-model-loop") == "active",
-            "autonomous_loop": self.services.get("items", {}).get("neron-cognitive-loop") == "active",
-            "core_online": self.services.get("items", {}).get("neron-core") == "active",
-            "llm_online": self.services.get("items", {}).get("neron-llm") == "active",
-            "doctor_online": self.services.get("items", {}).get("neron-doctor") == "active",
+            "state": state,
+            "severity_score": severity_score,
+            "primary_issue": primary_issue,
+            "runtime_pressure": runtime_pressure,
+            "autonomy_available": autonomy_available,
+            "degraded_mode": degraded_mode,
+            "critical_services_ok": critical_services_ok,
+            "self_model_loop": self_model_loop,
+            "autonomous_loop": autonomous_loop,
+            "core_online": core_online,
+            "llm_online": llm_online,
+            "doctor_online": doctor_online,
             "decision_engine": True,
             "memory_online": True,
             "reasoning_online": True,
@@ -390,33 +469,81 @@ class SelfModel:
     def compute_diagnostics(self) -> None:
         self.diagnostics = []
 
-        if self.runtime.get("cpu_usage", 0) >= 90:
-            self.diagnostics.append("Charge CPU élevée.")
-        if self.runtime.get("ram_usage", 0) >= 90:
-            self.diagnostics.append("Utilisation RAM élevée.")
-        if self.runtime.get("disk_usage", 0) >= 90:
-            self.diagnostics.append("Espace disque critique.")
+        cognitive_state = self.cognitive_state or {}
+        state = cognitive_state.get("state")
+        severity_score = cognitive_state.get("severity_score", 0)
+        primary_issue = cognitive_state.get("primary_issue")
+        runtime_pressure = cognitive_state.get("runtime_pressure")
+        autonomy_available = cognitive_state.get("autonomy_available")
+        critical_services_ok = cognitive_state.get("critical_services_ok")
 
-        for service in ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]:
-            if self.services.get("items", {}).get(service) != "active":
-                self.diagnostics.append(f"Le service {service} est inactif.")
+        if state in {"warning", "degraded", "critical"}:
+            self.diagnostics.append(
+                f"État cognitif {state} détecté avec une sévérité de {severity_score}/100."
+            )
 
-        if self.services.get("items", {}).get("neron-cognitive-loop") != "active":
-            self.diagnostics.append("La boucle cognitive autonome est inactive.")
+        if primary_issue == "cpu_overload":
+            self.diagnostics.append("Surcharge CPU détectée : la capacité de raisonnement peut être ralentie.")
+        elif primary_issue == "cpu_pressure":
+            self.diagnostics.append("Pression CPU modérée détectée.")
+        elif primary_issue == "ram_overload":
+            self.diagnostics.append("Surcharge RAM détectée : risque de ralentissement ou d'échec d'agents.")
+        elif primary_issue == "ram_pressure":
+            self.diagnostics.append("Pression RAM modérée détectée.")
+        elif primary_issue == "disk_pressure":
+            self.diagnostics.append("Pression disque détectée : les journaux, caches ou états persistants peuvent être affectés.")
+        elif primary_issue == "swap_usage_high":
+            self.diagnostics.append("Utilisation importante du swap détectée : performances probablement dégradées.")
+        elif primary_issue == "critical_service_down":
+            self.diagnostics.append("Un ou plusieurs services critiques sont inactifs.")
+
+        if runtime_pressure == "high":
+            self.diagnostics.append("Pression runtime élevée : Néron devrait éviter les tâches lourdes temporairement.")
+        elif runtime_pressure == "moderate":
+            self.diagnostics.append("Pression runtime modérée : Néron peut fonctionner mais doit rester prudent.")
+
+        if autonomy_available is False:
+            self.diagnostics.append("Autonomie cognitive indisponible : au moins une brique critique est inactive.")
+
+        if critical_services_ok is False:
+            inactive = self.services.get("summary", {}).get("critical_inactive_services", [])
+            self.diagnostics.append(f"Services critiques inactifs : {', '.join(inactive)}.")
 
     def compute_recommendations(self) -> None:
         self.recommendations = []
 
-        if self.runtime.get("cpu_usage", 0) >= 90:
-            self.recommendations.append("Réduire la charge LLM ou basculer vers un modèle plus léger.")
-        if self.runtime.get("ram_usage", 0) >= 90:
+        cognitive_state = self.cognitive_state or {}
+        primary_issue = cognitive_state.get("primary_issue")
+        runtime_pressure = cognitive_state.get("runtime_pressure")
+        degraded_mode = cognitive_state.get("degraded_mode")
+        autonomy_available = cognitive_state.get("autonomy_available")
+
+        if primary_issue in {"cpu_overload", "cpu_pressure"}:
+            self.recommendations.append("Réduire temporairement la charge LLM ou basculer vers un modèle plus léger.")
+            self.recommendations.append("Reporter les tâches cognitives non essentielles tant que le CPU reste élevé.")
+
+        if primary_issue in {"ram_overload", "ram_pressure"}:
             self.recommendations.append("Libérer de la mémoire ou réduire les services non essentiels.")
-        if self.runtime.get("disk_usage", 0) >= 90:
+
+        if primary_issue == "disk_pressure":
             self.recommendations.append("Nettoyer les logs, caches ou anciens paquets système.")
 
-        for service in ["neron-core", "neron-llm", "neron-doctor", "neron-self-model-loop"]:
-            if self.services.get("items", {}).get(service) != "active":
-                self.recommendations.append(f"Redémarrer le service {service}.")
+        if primary_issue == "swap_usage_high":
+            self.recommendations.append("Limiter les processus gourmands et vérifier la pression mémoire.")
+
+        if primary_issue == "critical_service_down":
+            inactive = self.services.get("summary", {}).get("critical_inactive_services", [])
+            for service in inactive:
+                self.recommendations.append(f"Redémarrer le service critique {service}.")
+
+        if runtime_pressure == "high":
+            self.recommendations.append("Activer un mode prudent : limiter planner, critic et appels LLM lourds.")
+
+        if degraded_mode:
+            self.recommendations.append("Maintenir Néron en mode dégradé jusqu'au retour d'un état stable.")
+
+        if autonomy_available is False:
+            self.recommendations.append("Restaurer les services critiques avant de lancer des actions autonomes.")
 
     def refresh(self) -> None:
         self.collect_runtime()

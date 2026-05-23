@@ -74,6 +74,7 @@ async def self_model_context() -> dict:
         "summary": data.get("cognitive_summary"),
         "runtime": runtime,
         "services": data.get("services", {}),
+        "cognitive_state": data.get("cognitive_state", {}),
         "last_activity": {
             "last_event": data.get("last_event"),
             "last_intent": data.get("last_intent"),
