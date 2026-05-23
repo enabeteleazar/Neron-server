@@ -288,7 +288,6 @@ class SelfModel:
             "neron-doctor",
             "neron-cognitive-loop",
             "neron-self-model-loop",
-            "neron-cognitive-daemon",
         ]
 
         optional = [
