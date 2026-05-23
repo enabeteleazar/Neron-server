@@ -466,6 +466,49 @@ class SelfModel:
             "reasoning_online": True,
         }
 
+    def compute_runtime_mode(self) -> None:
+        cognitive_state = self.cognitive_state or {}
+
+        state = cognitive_state.get("state", "stable")
+        severity_score = cognitive_state.get("severity_score", 0) or 0
+        runtime_pressure = cognitive_state.get("runtime_pressure", "normal")
+        autonomy_available = cognitive_state.get("autonomy_available", False)
+
+        if state == "critical" or severity_score >= 85 or not autonomy_available:
+            runtime_mode = "survival"
+            planner_enabled = False
+            heavy_reasoning_allowed = False
+            autonomous_actions_allowed = False
+            max_parallel_agents = 1
+
+        elif state == "degraded" or severity_score >= 70 or runtime_pressure == "high":
+            runtime_mode = "degraded"
+            planner_enabled = True
+            heavy_reasoning_allowed = False
+            autonomous_actions_allowed = True
+            max_parallel_agents = 1
+
+        elif state == "warning" or severity_score >= 45 or runtime_pressure == "moderate":
+            runtime_mode = "prudent"
+            planner_enabled = True
+            heavy_reasoning_allowed = False
+            autonomous_actions_allowed = True
+            max_parallel_agents = 1
+
+        else:
+            runtime_mode = "normal"
+            planner_enabled = True
+            heavy_reasoning_allowed = True
+            autonomous_actions_allowed = True
+            max_parallel_agents = 3
+
+        self.cognitive_state["runtime_mode"] = runtime_mode
+        self.cognitive_state["planner_enabled"] = planner_enabled
+        self.cognitive_state["heavy_reasoning_allowed"] = heavy_reasoning_allowed
+        self.cognitive_state["autonomous_actions_allowed"] = autonomous_actions_allowed
+        self.cognitive_state["max_parallel_agents"] = max_parallel_agents
+
+
     def compute_diagnostics(self) -> None:
         self.diagnostics = []
 
@@ -551,6 +594,7 @@ class SelfModel:
         self.collect_services()
         self.compute_health()
         self.compute_cognitive_state()
+        self.compute_runtime_mode()
         self.compute_diagnostics()
         self.compute_recommendations()
         self.last_update = time.time()
