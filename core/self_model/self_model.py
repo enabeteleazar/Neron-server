@@ -604,6 +604,93 @@ class SelfModel:
         self.cognitive_state["max_parallel_agents"] = max_parallel_agents
 
 
+    def compute_probable_cause(self) -> None:
+        existing = {}
+
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        recent_events = existing.get("recent_events", [])
+        if not isinstance(recent_events, list):
+            recent_events = []
+
+        recent_activity = existing.get("recent_activity", [])
+        if not isinstance(recent_activity, list):
+            recent_activity = []
+
+        primary_issue = self.cognitive_state.get("primary_issue")
+        runtime_pressure = self.cognitive_state.get("runtime_pressure")
+        cpu = self.runtime.get("cpu_usage", 0) or 0
+        ram = self.runtime.get("ram_usage", 0) or 0
+        swap = self.runtime.get("swap_usage", 0) or 0
+
+        evidence: list[str] = []
+        probable_cause = None
+
+        recent_types = [
+            event.get("type")
+            for event in recent_events[-5:]
+            if isinstance(event, dict)
+        ]
+
+        recent_sources = [
+            event.get("source")
+            for event in recent_events[-5:]
+            if isinstance(event, dict)
+        ]
+
+        recent_activity_text = " ".join(
+            str(item.get("activity", ""))
+            for item in recent_activity[-5:]
+            if isinstance(item, dict)
+        ).lower()
+
+        if cpu >= 90:
+            evidence.append("cpu_usage >= 90")
+
+        if ram >= 90:
+            evidence.append("ram_usage >= 90")
+
+        if swap >= 50:
+            evidence.append("swap_usage >= 50")
+
+        if runtime_pressure:
+            evidence.append(f"runtime_pressure = {runtime_pressure}")
+
+        if "system.alert" in recent_types:
+            evidence.append("recent system.alert detected")
+
+        if "self.monitor" in recent_sources:
+            evidence.append("alert source = self.monitor")
+
+        if primary_issue in {"cpu_overload", "cpu_pressure"}:
+            if "stt" in recent_activity_text or "vocal" in recent_activity_text:
+                probable_cause = "voice_pipeline_cpu_pressure"
+                evidence.append("recent activity mentions stt/vocal")
+            elif "llm" in recent_activity_text or "agent" in recent_activity_text:
+                probable_cause = "agent_or_llm_runtime_pressure"
+                evidence.append("recent activity mentions llm/agent")
+            elif "system.alert" in recent_types:
+                probable_cause = "runtime_cpu_pressure"
+            else:
+                probable_cause = "cpu_pressure_unknown_origin"
+
+        elif primary_issue in {"ram_overload", "ram_pressure"}:
+            probable_cause = "memory_pressure"
+        elif primary_issue == "swap_usage_high":
+            probable_cause = "memory_swap_pressure"
+        elif primary_issue == "critical_service_down":
+            probable_cause = "critical_service_unavailable"
+        elif primary_issue == "disk_pressure":
+            probable_cause = "storage_pressure"
+
+        self.cognitive_state["probable_cause"] = probable_cause
+        self.cognitive_state["evidence"] = evidence[-10:]
+
+
     def compute_temporal_state(self) -> None:
         now = time.time()
 
@@ -643,6 +730,8 @@ class SelfModel:
                         "to": current_state,
                         "previous_duration_seconds": previous_duration,
                         "primary_issue": self.cognitive_state.get("primary_issue"),
+                        "probable_cause": self.cognitive_state.get("probable_cause"),
+                        "evidence": self.cognitive_state.get("evidence", []),
                         "severity_score": self.cognitive_state.get("severity_score"),
                         "force_publish": force_publish,
                     })
@@ -660,6 +749,8 @@ class SelfModel:
                         "to": current_runtime_mode,
                         "previous_duration_seconds": previous_duration,
                         "primary_issue": self.cognitive_state.get("primary_issue"),
+                        "probable_cause": self.cognitive_state.get("probable_cause"),
+                        "evidence": self.cognitive_state.get("evidence", []),
                         "severity_score": self.cognitive_state.get("severity_score"),
                         "force_publish": force_publish,
                     })
@@ -842,6 +933,7 @@ class SelfModel:
         self.compute_runtime_trend()
         self.compute_cognitive_state()
         self.compute_runtime_mode()
+        self.compute_probable_cause()
         self.compute_temporal_state()
         self.publish_temporal_events()
         self.compute_diagnostics()
