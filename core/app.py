@@ -1,5 +1,6 @@
 from __future__ import annotations
 from core.api.self_model_context_routes import router as self_model_router
+from core.api.runtime_governor_routes import router as runtime_governor_router
 from core.api.world_model_routes import router as world_model_router
 from core.goals.routes import router as goals_router
 from core.api.task_routes import router as task_router
@@ -466,6 +467,7 @@ app = FastAPI(
 )
 
 app.include_router(self_model_router)
+app.include_router(runtime_governor_router)
 app.include_router(world_model_router)
 app.include_router(goals_router)
 app.include_router(task_router)

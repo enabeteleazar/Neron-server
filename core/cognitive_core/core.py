@@ -9,7 +9,8 @@ from core.cognitive.planner import get_planner
 from core.cognitive.reasoner import get_reasoner
 from core.cognitive.decision_engine import get_decision_engine
 from core.cognitive.action_executor import get_action_executor
-from core.task_system.task_manager import normalize_task_title 
+from core.task_system.task_manager import normalize_task_title
+from core.runtime.governor import get_runtime_governor
 
 @dataclass
 class CognitiveState:
@@ -26,6 +27,7 @@ class CognitiveState:
     reasoning: dict[str, Any]
     decision: dict[str, Any]
     execution_result: dict[str, Any]
+    runtime_policy: dict[str, Any]
     next_action: str | None
 
 
@@ -64,35 +66,30 @@ class CognitiveCore:
         world_status = self._get_world_status()
         active_goal = self._get_active_goal()
 
-        cognitive_state = {}
+        governor = get_runtime_governor()
+        runtime_policy = governor.to_dict()
 
-        if self.self_model and hasattr(self.self_model, "to_dict"):
-            cognitive_state = (
-                self.self_model.to_dict().get("cognitive_state", {})
-                or {}
-            )
-
-        runtime_mode = cognitive_state.get(
+        runtime_mode = runtime_policy.get(
             "runtime_mode",
             "normal",
         )
 
-        planner_enabled = cognitive_state.get(
+        planner_enabled = runtime_policy.get(
             "planner_enabled",
             True,
         )
 
-        heavy_reasoning_allowed = cognitive_state.get(
+        heavy_reasoning_allowed = runtime_policy.get(
             "heavy_reasoning_allowed",
             True,
         )
 
-        max_parallel_agents = cognitive_state.get(
+        max_parallel_agents = runtime_policy.get(
             "max_parallel_agents",
             3,
         )
 
-        autonomous_actions_allowed = cognitive_state.get(
+        autonomous_actions_allowed = runtime_policy.get(
             "autonomous_actions_allowed",
             True,
         )
@@ -242,6 +239,7 @@ class CognitiveCore:
                 "active_tasks": active_tasks,
                 "generated_plan": generated_plan,
                 "reasoning": reasoning,
+                "runtime_policy": runtime_policy,
             },
         )
 
@@ -266,6 +264,7 @@ class CognitiveCore:
             reasoning=reasoning,
             decision=decision,
             execution_result=execution_result,
+            runtime_policy=runtime_policy,
             next_action=next_action,
         )
 

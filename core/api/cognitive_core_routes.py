@@ -15,7 +15,7 @@ goal_system = get_goal_system()
 @router.get("/cognitive-core/state")
 async def cognitive_core_state() -> dict:
     self_model = get_self_model()
-    self_model.collect_runtime()
+    self_model.refresh()
 
     goal_model = get_goal_system()
     task_manager = get_task_manager()

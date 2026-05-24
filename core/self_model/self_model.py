@@ -13,6 +13,10 @@ import os
 import platform
 import socket
 import sys
+import asyncio
+
+from core.events.event import Event
+from core.events.event_bus import event_bus
 
 
 STATE_PATH = Path("/etc/neron/data/self_model_state.json")
@@ -22,6 +26,7 @@ STATE_PATH = Path("/etc/neron/data/self_model_state.json")
 class SelfModel:
     identity: dict[str, Any] = field(default_factory=dict)
     runtime: dict[str, Any] = field(default_factory=dict)
+    runtime_trend: dict[str, Any] = field(default_factory=dict)
     services: dict[str, str] = field(default_factory=dict)
     cognitive_state: dict[str, Any] = field(default_factory=dict)
     diagnostics: list[str] = field(default_factory=list)
@@ -281,6 +286,97 @@ class SelfModel:
             "process_memory_mb": round(process.memory_info().rss / 1024 / 1024, 2),
         }
 
+    def compute_runtime_trend(self) -> None:
+        history_limit = 10
+        now = time.time()
+
+        existing = {}
+
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        history = existing.get("runtime_history", [])
+
+        if not isinstance(history, list):
+            history = []
+
+        sample = {
+            "timestamp": now,
+            "cpu_usage": self.runtime.get("cpu_usage"),
+            "ram_usage": self.runtime.get("ram_usage"),
+            "disk_usage": self.runtime.get("disk_usage"),
+            "swap_usage": self.runtime.get("swap_usage"),
+            "health_realtime": self.health_realtime,
+        }
+
+        history.append(sample)
+        history = history[-history_limit:]
+
+        def _avg(key: str) -> float:
+            values = [
+                item.get(key)
+                for item in history
+                if isinstance(item.get(key), (int, float))
+            ]
+
+            if not values:
+                return 0.0
+
+            return round(sum(values) / len(values), 2)
+
+        cpu_spikes = sum(
+            1
+            for item in history
+            if (item.get("cpu_usage") or 0) >= 90
+        )
+
+        ram_spikes = sum(
+            1
+            for item in history
+            if (item.get("ram_usage") or 0) >= 90
+        )
+
+        high_pressure_samples = sum(
+            1
+            for item in history
+            if (
+                (item.get("cpu_usage") or 0) >= 90
+                or (item.get("ram_usage") or 0) >= 90
+                or (item.get("disk_usage") or 0) >= 90
+            )
+        )
+
+        if high_pressure_samples >= 5:
+            stability = "unstable"
+        elif high_pressure_samples >= 2:
+            stability = "variable"
+        else:
+            stability = "stable"
+
+        self.runtime_trend = {
+            "samples": len(history),
+            "cpu_avg": _avg("cpu_usage"),
+            "ram_avg": _avg("ram_usage"),
+            "disk_avg": _avg("disk_usage"),
+            "swap_avg": _avg("swap_usage"),
+            "cpu_spikes": cpu_spikes,
+            "ram_spikes": ram_spikes,
+            "high_pressure_samples": high_pressure_samples,
+            "stability": stability,
+            "history_limit": history_limit,
+        }
+
+        self._merge_state(
+            {
+                "runtime_history": history,
+                "runtime_trend": self.runtime_trend,
+            }
+        )
+
+
     def collect_services(self) -> None:
         critical = [
             "neron-core",
@@ -508,6 +604,157 @@ class SelfModel:
         self.cognitive_state["max_parallel_agents"] = max_parallel_agents
 
 
+    def compute_temporal_state(self) -> None:
+        now = time.time()
+
+        existing = {}
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        previous_state = existing.get("current_state")
+        previous_runtime_mode = existing.get("current_runtime_mode")
+
+        current_state = self.cognitive_state.get("state")
+        current_runtime_mode = self.cognitive_state.get("runtime_mode")
+
+        state_started_at = existing.get("state_started_at")
+        runtime_mode_started_at = existing.get("runtime_mode_started_at")
+
+        state_history = existing.get("state_history", [])
+        if not isinstance(state_history, list):
+            state_history = []
+
+        runtime_mode_history = existing.get("runtime_mode_history", [])
+        if not isinstance(runtime_mode_history, list):
+            runtime_mode_history = []
+
+        if previous_state != current_state or not state_started_at:
+            if previous_state is not None and previous_state != current_state:
+                previous_duration = round(now - float(state_started_at), 2) if state_started_at else 0
+                force_publish = current_state == "critical"
+
+                if previous_duration >= 30 or force_publish:
+                    state_history.append({
+                        "timestamp": now,
+                        "from": previous_state,
+                        "to": current_state,
+                        "previous_duration_seconds": previous_duration,
+                        "primary_issue": self.cognitive_state.get("primary_issue"),
+                        "severity_score": self.cognitive_state.get("severity_score"),
+                        "force_publish": force_publish,
+                    })
+            state_started_at = now
+
+        if previous_runtime_mode != current_runtime_mode or not runtime_mode_started_at:
+            if previous_runtime_mode is not None and previous_runtime_mode != current_runtime_mode:
+                previous_duration = round(now - float(runtime_mode_started_at), 2) if runtime_mode_started_at else 0
+                force_publish = current_runtime_mode == "survival"
+
+                if previous_duration >= 30 or force_publish:
+                    runtime_mode_history.append({
+                        "timestamp": now,
+                        "from": previous_runtime_mode,
+                        "to": current_runtime_mode,
+                        "previous_duration_seconds": previous_duration,
+                        "primary_issue": self.cognitive_state.get("primary_issue"),
+                        "severity_score": self.cognitive_state.get("severity_score"),
+                        "force_publish": force_publish,
+                    })
+            runtime_mode_started_at = now
+
+        state_history = state_history[-20:]
+        runtime_mode_history = runtime_mode_history[-20:]
+
+        self.cognitive_state["previous_state"] = previous_state
+        self.cognitive_state["previous_runtime_mode"] = previous_runtime_mode
+        self.cognitive_state["state_history"] = state_history
+        self.cognitive_state["runtime_mode_history"] = runtime_mode_history
+        self.cognitive_state["state_started_at"] = state_started_at
+        self.cognitive_state["runtime_mode_started_at"] = runtime_mode_started_at
+        self.cognitive_state["state_duration_seconds"] = round(now - float(state_started_at), 2)
+        self.cognitive_state["runtime_mode_duration_seconds"] = round(now - float(runtime_mode_started_at), 2)
+
+        self._merge_state(
+            {
+                "current_state": current_state,
+                "current_runtime_mode": current_runtime_mode,
+                "state_started_at": state_started_at,
+                "runtime_mode_started_at": runtime_mode_started_at,
+                "state_history": state_history,
+                "runtime_mode_history": runtime_mode_history,
+            }
+        )
+
+
+    def publish_temporal_events(self) -> None:
+        state_history = self.cognitive_state.get("state_history", [])
+        runtime_mode_history = self.cognitive_state.get("runtime_mode_history", [])
+
+        events: list[Event] = []
+
+        existing = {}
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        last_published_state_ts = existing.get("last_published_state_change_ts")
+        last_published_mode_ts = existing.get("last_published_runtime_mode_change_ts")
+
+        published_patch = {}
+
+        if state_history:
+            last_state_change = state_history[-1]
+            state_ts = last_state_change.get("timestamp")
+
+            if (
+                state_ts == self.cognitive_state.get("state_started_at")
+                and state_ts != last_published_state_ts
+            ):
+                events.append(Event(
+                    type="self_model.state_changed",
+                    source="self_model",
+                    payload=last_state_change,
+                ))
+                published_patch["last_published_state_change_ts"] = state_ts
+
+        if runtime_mode_history:
+            last_mode_change = runtime_mode_history[-1]
+            mode_ts = last_mode_change.get("timestamp")
+
+            if (
+                mode_ts == self.cognitive_state.get("runtime_mode_started_at")
+                and mode_ts != last_published_mode_ts
+            ):
+                events.append(Event(
+                    type="self_model.runtime_mode_changed",
+                    source="self_model",
+                    payload=last_mode_change,
+                ))
+                published_patch["last_published_runtime_mode_change_ts"] = mode_ts
+
+        if published_patch:
+            self._merge_state(published_patch)
+
+        if not events:
+            return
+
+        async def _publish_all() -> None:
+            for event in events:
+                await event_bus.publish(event)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            asyncio.run(_publish_all())
+        else:
+            loop.create_task(_publish_all())
+
+
     def compute_diagnostics(self) -> None:
         self.diagnostics = []
 
@@ -592,8 +839,11 @@ class SelfModel:
         self._compute_health()
         self.collect_services()
         self.compute_health()
+        self.compute_runtime_trend()
         self.compute_cognitive_state()
         self.compute_runtime_mode()
+        self.compute_temporal_state()
+        self.publish_temporal_events()
         self.compute_diagnostics()
         self.compute_recommendations()
         self.last_update = time.time()
@@ -820,6 +1070,7 @@ class SelfModel:
         return {
             "identity": self.identity,
             "runtime": self.runtime,
+            "runtime_trend": self.runtime_trend,
             "services": self.services,
             "health_realtime": self.health_realtime,
             "health_historical": self.health_historical,

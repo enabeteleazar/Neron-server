@@ -10,6 +10,7 @@ from core.events.analyzer import analyze_event
 from core.self_model.subscriber import update_self_model_from_event
 from core.events.alert_notifier import notify_system_alert
 from core.self_repair.subscriber import handle_system_alert_for_repair
+from core.runtime.governor import handle_self_model_governor_event
 
 logger = logging.getLogger("neron.events.subscribers")
 
@@ -88,6 +89,12 @@ def register_default_subscribers() -> None:
         if event_type == event_types.SYSTEM_ALERT:
             event_bus.subscribe(event_type, notify_system_alert)
             event_bus.subscribe(event_type, handle_system_alert_for_repair)
+
+    event_bus.subscribe("self_model.state_changed", log_event)
+    event_bus.subscribe("self_model.state_changed", handle_self_model_governor_event)
+
+    event_bus.subscribe("self_model.runtime_mode_changed", log_event)
+    event_bus.subscribe("self_model.runtime_mode_changed", handle_self_model_governor_event)
 
     _SUBSCRIBERS_REGISTERED = True
     logger.info("default_event_subscribers_registered")
