@@ -22,8 +22,23 @@ class Planner:
         context: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
 
+        runtime_policy = (context or {}).get("runtime_policy", {}) or {}
+        runtime_mode = runtime_policy.get("runtime_mode", "normal")
+        heavy_reasoning_allowed = runtime_policy.get("heavy_reasoning_allowed", True)
+
         if not goal:
             return []
+
+        if runtime_mode == "survival":
+            return [
+                {
+                    "title": "Préserver le noyau Néron",
+                    "description": "Limiter les actions autonomes et maintenir uniquement les services critiques.",
+                    "priority": "critical",
+                    "source": "planner",
+                    "runtime_mode": runtime_mode,
+                }
+            ]
 
         normalized_goal = goal.lower()
 
@@ -52,6 +67,22 @@ class Planner:
                     },
                 ]
             )
+
+        if runtime_mode in {"prudent", "degraded"}:
+            light_tasks = [
+                task for task in tasks
+                if task.get("priority") in {"critical", "high"}
+            ]
+
+            for task in light_tasks:
+                task["runtime_mode"] = runtime_mode
+                task["heavy_reasoning_allowed"] = heavy_reasoning_allowed
+
+            return light_tasks[:2]
+
+        for task in tasks:
+            task["runtime_mode"] = runtime_mode
+            task["heavy_reasoning_allowed"] = heavy_reasoning_allowed
 
         return tasks
 

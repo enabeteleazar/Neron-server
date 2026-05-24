@@ -98,7 +98,10 @@ class CognitiveCore:
 
         if planner_enabled and active_goal:
             generated_tasks = planner.generate_plan(
-                active_goal
+                active_goal,
+                context={
+                    "runtime_policy": runtime_policy,
+                },
             ) or []
         else:
             generated_tasks = []
