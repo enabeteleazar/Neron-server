@@ -22,7 +22,7 @@ import httpx
 
 from core.agents.base_agent import BaseAgent, AgentResult
 from core.config import settings
-from core.context.neron_context import build_system_context
+from core.context.neron_context import build_system_context, has_neron_context
 from core.llm_client.client import NéronLLMClient
 from core.llm_client.types import TaskType
 
@@ -146,6 +146,7 @@ class LLMAgent(BaseAgent):
         start = self._timer()
 
         prompt = _build_prompt(query, context_data)
+        neron_context_used = has_neron_context() and "# GLOBAL NERON CONTEXT" in prompt
         _, personality_active = _get_system_prompt()
 
         # context dict passed to llm service (stateless — llm never stores it)
@@ -174,6 +175,7 @@ class LLMAgent(BaseAgent):
                 "model":              result.model_used,
                 "latency_ms":         result.latency_ms,
                 "personality_active": personality_active,
+                "neron_context_used": neron_context_used,
                 "request_id":         request_id or "",
                 "warning":            result.warning,
             },
