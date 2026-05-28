@@ -1,7 +1,7 @@
 import time
 from typing import Dict, Any
 
-class WorldModel:
+class MemoryWorldModel:
     def __init__(self):
         self._state: Dict[str, Any] = {
             "time": time.time(),
@@ -25,3 +25,10 @@ class WorldModel:
         return self._state.get(category,{})
 
 
+
+
+# Backward compatibility:
+# Historical imports use:
+#   from core.memory.world_model.world_model import WorldModel
+# Keep this alias until watchdog_agent and legacy callers are migrated.
+WorldModel = MemoryWorldModel
