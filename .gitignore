@@ -79,7 +79,10 @@ Thumbs.db
 data/
 cache/
 tmp/
-runtime/
+
+# runtime temporary/generated data
+runtime_data/
+tmp/runtime/
 
 # modèles LLM locaux (très lourd)
 models/
