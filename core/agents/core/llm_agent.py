@@ -22,6 +22,7 @@ import httpx
 
 from core.agents.base_agent import BaseAgent, AgentResult
 from core.config import settings
+from core.context.neron_context import build_system_context
 from core.llm_client.client import NéronLLMClient
 from core.llm_client.types import TaskType
 
@@ -63,8 +64,9 @@ def _build_prompt(query: str, context_data: str | None = None) -> str:
     the chosen model (chat vs. completion API, system field injection, etc.).
     """
     system_prompt, _ = _get_system_prompt()
+    system_context = build_system_context(system_prompt)
 
-    parts: list[str] = [system_prompt]
+    parts: list[str] = [system_context or system_prompt]
 
     if context_data:
         if context_data.startswith("Historique"):
@@ -285,4 +287,3 @@ class LLMAgent(BaseAgent):
     async def check_connection(self) -> bool:
         """Return True if neron/llm/ health endpoint is reachable."""
         return await _llm_client.health()
-
