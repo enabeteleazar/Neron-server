@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 
 from core.agents.base_agent import get_logger
+from core.runtime.governor import get_runtime_governor
 
 logger = get_logger("system_agent")
 
@@ -37,6 +38,15 @@ class SystemAgent:
             return f"Impossible de récupérer l'état du système : {e}"
 
     def _safe_cmd(self, cmd: list[str], timeout: int = 10) -> str:
+        governor = get_runtime_governor()
+
+        if not governor.authorize_system_command(
+            actor="system_agent",
+            command=cmd,
+            reason="system diagnostic read",
+        ):
+            return "Commande système bloquée par RuntimeGovernor."
+
         result = subprocess.run(
             cmd,
             capture_output=True,

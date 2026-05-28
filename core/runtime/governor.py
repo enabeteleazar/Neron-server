@@ -155,6 +155,77 @@ class RuntimeGovernor:
             source_event=event.type,
         )
 
+
+    def authorize_system_command(
+        self,
+        *,
+        actor: str,
+        command: list[str],
+        reason: str | None = None,
+    ) -> bool:
+        command_name = command[0] if command else ""
+
+        # Toujours bloquer en survival
+        if self.policy.runtime_mode == "survival":
+            logger.warning(
+                "system_command_denied actor=%s command=%s reason=%s runtime_mode=%s",
+                actor,
+                command,
+                reason,
+                self.policy.runtime_mode,
+            )
+            return False
+
+        # Commandes de lecture autorisées
+        read_only_commands = {
+            "systemctl",
+            "ss",
+            "journalctl",
+            "ps",
+            "df",
+            "free",
+            "uptime",
+        }
+
+        if command_name not in read_only_commands:
+            logger.warning(
+                "system_command_denied actor=%s command=%s reason=%s cause=command_not_allowed",
+                actor,
+                command,
+                reason,
+            )
+            return False
+
+        # systemctl uniquement en lecture
+        if command_name == "systemctl":
+            allowed_systemctl_actions = {
+                "status",
+                "list-units",
+                "is-active",
+                "is-enabled",
+            }
+
+            action = command[1] if len(command) > 1 else ""
+
+            if action not in allowed_systemctl_actions:
+                logger.warning(
+                    "systemctl_action_denied actor=%s action=%s command=%s reason=%s",
+                    actor,
+                    action,
+                    command,
+                    reason,
+                )
+                return False
+
+        logger.info(
+            "system_command_allowed actor=%s command=%s reason=%s runtime_mode=%s",
+            actor,
+            command,
+            reason,
+            self.policy.runtime_mode,
+        )
+        return True
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self.policy)
 
