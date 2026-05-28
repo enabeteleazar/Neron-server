@@ -1,3 +1,11 @@
+"""
+Legacy compatibility module.
+
+This file is currently not referenced by the active agent routing pipeline.
+Prefer core.agents.core.self_model_agent for future SelfModel agent wiring.
+Do not extend this module; keep it only for backward compatibility until removal.
+"""
+
 from __future__ import annotations
 
 from core.self_model.self_model import get_self_model
