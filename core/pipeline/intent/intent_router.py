@@ -185,10 +185,63 @@ def _fallback_intent(query: str) -> Intent | None:
         "active agent",
     ]
 
+    time_keywords = [
+        "quelle heure",
+        "heure est il",
+        "il est quelle heure",
+        "dis moi quelle heure",
+    ]
+
+    weather_keywords = [
+        "meteo",
+        "temperature",
+        "temps demain",
+        "prevision meteo",
+        "previsions meteo",
+    ]
+
+    news_keywords = [
+        "actualite",
+        "actualites",
+        "news",
+        "infos du jour",
+        "information du jour",
+    ]
+
+    ha_keywords = [
+        "allume",
+        "eteins",
+        "eteindre",
+        "lumiere",
+        "lumieres",
+        "thermostat",
+        "chauffage",
+        "prise",
+        "volet",
+        "home assistant",
+    ]
+
+    code_keywords = [
+        "genere un fichier",
+        "genere du code",
+        "ecris un script",
+        "script bash",
+        "script python",
+        "ameliore ce code",
+        "revue de code",
+        "corrige ce code",
+        "fichier python",
+    ]
+
     code_audit_keywords = [
         "audit ce code",
         "audite ce code",
         "analyse ce code",
+        "analyse ton code",
+        "analyse le code",
+        "inspecte ton code",
+        "audite ton code",
+        "qualite de ton code",
         "verifie ce code",
         "vérifie ce code",
         "relis ce code",
@@ -200,8 +253,40 @@ def _fallback_intent(query: str) -> Intent | None:
         "audit python",
     ]
 
+    personality_keywords = [
+        "sois plus sympa",
+        "sois plus gentil",
+        "sois moins froid",
+        "change ton ton",
+        "adapte ton style",
+        "parle autrement",
+    ]
+
+    if any(k in q for k in time_keywords):
+        return Intent.TIME_QUERY
+
+    if any(k in q for k in weather_keywords):
+        return Intent.WEATHER_QUERY
+
+    if any(k in q for k in news_keywords):
+        return Intent.NEWS_QUERY
+
+    if any(k in q for k in ha_keywords):
+        return Intent.HA_ACTION
+
+    if any(k in q for k in personality_keywords):
+        return Intent.PERSONALITY_FEEDBACK
+
+    if any(k in q for k in code_audit_keywords):
+        return Intent.CODE_AUDIT
+
+    if any(k in q for k in code_keywords):
+        return Intent.CODE
+
+    # Les salutations simples restent conversationnelles pour éviter
+    # de détourner les échanges courts comme "bonjour".
     if q in greeting_keywords:
-        return Intent.GREETING
+        return Intent.CONVERSATION
 
     if q in thanks_keywords:
         return Intent.THANKS
