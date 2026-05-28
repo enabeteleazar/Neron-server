@@ -74,6 +74,10 @@ async def self_model_context() -> dict:
         "summary": data.get("cognitive_summary"),
         "runtime": runtime,
         "runtime_trend": data.get("runtime_trend", {}),
+        "long_term_state_memory": data.get("long_term_state_memory", {}),
+        "self_confidence": data.get("self_confidence", {}),
+        "capabilities": data.get("capabilities", {}),
+        "performance_self_evaluation": data.get("performance_self_evaluation", {}),
         "services": data.get("services", {}),
         "cognitive_state": data.get("cognitive_state", {}),
         "last_activity": {

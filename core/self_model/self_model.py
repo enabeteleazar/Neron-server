@@ -20,6 +20,7 @@ from core.events.event_bus import event_bus
 
 
 STATE_PATH = Path("/etc/neron/data/self_model_state.json")
+ACTION_HISTORY_PATH = Path("/etc/neron/data/action_history.jsonl")
 
 
 @dataclass
@@ -27,6 +28,10 @@ class SelfModel:
     identity: dict[str, Any] = field(default_factory=dict)
     runtime: dict[str, Any] = field(default_factory=dict)
     runtime_trend: dict[str, Any] = field(default_factory=dict)
+    long_term_state_memory: dict[str, Any] = field(default_factory=dict)
+    self_confidence: dict[str, Any] = field(default_factory=dict)
+    capabilities: dict[str, Any] = field(default_factory=dict)
+    performance_self_evaluation: dict[str, Any] = field(default_factory=dict)
     services: dict[str, str] = field(default_factory=dict)
     cognitive_state: dict[str, Any] = field(default_factory=dict)
     diagnostics: list[str] = field(default_factory=list)
@@ -691,6 +696,109 @@ class SelfModel:
         self.cognitive_state["evidence"] = evidence[-10:]
 
 
+    def compute_long_term_state_memory(self) -> None:
+        existing = {}
+
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        memory = existing.get("long_term_state_memory", {})
+        if not isinstance(memory, dict):
+            memory = {}
+
+        state_history = existing.get("state_history", [])
+        if not isinstance(state_history, list):
+            state_history = []
+
+        runtime_mode_history = existing.get("runtime_mode_history", [])
+        if not isinstance(runtime_mode_history, list):
+            runtime_mode_history = []
+
+        state_counts = memory.get("state_counts", {})
+        if not isinstance(state_counts, dict):
+            state_counts = {}
+
+        runtime_mode_counts = memory.get("runtime_mode_counts", {})
+        if not isinstance(runtime_mode_counts, dict):
+            runtime_mode_counts = {}
+
+        last_seen_transition_ts = memory.get("last_seen_transition_ts", 0) or 0
+        last_seen_runtime_mode_transition_ts = memory.get("last_seen_runtime_mode_transition_ts", 0) or 0
+
+        new_state_transitions = [
+            item for item in state_history
+            if isinstance(item, dict)
+            and (item.get("timestamp") or 0) > last_seen_transition_ts
+        ]
+
+        new_runtime_mode_transitions = [
+            item for item in runtime_mode_history
+            if isinstance(item, dict)
+            and (item.get("timestamp") or 0) > last_seen_runtime_mode_transition_ts
+        ]
+
+        for item in new_state_transitions:
+            to_state = item.get("to") or "unknown"
+            state_counts[to_state] = int(state_counts.get(to_state, 0)) + 1
+            last_seen_transition_ts = max(
+                last_seen_transition_ts,
+                item.get("timestamp") or 0,
+            )
+
+        for item in new_runtime_mode_transitions:
+            to_mode = item.get("to") or "unknown"
+            runtime_mode_counts[to_mode] = int(runtime_mode_counts.get(to_mode, 0)) + 1
+            last_seen_runtime_mode_transition_ts = max(
+                last_seen_runtime_mode_transition_ts,
+                item.get("timestamp") or 0,
+            )
+
+        total_transitions = sum(int(v) for v in state_counts.values())
+        total_runtime_mode_transitions = sum(int(v) for v in runtime_mode_counts.values())
+
+        dominant_state = max(
+            state_counts,
+            key=state_counts.get,
+        ) if state_counts else self.cognitive_state.get("state", "unknown")
+
+        dominant_runtime_mode = max(
+            runtime_mode_counts,
+            key=runtime_mode_counts.get,
+        ) if runtime_mode_counts else self.cognitive_state.get("runtime_mode", "unknown")
+
+        unstable_states = (
+            int(state_counts.get("warning", 0))
+            + int(state_counts.get("degraded", 0)) * 2
+            + int(state_counts.get("critical", 0)) * 3
+        )
+
+        instability_score = 0
+        if total_transitions > 0:
+            instability_score = round(
+                min(100, (unstable_states / total_transitions) * 100),
+                2,
+            )
+
+        self.long_term_state_memory = {
+            "total_transitions": total_transitions,
+            "total_runtime_mode_transitions": total_runtime_mode_transitions,
+            "state_counts": state_counts,
+            "runtime_mode_counts": runtime_mode_counts,
+            "dominant_state": dominant_state,
+            "dominant_runtime_mode": dominant_runtime_mode,
+            "instability_score": instability_score,
+            "last_seen_transition_ts": last_seen_transition_ts,
+            "last_seen_runtime_mode_transition_ts": last_seen_runtime_mode_transition_ts,
+        }
+
+        self._merge_state({
+            "long_term_state_memory": self.long_term_state_memory,
+        })
+
+
     def compute_temporal_state(self) -> None:
         now = time.time()
 
@@ -778,6 +886,251 @@ class SelfModel:
                 "runtime_mode_history": runtime_mode_history,
             }
         )
+
+
+    def compute_capabilities(self) -> None:
+        services = self.services.get("items", {}) or {}
+        service_summary = self.services.get("summary", {}) or {}
+        agents_available = []
+
+        existing = {}
+        if STATE_PATH.exists():
+            try:
+                existing = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+
+        raw_agents = existing.get("agents_available", [])
+        if isinstance(raw_agents, list):
+            agents_available = raw_agents
+
+        capability_map = {
+            "core_api": services.get("neron-core") == "active",
+            "llm": services.get("neron-llm") == "active",
+            "doctor": services.get("neron-doctor") == "active",
+            "cognitive_loop": services.get("neron-cognitive-loop") == "active",
+            "self_model_loop": services.get("neron-self-model-loop") == "active",
+            "homeassistant": services.get("neron-homeassistant") == "active",
+            "kula": services.get("neron-kula") == "active",
+            "voice_input": services.get("neron-stt") == "active",
+            "voice_output": services.get("neron-vocal") == "active",
+            "memory": True,
+            "planner": True,
+            "governor": True,
+            "event_bus": True,
+            "code_agent": "code_agent" in agents_available or True,
+            "self_repair": True,
+        }
+
+        available = [
+            name for name, enabled in capability_map.items()
+            if enabled is True
+        ]
+        unavailable = [
+            name for name, enabled in capability_map.items()
+            if enabled is not True
+        ]
+
+        critical_ok = bool(service_summary.get("all_critical_active", False))
+        autonomy_available = self.cognitive_state.get("autonomy_available", False)
+        runtime_mode = self.cognitive_state.get("runtime_mode", "unknown")
+
+        if not critical_ok:
+            autonomy_level = "unavailable"
+        elif runtime_mode == "survival":
+            autonomy_level = "minimal"
+        elif runtime_mode in {"prudent", "degraded"}:
+            autonomy_level = "partial"
+        elif autonomy_available:
+            autonomy_level = "operational"
+        else:
+            autonomy_level = "partial"
+
+        self.capabilities = {
+            "items": capability_map,
+            "available": available,
+            "unavailable": unavailable,
+            "available_count": len(available),
+            "unavailable_count": len(unavailable),
+            "autonomy_level": autonomy_level,
+            "agents_available": agents_available,
+        }
+
+        self._merge_state({
+            "capabilities": self.capabilities,
+        })
+
+
+    def compute_performance_self_evaluation(self) -> None:
+        recent_actions: list[dict[str, Any]] = []
+
+        if ACTION_HISTORY_PATH.exists():
+            try:
+                lines = ACTION_HISTORY_PATH.read_text(
+                    encoding="utf-8"
+                ).splitlines()[-50:]
+
+                for line in lines:
+                    try:
+                        item = json.loads(line)
+                    except Exception:
+                        continue
+
+                    if isinstance(item, dict):
+                        recent_actions.append(item)
+            except Exception:
+                recent_actions = []
+
+        total = len(recent_actions)
+        success = sum(1 for item in recent_actions if item.get("status") == "success")
+        blocked = sum(1 for item in recent_actions if item.get("status") == "blocked")
+        noop = sum(1 for item in recent_actions if item.get("status") == "noop")
+        failed = sum(1 for item in recent_actions if item.get("status") == "failed")
+
+        success_rate = round((success / total) * 100, 2) if total else 0.0
+
+        runtime_stability = (self.runtime_trend or {}).get("stability", "unknown")
+        confidence_level = (self.self_confidence or {}).get("level", "unknown")
+        instability_score = (self.long_term_state_memory or {}).get("instability_score", 0) or 0
+
+        score = 100
+        notes: list[str] = []
+
+        if total == 0:
+            score -= 20
+            notes.append("Aucune action récente disponible pour évaluer la performance.")
+
+        if success_rate < 50 and total > 0:
+            score -= 30
+            notes.append("Taux de succès récent faible.")
+        elif success_rate < 80 and total > 0:
+            score -= 15
+            notes.append("Taux de succès récent perfectible.")
+
+        if blocked > 0:
+            score -= min(20, blocked * 5)
+            notes.append("Certaines actions ont été bloquées par la policy runtime.")
+
+        if failed > 0:
+            score -= min(30, failed * 10)
+            notes.append("Des actions récentes ont échoué.")
+
+        if runtime_stability == "unstable":
+            score -= 20
+            notes.append("Runtime instable.")
+        elif runtime_stability == "variable":
+            score -= 10
+            notes.append("Runtime variable.")
+
+        if confidence_level == "low":
+            score -= 15
+            notes.append("Confiance interne faible.")
+        elif confidence_level == "medium":
+            score -= 5
+            notes.append("Confiance interne moyenne.")
+
+        if instability_score >= 80:
+            score -= 10
+            notes.append("Historique long terme instable.")
+
+        score = max(0, min(100, score))
+
+        if score >= 80:
+            level = "good"
+        elif score >= 50:
+            level = "medium"
+        else:
+            level = "poor"
+
+        if not notes:
+            notes.append("Performance récente cohérente.")
+
+        self.performance_self_evaluation = {
+            "score": score,
+            "level": level,
+            "actions_total_recent": total,
+            "actions_success": success,
+            "actions_blocked": blocked,
+            "actions_noop": noop,
+            "actions_failed": failed,
+            "success_rate": success_rate,
+            "runtime_stability": runtime_stability,
+            "confidence_level": confidence_level,
+            "notes": notes,
+            "updated_at": time.time(),
+        }
+
+        self._merge_state({
+            "performance_self_evaluation": self.performance_self_evaluation,
+        })
+
+
+    def compute_self_confidence(self) -> None:
+        score = 100
+        reasons: list[str] = []
+
+        cognitive_state = self.cognitive_state or {}
+        runtime_trend = self.runtime_trend or {}
+        long_term = self.long_term_state_memory or {}
+
+        runtime_pressure = cognitive_state.get("runtime_pressure")
+        probable_cause = cognitive_state.get("probable_cause")
+        critical_services_ok = cognitive_state.get("critical_services_ok")
+        instability_score = long_term.get("instability_score", 0) or 0
+        cpu_spikes = runtime_trend.get("cpu_spikes", 0) or 0
+
+        if instability_score >= 80:
+            score -= 25
+            reasons.append("Instabilité runtime élevée.")
+        elif instability_score >= 50:
+            score -= 10
+            reasons.append("Transitions runtime variables.")
+
+        if runtime_pressure == "high":
+            score -= 20
+            reasons.append("Pression runtime élevée.")
+        elif runtime_pressure == "moderate":
+            score -= 10
+            reasons.append("Pression runtime modérée.")
+
+        if self.health_realtime == "warning":
+            score -= 15
+            reasons.append("Santé realtime dégradée.")
+
+        if critical_services_ok is False:
+            score -= 30
+            reasons.append("Services critiques indisponibles.")
+
+        if probable_cause is None and runtime_pressure in {"moderate", "high"}:
+            score -= 10
+            reasons.append("Cause probable inconnue malgré une pression runtime.")
+
+        if cpu_spikes >= 5:
+            score -= 10
+            reasons.append("Pics CPU fréquents.")
+
+        if not reasons:
+            reasons.append("État interne cohérent et services critiques disponibles.")
+
+        score = max(0, min(100, score))
+
+        if score >= 80:
+            level = "high"
+        elif score >= 50:
+            level = "medium"
+        else:
+            level = "low"
+
+        self.self_confidence = {
+            "score": score,
+            "level": level,
+            "reasons": reasons,
+            "updated_at": time.time(),
+        }
+
+        self._merge_state({
+            "self_confidence": self.self_confidence,
+        })
 
 
     def publish_temporal_events(self) -> None:
@@ -935,6 +1288,10 @@ class SelfModel:
         self.compute_runtime_mode()
         self.compute_probable_cause()
         self.compute_temporal_state()
+        self.compute_long_term_state_memory()
+        self.compute_capabilities()
+        self.compute_self_confidence()
+        self.compute_performance_self_evaluation()
         self.publish_temporal_events()
         self.compute_diagnostics()
         self.compute_recommendations()
@@ -1163,6 +1520,10 @@ class SelfModel:
             "identity": self.identity,
             "runtime": self.runtime,
             "runtime_trend": self.runtime_trend,
+            "long_term_state_memory": self.long_term_state_memory,
+            "self_confidence": self.self_confidence,
+            "capabilities": self.capabilities,
+            "performance_self_evaluation": self.performance_self_evaluation,
             "services": self.services,
             "health_realtime": self.health_realtime,
             "health_historical": self.health_historical,
