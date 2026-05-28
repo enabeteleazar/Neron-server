@@ -78,6 +78,16 @@ def build_system_context(
     return "\n\n---\n\n".join(parts).strip()
 
 
+def has_neron_context(*, force_reload: bool = False) -> bool:
+    """
+    Indique si le contexte global NERON est disponible et non vide.
+
+    S'appuie sur le même cache et la même logique de lecture que
+    ``build_system_context`` pour éviter toute divergence.
+    """
+    return bool(load_neron_context(force_reload=force_reload).strip())
+
+
 def get_neron_context_status() -> dict:
     """
     Retourne un état simple du contexte global.
