@@ -22,6 +22,9 @@ from agents.watchdog_agent import setup as watchdog_setup, start_watchdog, stop_
 from agents.base_agent import get_logger
 from orchestrator.intent_router import IntentRouter, Intent
 from neron_time.time_provider import TimeProvider
+from core.health.router import configure_health_center, router as health_center_router
+from core.self_model import get_self_state
+from core.world_model import get_environment_state
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("neron_core")
@@ -162,6 +165,12 @@ async def lifespan(app: FastAPI):
         "event": "agents_ready",
         "agents": ["llm_agent", "web_agent", "stt_agent", "tts_agent", "time_provider", "telegram"]
     }))
+    configure_health_center({
+        "llm": llm_agent,
+        "stt": stt_agent,
+        "tts": tts_agent,
+        "memory": memory_agent,
+    })
 
     # Démarrer le bot Telegram
     set_agents({
@@ -204,6 +213,7 @@ app = FastAPI(
     version=VERSION,
     lifespan=lifespan
 )
+app.include_router(health_center_router)
 
 
 class TextInput(BaseModel):
@@ -242,6 +252,16 @@ def health():
 @app.get("/metrics", response_class=PlainTextResponse)
 def prometheus_metrics():
     return PlainTextResponse(metrics.export(), media_type="text/plain")
+
+
+@app.get("/self-model/status")
+async def self_model_status():
+    return await get_self_state()
+
+
+@app.get("/world-model/status")
+async def world_model_status():
+    return await get_environment_state()
 
 
 # API Key
