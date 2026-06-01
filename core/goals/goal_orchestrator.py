@@ -327,11 +327,17 @@ class GoalOrchestrator:
 
     def _decide(self, risk: dict[str, Any], sensitive_detected: bool) -> str:
         score = int(risk.get("risk_score") or 0)
-        if sensitive_detected or score > 80:
+
+        # Blocage uniquement pour risque extrême.
+        if score > 95:
             return "blocked"
-        if score <= 30:
-            return "auto_execute"
-        return "approval_required"
+
+        # Une action sensible ou un risque très élevé nécessite validation humaine.
+        if sensitive_detected or score > 80:
+            return "approval_required"
+
+        # Faible, moyen ou élevé contrôlé : Néron exécute automatiquement.
+        return "auto_execute"
 
     def _detect_sensitive_action(self, plan: dict[str, Any]) -> dict[str, Any]:
         reasons: list[str] = []

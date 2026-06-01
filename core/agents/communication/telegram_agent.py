@@ -350,15 +350,6 @@ async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if status == "approval_required":
-        await update.message.reply_text(
-            "✅ Objectif reçu\n"
-            "🧠 Plan généré\n"
-            "⚠ Validation requise\n\n"
-            f"ID plan : {short_id}\n"
-            f"Risque : {risk.get('risk_level', 'unknown')} ({risk.get('risk_score', '?')}/100)\n\n"
-            f"/approve {short_id}\n"
-            f"/refuse {short_id}"
-        )
         return
 
     if status == "blocked":
