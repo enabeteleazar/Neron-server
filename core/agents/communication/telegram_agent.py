@@ -7,6 +7,17 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+import uuid
+import json
+from pathlib import Path
+from datetime import datetime, timezone
+
+from core.planning.storage import PlanStorage
+from core.planning import AutonomousPlanner
+from core.task_system.task_manager import get_task_manager
+from core.planning.executor import PlanExecutor
+from core.task_system.task_manager import get_task_manager
+from core.cognitive.critic_engine import get_critic_engine
 import unicodedata
 from pathlib import Path
 
@@ -304,6 +315,421 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await sent.edit_text(f"❌ Erreur exécution : {e}")
 
 
+
+
+async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /goal <objectif>")
+
+    title = " ".join(context.args).strip()
+
+    if not title:
+        return await update.message.reply_text("Usage : /goal <objectif>")
+
+    goals_state_path = Path("/etc/neron/data/goals_state.json")
+    goals_json_path = Path("/etc/neron/data/goals.json")
+
+    goals_state_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        data = json.loads(goals_state_path.read_text(encoding="utf-8")) if goals_state_path.exists() else {}
+    except Exception:
+        data = {}
+
+    goals = data.get("goals", [])
+    if not isinstance(goals, list):
+        goals = []
+
+    now = datetime.now(timezone.utc).timestamp()
+    goal_id = "goal_" + uuid.uuid4().hex[:12]
+
+    for goal in goals:
+        if goal.get("status") == "active":
+            goal["status"] = "pending"
+            goal["updated_at"] = now
+
+    goal = {
+        "id": goal_id,
+        "title": title,
+        "description": "",
+        "priority": "high",
+        "status": "active",
+        "source": "telegram",
+        "progress": 0.0,
+        "dependencies": [],
+        "metadata": {},
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    goals.append(goal)
+
+    goals_state_path.write_text(
+        json.dumps(
+            {
+                "active_goal_id": goal_id,
+                "goals": goals,
+                "last_update": now,
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        old_goals = json.loads(goals_json_path.read_text(encoding="utf-8")) if goals_json_path.exists() else {}
+    except Exception:
+        old_goals = {}
+
+    history = old_goals.get("goals_history", [])
+    if not isinstance(history, list):
+        history = []
+
+    history.append(title)
+
+    goals_json_path.write_text(
+        json.dumps(
+            {
+                "active_goal": title,
+                "goals_history": history[-50:],
+                "long_term_goals": old_goals.get("long_term_goals", []),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    planner = AutonomousPlanner()
+    storage = PlanStorage()
+    task_manager = get_task_manager()
+
+    plan = planner.create_plan(title)
+    plan_data = plan.to_dict()
+    plan_data["approved"] = False
+    plan_data["approval_required"] = True
+    plan_data["source"] = "telegram_goal"
+
+    created_tasks = task_manager.create_tasks_from_plan(plan_data)
+
+    plan_data["tasks_generated"] = True
+    plan_data["generated_task_ids"] = [
+        task.get("id")
+        for task in created_tasks
+    ]
+
+    storage.save(plan_data)
+
+    await update.message.reply_text(
+        f"✅ Objectif créé et activé\n\n"
+        f"ID objectif : {goal_id}\n"
+        f"Objectif : {title}\n\n"
+        f"🧠 Plan généré\n"
+        f"ID plan : {str(plan_data.get('id'))[:8]}\n"
+        f"Tâches créées : {len(created_tasks)}\n\n"
+        f"Consulte : /plans et /tasks"
+    )
+
+
+async def cmd_goal_active(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    path = Path("/etc/neron/data/goals_state.json")
+
+    if not path.exists():
+        return await update.message.reply_text("Aucun objectif actif trouvé.")
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return await update.message.reply_text("Erreur lecture GoalSystem.")
+
+    active_id = data.get("active_goal_id")
+
+    for goal in data.get("goals", []):
+        if goal.get("id") == active_id or goal.get("status") == "active":
+            return await update.message.reply_text(
+                f"🎯 Objectif actif\n\nID : {goal.get('id')}\nTitre : {goal.get('title')}\nPriorité : {goal.get('priority')}"
+            )
+
+    await update.message.reply_text("Aucun objectif actif trouvé.")
+
+async def cmd_ready(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    storage = PlanStorage()
+    critic = get_critic_engine()
+
+    ready = []
+
+    for plan in storage.history(limit=200):
+        if plan.get("status") != "tasks_completed":
+            continue
+
+        if plan.get("approved") is True:
+            continue
+
+        risk = plan.get("risk")
+        if not risk:
+            risk = critic.evaluate_plan(plan)
+            plan["risk"] = risk
+            storage.update(plan)
+
+        if risk.get("execution_allowed") is True:
+            ready.append(plan)
+
+    if not ready:
+        return await update.message.reply_text("✅ Aucun plan en attente d'approbation.")
+
+    lines = ["🧠 Plans prêts à approbation", ""]
+
+    for plan in ready[:5]:
+        plan_id = str(plan.get("id"))
+        short_id = plan_id[:8]
+        risk = plan.get("risk", {})
+        lines.extend([
+            f"ID : {short_id}",
+            f"Objectif : {plan.get('goal')}",
+            f"Risque : {risk.get('risk_level')} ({risk.get('risk_score')}/100)",
+            f"Approuver : /approve {short_id}",
+            f"Refuser : /refuse {short_id}",
+            "",
+        ])
+
+    await update.message.reply_text("\n".join(lines)[:4096])
+
+
+async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /approve <plan_id>")
+
+    wanted = context.args[0].strip()
+    storage = PlanStorage()
+
+    plan = None
+    for candidate in storage.history(limit=500):
+        plan_id = str(candidate.get("id"))
+        if plan_id == wanted or plan_id.startswith(wanted):
+            plan = candidate
+            break
+
+    if not plan:
+        return await update.message.reply_text("❌ Plan introuvable.")
+
+    critic = get_critic_engine()
+    risk = critic.evaluate_plan(plan)
+    plan["risk"] = risk
+
+    if risk.get("execution_allowed") is not True:
+        plan["status"] = "blocked_by_risk"
+        plan["error"] = "Approbation refusée : risque non autorisé."
+        storage.update(plan)
+        return await update.message.reply_text(
+            f"⛔ Plan bloqué par le risque : {risk.get('risk_level')} ({risk.get('risk_score')}/100)"
+        )
+
+    plan["approved"] = True
+    plan["approval_required"] = False
+    plan["approved_at"] = datetime.now(timezone.utc).isoformat()
+    plan["approved_by"] = "telegram"
+    plan["status"] = "approved"
+    plan["error"] = None
+    storage.update(plan)
+
+    await update.message.reply_text(
+        f"✅ Plan approuvé : {str(plan.get('id'))[:8]}\nObjectif : {plan.get('goal')}"
+    )
+
+
+async def cmd_refuse(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /refuse <plan_id>")
+
+    wanted = context.args[0].strip()
+    storage = PlanStorage()
+
+    plan = None
+    for candidate in storage.history(limit=500):
+        plan_id = str(candidate.get("id"))
+        if plan_id == wanted or plan_id.startswith(wanted):
+            plan = candidate
+            break
+
+    if not plan:
+        return await update.message.reply_text("❌ Plan introuvable.")
+
+    plan["approved"] = False
+    plan["approval_required"] = False
+    plan["refused_at"] = datetime.now(timezone.utc).isoformat()
+    plan["refused_by"] = "telegram"
+    plan["status"] = "refused"
+    plan["error"] = "Plan refusé via Telegram."
+    storage.update(plan)
+
+    await update.message.reply_text(
+        f"🚫 Plan refusé : {str(plan.get('id'))[:8]}\nObjectif : {plan.get('goal')}"
+    )
+
+
+def _format_plans_message(plans: list[dict], title: str) -> str:
+    if not plans:
+        return "Aucun plan trouvé."
+
+    lines = [title, ""]
+
+    for plan in plans[:10]:
+        plan_id = str(plan.get("id"))[:8]
+        lines.extend([
+            f"ID : {plan_id}",
+            f"Objectif : {plan.get('goal')}",
+            f"Statut : {plan.get('status')}",
+            f"Approuvé : {plan.get('approved')}",
+            "",
+        ])
+
+    return "\n".join(lines)[:4096]
+
+
+async def cmd_plans(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    storage = PlanStorage()
+    plans = [
+        plan
+        for plan in storage.history(limit=50)
+        if plan.get("status") not in {"superseded", "plan_finished", "archived", "failed"}
+    ]
+
+    await update.message.reply_text(
+        _format_plans_message(plans, "📋 Plans actifs / utiles")
+    )
+
+
+async def cmd_plans_all(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    storage = PlanStorage()
+    plans = storage.history(limit=20)
+
+    await update.message.reply_text(
+        _format_plans_message(plans, "📚 Tous les derniers plans")
+    )
+
+
+async def cmd_tasks(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    manager = get_task_manager()
+    tasks = manager.list_active_tasks()
+
+    if not tasks:
+        return await update.message.reply_text("✅ Aucune tâche active.")
+
+    lines = ["🧩 Tâches actives", ""]
+
+    for task in tasks[:10]:
+        lines.extend([
+            f"- {task.get('title')}",
+            f"  Source : {task.get('source')}",
+            f"  Statut : {task.get('status')}",
+            "",
+        ])
+
+    await update.message.reply_text("\n".join(lines)[:4096])
+
+
+async def cmd_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /execute <plan_id>")
+
+    wanted = context.args[0].strip()
+    storage = PlanStorage()
+
+    plan = None
+    for candidate in storage.history(limit=500):
+        plan_id = str(candidate.get("id"))
+        if plan_id == wanted or plan_id.startswith(wanted):
+            plan = candidate
+            break
+
+    if not plan:
+        return await update.message.reply_text("❌ Plan introuvable.")
+
+    if plan.get("approved") is not True:
+        return await update.message.reply_text(
+            f"⛔ Plan non approuvé. Utilise d'abord : /approve {str(plan.get('id'))[:8]}"
+        )
+
+    executor = PlanExecutor()
+    result = executor.execute(plan)
+    storage.update(result)
+
+    status = result.get("status")
+    goal = result.get("goal")
+    plan_id = str(result.get("id"))[:8]
+
+    if status == "done":
+        await update.message.reply_text(
+            f"✅ Plan exécuté\n\nID : {plan_id}\nObjectif : {goal}"
+        )
+    else:
+        await update.message.reply_text(
+            f"⚠ Exécution terminée avec statut : {status}\n\nID : {plan_id}\nObjectif : {goal}\nErreur : {result.get('error')}"
+        )
+
+
+async def cmd_plan_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    storage = PlanStorage()
+    plans = [
+        plan
+        for plan in storage.history(limit=50)
+        if plan.get("status") in {"plan_finished", "superseded", "archived", "failed"}
+    ]
+
+    await update.message.reply_text(
+        _format_plans_message(plans, "📚 Historique des plans")
+    )
+
+
+async def cmd_archive_done_plans(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    storage = PlanStorage()
+    archived = 0
+
+    for plan in storage.history(limit=1000):
+        if plan.get("status") == "plan_finished":
+            plan["status"] = "archived"
+            plan["archived_by"] = "telegram"
+            storage.update(plan)
+            archived += 1
+
+    await update.message.reply_text(
+        f"📦 Plans archivés : {archived}"
+    )
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
         return await unauthorized(update)
@@ -369,6 +795,17 @@ async def start_bot() -> None:
     _telegram_app.add_handler(CommandHandler("fix", cmd_fix))
     _telegram_app.add_handler(CommandHandler("review", cmd_review))
     _telegram_app.add_handler(CommandHandler("run", cmd_run))
+    _telegram_app.add_handler(CommandHandler("goal", cmd_goal))
+    _telegram_app.add_handler(CommandHandler("goal_active", cmd_goal_active))
+    _telegram_app.add_handler(CommandHandler("ready", cmd_ready))
+    _telegram_app.add_handler(CommandHandler("approve", cmd_approve))
+    _telegram_app.add_handler(CommandHandler("refuse", cmd_refuse))
+    _telegram_app.add_handler(CommandHandler("plans", cmd_plans))
+    _telegram_app.add_handler(CommandHandler("plans_all", cmd_plans_all))
+    _telegram_app.add_handler(CommandHandler("plan_history", cmd_plan_history))
+    _telegram_app.add_handler(CommandHandler("archive_done_plans", cmd_archive_done_plans))
+    _telegram_app.add_handler(CommandHandler("tasks", cmd_tasks))
+    _telegram_app.add_handler(CommandHandler("execute", cmd_execute))
     _telegram_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     await _telegram_app.initialize()

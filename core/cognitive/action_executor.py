@@ -5,6 +5,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.planning import AutonomousPlanner
+from core.planning.storage import PlanStorage
+from core.task_system.task_manager import get_task_manager
+
 
 ACTION_HISTORY_PATH = Path(
     "/etc/neron/data/action_history.jsonl"
@@ -96,8 +100,49 @@ class ActionExecutor:
             message = "Restauration de l'objectif actif demandée via GoalSystem."
 
         elif action == "generate_task_plan":
-            status = "success"
-            message = "Génération de plan demandée via Planner."
+            active_goal = (context or {}).get("active_goal")
+
+            if not active_goal:
+                status = "blocked"
+                message = "Aucun objectif actif disponible pour générer un plan."
+            else:
+                planner = AutonomousPlanner()
+                storage = PlanStorage()
+
+                recent_exists = False
+                for existing_plan in storage.history(limit=50):
+                    if (
+                        existing_plan.get("source") == "cognitive_loop"
+                        and existing_plan.get("goal") == str(active_goal)
+                        and existing_plan.get("status") in {"pending", "approved", "running"}
+                    ):
+                        recent_exists = True
+                        plan_data = existing_plan
+                        break
+
+                if recent_exists:
+                    status = "skipped"
+                    message = "Plan cognitive_loop déjà existant pour cet objectif."
+                else:
+                    plan = planner.create_plan(str(active_goal))
+                    plan_data = plan.to_dict()
+                    plan_data["approved"] = False
+                    plan_data["approval_required"] = True
+                    plan_data["source"] = "cognitive_loop"
+
+                    task_manager = get_task_manager()
+                    created_tasks = task_manager.create_tasks_from_plan(plan_data)
+
+                    plan_data["tasks_generated"] = True
+                    plan_data["generated_task_ids"] = [
+                        task.get("id")
+                        for task in created_tasks
+                    ]
+
+                    storage.save(plan_data)
+
+                    status = "success"
+                    message = "Plan généré automatiquement depuis la Cognitive Loop et converti en tâches."
 
         elif action == "continue_monitoring":
             status = "success"
@@ -113,6 +158,10 @@ class ActionExecutor:
             "runtime_mode": runtime_mode,
             "runtime_policy": runtime_policy,
         }
+
+        if action == "generate_task_plan" and status == "success":
+            result["generated_plan_id"] = plan_data.get("id")
+            result["generated_plan_goal"] = plan_data.get("goal")
 
         self._save_execution(
             result

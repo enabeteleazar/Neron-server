@@ -122,6 +122,7 @@ SYNC_INTERVAL = HA_CONFIG.get("sync_interval", 60)
 
 from agents.memory.obsidian_agent import ObsidianAgent
 from agents.autonomous.planner_agent import AutonomousPlannerAgent
+from core.api.planner_routes import router as planner_router
 
 # =========================
 # LOGGER LOCAL (OPTIONNEL PAR MODULE)
@@ -1463,3 +1464,6 @@ async def _handle_memory(query, intent_result, metadata, start) -> CoreResponse:
         transcription=None,
         metadata={**metadata, "memory": result},
     )
+
+# Planner autonome
+app.include_router(planner_router)

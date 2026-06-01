@@ -88,6 +88,76 @@ class CriticEngine:
 
         return result
 
+    def evaluate_plan(
+        self,
+        plan: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Évalue le risque d'un plan Planner avant exécution.
+        """
+
+        risk_score = 0
+        risks: list[str] = []
+        recommendations: list[str] = []
+
+        steps = plan.get("steps", [])
+
+        if not steps:
+            risk_score += 40
+            risks.append("Le plan ne contient aucune étape.")
+            recommendations.append("Refuser l'exécution tant que le plan est vide.")
+
+        for step in steps:
+            action = step.get("action")
+            agent = step.get("agent")
+
+            if action in {"apply_patch", "write_file", "delete_file", "modify_core"}:
+                risk_score += 50
+                risks.append(f"Action sensible détectée : {action}.")
+                recommendations.append("Exiger une validation humaine explicite.")
+
+            if agent in {"code_agent", "agent_creator"}:
+                risk_score += 15
+                risks.append(f"Agent pouvant produire du code : {agent}.")
+                recommendations.append("Limiter l'écriture au dossier workspace.")
+
+            if action in {"run_tests", "prepare_tests"}:
+                risk_score += 5
+
+        if plan.get("approved") is not True:
+            risk_score += 20
+            risks.append("Le plan n'est pas approuvé.")
+            recommendations.append("Demander une approbation avant exécution.")
+
+        if risk_score >= 70:
+            level = "high"
+            execution_allowed = False
+        elif risk_score >= 35:
+            level = "medium"
+            execution_allowed = True
+        else:
+            level = "low"
+            execution_allowed = True
+
+        result = {
+            "risk_score": min(risk_score, 100),
+            "risk_level": level,
+            "execution_allowed": execution_allowed,
+            "risks": risks,
+            "recommendations": recommendations,
+        }
+
+        self.save_evaluation(
+            {
+                "type": "plan_risk",
+                "plan_id": plan.get("id"),
+                "goal": plan.get("goal"),
+            },
+            result,
+        )
+
+        return result
+
     def save_evaluation(
         self,
         cognitive_state: dict[str, Any],

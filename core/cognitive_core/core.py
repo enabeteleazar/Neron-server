@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Any
@@ -345,23 +348,71 @@ class CognitiveCore:
                     or goal.get("name")
                 )
 
-            return str(goal) if goal else None
+            if goal:
+                return str(goal)
+
+        # Fallback 1 : GoalSystem persistant récent
+        goals_state_path = Path("/etc/neron/data/goals_state.json")
+        if goals_state_path.exists():
+            try:
+                data = json.loads(goals_state_path.read_text(encoding="utf-8"))
+                active_goal_id = data.get("active_goal_id")
+                goals = data.get("goals", [])
+
+                if active_goal_id and isinstance(goals, list):
+                    for goal in goals:
+                        if goal.get("id") == active_goal_id:
+                            return goal.get("title") or goal.get("name")
+
+                for goal in goals:
+                    if goal.get("status") == "active":
+                        return goal.get("title") or goal.get("name")
+            except Exception:
+                pass
+
+        # Fallback 2 : ancien fichier goals.json
+        goals_path = Path("/etc/neron/data/goals.json")
+        if goals_path.exists():
+            try:
+                data = json.loads(goals_path.read_text(encoding="utf-8"))
+                goal = data.get("active_goal")
+
+                if isinstance(goal, dict):
+                    return goal.get("title") or goal.get("name")
+
+                if goal:
+                    return str(goal)
+            except Exception:
+                pass
 
         return None
 
     def _get_active_tasks(self) -> list[dict[str, Any]]:
-        if not self.task_manager:
-            return []
+        if self.task_manager:
+            if hasattr(self.task_manager, "list_active_tasks"):
+                tasks = self.task_manager.list_active_tasks()
 
-        if hasattr(self.task_manager, "list_active_tasks"):
-            tasks = self.task_manager.list_active_tasks()
+                return tasks if isinstance(tasks, list) else []
 
-            return tasks if isinstance(tasks, list) else []
+            if hasattr(self.task_manager, "get_active_tasks"):
+                tasks = self.task_manager.get_active_tasks()
 
-        if hasattr(self.task_manager, "get_active_tasks"):
-            tasks = self.task_manager.get_active_tasks()
+                return tasks if isinstance(tasks, list) else []
 
-            return tasks if isinstance(tasks, list) else []
+        tasks_path = Path("/etc/neron/data/tasks.json")
+        if tasks_path.exists():
+            try:
+                data = json.loads(tasks_path.read_text(encoding="utf-8"))
+                tasks = data.get("tasks", [])
+
+                if isinstance(tasks, list):
+                    return [
+                        task
+                        for task in tasks
+                        if task.get("status") in {"pending", "active", "todo", "in_progress"}
+                    ]
+            except Exception:
+                pass
 
         return []
 
