@@ -63,14 +63,27 @@ def _sync_plan_task_status(plan_id: str) -> None:
         return
 
     if all(task.get("status") in {"completed", "skipped"} for task in related_tasks):
-        plan["status"] = "tasks_completed"
-        plan["tasks_completed"] = True
-        plan["completed_task_ids"] = [
-            task.get("id")
-            for task in related_tasks
-        ]
+        completed = [task for task in related_tasks if task.get("status") == "completed"]
+        skipped = [task for task in related_tasks if task.get("status") == "skipped"]
+        creation_actions = {"analyze_agents", "define_agent", "create_skeleton", "check_integration"}
+        creation_tasks = [task for task in related_tasks if task.get("action") in creation_actions]
+        all_creation_skipped = bool(creation_tasks) and all(
+            task.get("status") == "skipped" for task in creation_tasks
+        )
 
-        if not plan.get("telegram_ready_notified"):
+        if all_creation_skipped or (skipped and not completed):
+            plan["status"] = "failed" if all_creation_skipped else "partial"
+            plan["tasks_completed"] = False
+            plan["error"] = "Aucune tâche exécutable n'a été terminée."
+        else:
+            plan["status"] = "tasks_completed"
+            plan["tasks_completed"] = True
+            plan["error"] = None
+
+        plan["completed_task_ids"] = [task.get("id") for task in completed]
+        plan["skipped_task_ids"] = [task.get("id") for task in skipped]
+
+        if plan["tasks_completed"] and not plan.get("telegram_ready_notified"):
             critic = get_critic_engine()
             risk = plan.get("risk") or critic.evaluate_plan(plan)
             plan["risk"] = risk

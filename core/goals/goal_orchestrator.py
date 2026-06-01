@@ -20,6 +20,7 @@ PLAN_TERMINAL_STATUSES = {
     "failed",
     "superseded",
     "archived",
+    "partial",
 }
 
 SENSITIVE_ACTIONS = {
@@ -220,11 +221,19 @@ class GoalOrchestrator:
 
         total = len(related_tasks)
         completed_ids: list[str] = []
+        skipped_ids: list[str] = []
         failed_ids: list[str] = []
+        agent_path: str | None = None
 
         for index, task in enumerate(related_tasks, start=1):
-            if task.get("status") in {"completed", "skipped"}:
+            if task.get("status") == "completed":
                 completed_ids.append(str(task.get("id")))
+                existing_result = task.get("result") or {}
+                agent_path = agent_path or existing_result.get("agent_path")
+                continue
+
+            if task.get("status") == "skipped":
+                skipped_ids.append(str(task.get("id")))
                 continue
 
             self.task_manager.update_task(str(task["id"]), {"status": "in_progress"})
@@ -233,6 +242,7 @@ class GoalOrchestrator:
             try:
                 result = self.task_executor.execute(current_task)
                 if result.get("status") == "success":
+                    agent_path = agent_path or result.get("agent_path")
                     updated = self.task_manager.update_task(
                         str(task["id"]),
                         {
@@ -245,13 +255,18 @@ class GoalOrchestrator:
                     )
                     completed_ids.append(str(task.get("id")))
                     await self._notify_task_done(plan, updated or current_task, index, total)
-                else:
+                elif result.get("status") == "skipped":
                     updated = self.task_manager.update_task(
                         str(task["id"]),
                         {"status": "skipped", "result": result, "progress": 100},
                     )
-                    completed_ids.append(str(task.get("id")))
+                    skipped_ids.append(str(task.get("id")))
                     await self._notify_task_done(plan, updated or current_task, index, total, skipped=True)
+                else:
+                    error = str(result.get("error") or result.get("summary") or "Action échouée.")
+                    failed = self.task_manager.fail_task(str(task["id"]), error)
+                    failed_ids.append(str(task.get("id")))
+                    await self._notify_task_failed(plan, failed or current_task, index, total, error)
             except Exception as exc:
                 failed = self.task_manager.fail_task(str(task["id"]), str(exc))
                 failed_ids.append(str(task.get("id")))
@@ -264,7 +279,42 @@ class GoalOrchestrator:
                 return {"status": "failed", "plan": plan, "error": str(exc)}
 
         plan["completed_task_ids"] = completed_ids
+        plan["skipped_task_ids"] = skipped_ids
         plan["failed_task_ids"] = failed_ids
+        plan["task_counts"] = {
+            "total": total,
+            "completed": len(completed_ids),
+            "skipped": len(skipped_ids),
+            "failed": len(failed_ids),
+        }
+        if agent_path:
+            plan["agent_path"] = agent_path
+            plan["agent_draft"] = {"path": agent_path, "state": "draft_only"}
+
+        creation_actions = {"analyze_agents", "define_agent", "create_skeleton", "check_integration"}
+        creation_task_ids = [
+            str(task.get("id"))
+            for task in related_tasks
+            if task.get("action") in creation_actions
+        ]
+        create_skeleton_tasks = [
+            task for task in related_tasks if task.get("action") == "create_skeleton"
+        ]
+        creation_goal = bool(creation_task_ids)
+        creation_skipped = creation_goal and all(
+            task_id in skipped_ids for task_id in creation_task_ids
+        )
+        missing_draft = creation_goal and create_skeleton_tasks and not agent_path
+
+        if failed_ids or creation_skipped or missing_draft or (total and not completed_ids and skipped_ids):
+            plan["tasks_completed"] = False
+            plan["tasks_completed_at"] = self._now()
+            plan["status"] = "failed" if failed_ids or creation_skipped or missing_draft else "partial"
+            plan["error"] = self._final_error(plan, creation_skipped, missing_draft)
+            self.storage.update(plan)
+            await self._notify_execution_failed(plan)
+            return {"status": plan["status"], "plan": plan, "error": plan.get("error")}
+
         plan["tasks_completed"] = True
         plan["tasks_completed_at"] = self._now()
         plan["status"] = "tasks_completed"
@@ -277,6 +327,15 @@ class GoalOrchestrator:
         self._complete_goal(plan)
         await self._notify_execution_finished(plan)
         return {"status": "plan_finished", "plan": plan}
+
+    def _final_error(self, plan: dict[str, Any], creation_skipped: bool, missing_draft: bool) -> str:
+        if plan.get("failed_task_ids"):
+            return "Une ou plusieurs tâches ont échoué."
+        if creation_skipped:
+            return "Objectif de création d'agent non exécuté : toutes les tâches importantes ont été ignorées."
+        if missing_draft:
+            return "Objectif de création d'agent incomplet : aucun brouillon n'a été créé."
+        return "Aucune tâche exécutable n'a été terminée."
 
     def find_plan(self, plan_id_or_prefix: str) -> dict[str, Any] | None:
         wanted = plan_id_or_prefix.strip()
@@ -307,9 +366,22 @@ class GoalOrchestrator:
         if "failed" in statuses:
             plan["status"] = "failed"
         elif statuses <= {"completed", "skipped"}:
-            plan["status"] = "tasks_completed"
-            plan["tasks_completed"] = True
-            plan["completed_task_ids"] = [task.get("id") for task in tasks]
+            completed = [task for task in tasks if task.get("status") == "completed"]
+            skipped = [task for task in tasks if task.get("status") == "skipped"]
+            creation_actions = {"analyze_agents", "define_agent", "create_skeleton", "check_integration"}
+            creation_tasks = [task for task in tasks if task.get("action") in creation_actions]
+            all_creation_skipped = bool(creation_tasks) and all(
+                task.get("status") == "skipped" for task in creation_tasks
+            )
+            if all_creation_skipped or (skipped and not completed):
+                plan["status"] = "failed" if all_creation_skipped else "partial"
+                plan["tasks_completed"] = False
+                plan["error"] = "Aucune tâche exécutable n'a été terminée."
+            else:
+                plan["status"] = "tasks_completed"
+                plan["tasks_completed"] = True
+            plan["completed_task_ids"] = [task.get("id") for task in completed]
+            plan["skipped_task_ids"] = [task.get("id") for task in skipped]
         elif "in_progress" in statuses:
             plan["status"] = "running"
         elif plan.get("status") not in {"approval_required", "approved", "blocked_by_risk"}:
@@ -329,7 +401,7 @@ class GoalOrchestrator:
         score = int(risk.get("risk_score") or 0)
         if sensitive_detected or score > 80:
             return "blocked"
-        if score <= 30:
+        if risk.get("execution_allowed") is True and score <= 50:
             return "auto_execute"
         return "approval_required"
 
@@ -434,24 +506,52 @@ class GoalOrchestrator:
         )
 
     async def _notify_execution_finished(self, plan: dict[str, Any]) -> None:
-        await self._notify(
-            "🏁 Objectif terminé\n\n"
-            f"Objectif :\n{plan.get('goal')}\n\n"
-            "Résultat :\n"
-            "✓ Plan généré\n"
-            "✓ Tâches exécutées\n"
-            "✓ Risque validé\n"
-            "✓ Plan terminé",
-            level="info",
-        )
+        await self._notify(self._final_report(plan, success=True), level="info")
 
     async def _notify_execution_failed(self, plan: dict[str, Any]) -> None:
-        await self._notify(
-            "❌ Exécution échouée\n"
-            f"Objectif : {plan.get('goal')}\n"
-            f"Erreur : {plan.get('error')}",
-            level="error",
-        )
+        await self._notify(self._final_report(plan, success=False), level="error")
+
+    def _final_report(self, plan: dict[str, Any], success: bool) -> str:
+        risk = plan.get("risk") or {}
+        counts = plan.get("task_counts") or {}
+        agent_path = plan.get("agent_path") or (plan.get("agent_draft") or {}).get("path")
+        status = plan.get("status") or ("plan_finished" if success else "failed")
+
+        result_lines = [
+            "✓ Plan généré",
+            "✓ Risque validé",
+        ]
+        if agent_path:
+            result_lines.append("✓ Brouillon d'agent créé")
+        result_lines.append("✓ Vérification terminée" if success else "✗ Vérification incomplète")
+
+        lines = [
+            "🏁 Objectif terminé" if success else "❌ Exécution échouée",
+            "",
+            "Objectif :",
+            str(plan.get("goal")),
+            "",
+            f"Plan : {plan.get('id')}",
+            f"Risque : {risk.get('risk_level', 'unknown')} ({risk.get('risk_score', '?')}/100)",
+            "",
+            "Tâches :",
+            f"completed={counts.get('completed', len(plan.get('completed_task_ids', [])))} "
+            f"skipped={counts.get('skipped', len(plan.get('skipped_task_ids', [])))} "
+            f"failed={counts.get('failed', len(plan.get('failed_task_ids', [])))}",
+            "",
+            "Résultat :",
+            *result_lines,
+        ]
+
+        if agent_path:
+            lines.extend(["", "Agent :", str(agent_path), "", "État :", "draft_only"])
+
+        lines.extend(["", "Statut final :", str(status)])
+
+        if plan.get("error"):
+            lines.extend(["", "Erreur :", str(plan.get("error"))])
+
+        return "\n".join(lines)
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()

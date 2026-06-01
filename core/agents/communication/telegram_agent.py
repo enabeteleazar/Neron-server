@@ -339,14 +339,19 @@ async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status = result.get("status")
 
     if status == "plan_finished":
-        await update.message.reply_text(
-            "✅ Objectif reçu\n"
-            "🧠 Plan généré\n"
-            "⚙ Exécution automatique autorisée\n"
-            "🏁 Objectif terminé\n\n"
-            f"ID plan : {short_id}\n"
-            f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)"
-        )
+        agent_path = plan.get("agent_path") or (plan.get("agent_draft") or {}).get("path")
+        lines = [
+            "✅ Objectif reçu",
+            "🧠 Plan généré",
+            "⚙ Exécution automatique autorisée",
+            "🏁 Objectif terminé",
+            "",
+            f"ID plan : {short_id}",
+            f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)",
+        ]
+        if agent_path:
+            lines.extend(["", f"Agent : {agent_path}", "État : draft_only"])
+        await update.message.reply_text("\n".join(lines))
         return
 
     if status == "approval_required":
