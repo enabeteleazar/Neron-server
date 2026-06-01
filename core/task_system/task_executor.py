@@ -2,21 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from core.agent_factory.agent_creator import AgentCreator
 from core.cognitive.critic_engine import get_critic_engine
 from core.planning.executor import PlanExecutor
 from core.planning.storage import PlanStorage
 
 
-PLAN_EXECUTOR_ACTIONS = {
+AGENT_CREATOR_ACTIONS = {
     "analyze_agents",
-    "check_integration",
-    "scan_project",
     "define_agent",
     "create_skeleton",
-    "prepare_tests",
-    "run_tests",
-    "evaluate_risk",
-    "security_audit",
+    "check_integration",
 }
 
 
@@ -25,23 +21,25 @@ class TaskExecutor:
         self,
         plan_executor: PlanExecutor | None = None,
         storage: PlanStorage | None = None,
+        agent_creator: AgentCreator | None = None,
     ) -> None:
         self.plan_executor = plan_executor or PlanExecutor()
         self.storage = storage or PlanStorage()
+        self.agent_creator = agent_creator or AgentCreator()
 
     def execute(self, task: dict[str, Any]) -> dict[str, Any]:
         action = task.get("action")
         agent = task.get("agent")
 
-        if self._uses_plan_executor(agent, action):
-            return self._execute_with_plan_executor(task)
+        if action in AGENT_CREATOR_ACTIONS or agent == "agent_creator":
+            return self._execute_agent_creator_action(task)
 
         if action == "analyze_goal":
             return {
                 "status": "success",
                 "agent": agent,
                 "action": action,
-                "summary": "Objectif analysé.",
+                "summary": "Objectif analyse.",
                 "goal": task.get("goal"),
             }
 
@@ -50,16 +48,14 @@ class TaskExecutor:
                 "status": "success",
                 "agent": agent,
                 "action": action,
-                "summary": "Objectif décomposé en étapes via Planner.",
+                "summary": "Objectif decompose en etapes via Planner.",
                 "goal": task.get("goal"),
             }
 
         if action == "evaluate_plan":
             critic = get_critic_engine()
-            storage = PlanStorage()
-
             plan_id = task.get("plan_id")
-            plan = storage.get(str(plan_id)) if plan_id else None
+            plan = self.storage.get(str(plan_id)) if plan_id else None
 
             if not plan:
                 plan = {
@@ -73,13 +69,13 @@ class TaskExecutor:
 
             if plan_id and plan:
                 plan["risk"] = risk
-                storage.update(plan)
+                self.storage.update(plan)
 
             return {
                 "status": "success",
                 "agent": agent,
                 "action": action,
-                "summary": "Risque évalué par CriticEngine sur le vrai plan.",
+                "summary": "Risque evalue par CriticEngine sur le vrai plan.",
                 "plan_id": plan_id,
                 "risk": risk,
             }
@@ -88,63 +84,86 @@ class TaskExecutor:
             "status": "skipped",
             "agent": agent,
             "action": action,
-            "summary": "Action non implémentée dans TaskExecutor V1.",
+            "summary": "Action non implementee dans TaskExecutor V1.",
         }
 
-    def _uses_plan_executor(self, agent: str | None, action: str | None) -> bool:
-        if not action:
-            return False
+    def _execute_agent_creator_action(self, task: dict[str, Any]) -> dict[str, Any]:
+        action = str(task.get("action") or "")
+        plan = self._plan_for_task(task)
+        goal = str(plan.get("goal") or task.get("goal") or "")
 
-        return agent == "agent_creator" or action in PLAN_EXECUTOR_ACTIONS
-
-    def _execute_with_plan_executor(self, task: dict[str, Any]) -> dict[str, Any]:
-        action = task.get("action")
-        agent = task.get("agent")
-        plan = self._load_plan_for_task(task)
-        step = {
-            "title": task.get("title"),
-            "description": task.get("description"),
-            "agent": agent,
-            "action": action,
-        }
-
-        result = self.plan_executor._execute_step(step, plan)
-
-        if isinstance(result, dict) and result.get("status") == "skipped":
+        if action == "analyze_agents":
+            result = self.agent_creator.scan_existing_agents()
             return {
-                "status": "skipped",
-                "agent": agent,
+                "status": "success",
+                "agent": task.get("agent"),
                 "action": action,
-                "summary": result.get("reason") or "Action non implémentée dans PlanExecutor.",
+                "summary": f"Agents existants analyses ({result.get('agents_scanned', 0)} fichier(s)).",
                 "result": result,
+                "plan_id": task.get("plan_id"),
             }
 
-        response = {
-            "status": "success",
-            "agent": agent,
+        if action in {"define_agent", "create_skeleton"}:
+            proposal = self.agent_creator.request_agent_creation(
+                goal=goal,
+                plan=plan,
+                missing_capability=self.agent_creator.infer_missing_capability(goal),
+            )
+            self._record_agent_proposal(plan, proposal)
+
+            return {
+                "status": "success",
+                "agent": task.get("agent"),
+                "action": action,
+                "summary": "Proposition d'agent preparee; validation humaine requise.",
+                "result": {
+                    "proposal_created": True,
+                    "agent_request_id": proposal.get("agent_request_id"),
+                    "status": proposal.get("status"),
+                    "code_execution_allowed": False,
+                },
+                "plan_id": task.get("plan_id"),
+                "agent_creator_called": True,
+                "agent_request_id": proposal.get("agent_request_id"),
+                "agent_creation_proposal": proposal,
+                "proposal": proposal,
+                "applied_to_core": False,
+                "code_executed": False,
+            }
+
+        if action == "check_integration":
+            proposal = plan.get("agent_creation_proposal") or {}
+            return {
+                "status": "success",
+                "agent": task.get("agent"),
+                "action": action,
+                "summary": "Integration verifiee sans modification du core.",
+                "result": {
+                    "proposal_status": proposal.get("status", "pending_human_validation"),
+                    "applied_to_core": False,
+                    "code_execution_allowed": False,
+                },
+                "plan_id": task.get("plan_id"),
+            }
+
+        return {
+            "status": "skipped",
+            "agent": task.get("agent"),
             "action": action,
-            "summary": "Action exécutée via PlanExecutor.",
+            "summary": "Action agent_creator ignoree.",
             "plan_id": task.get("plan_id"),
-            "result": result,
         }
 
-        if isinstance(result, dict) and result.get("draft_created"):
-            response["agent_path"] = result.get("path")
-            response["agent_state"] = "draft_only"
-            response["applied_to_core"] = result.get("applied_to_core", False)
-
-        return response
-
-    def _load_plan_for_task(self, task: dict[str, Any]) -> dict[str, Any]:
+    def _plan_for_task(self, task: dict[str, Any]) -> dict[str, Any]:
         plan_id = task.get("plan_id")
         plan = self.storage.get(str(plan_id)) if plan_id else None
-
         if plan:
             return plan
 
         return {
             "id": plan_id,
             "goal": task.get("goal"),
+            "approved": True,
             "steps": [
                 {
                     "title": task.get("title"),
@@ -153,8 +172,22 @@ class TaskExecutor:
                     "action": task.get("action"),
                 }
             ],
-            "approved": True,
         }
+
+    def _record_agent_proposal(
+        self,
+        plan: dict[str, Any],
+        proposal: dict[str, Any],
+    ) -> None:
+        if not plan.get("id"):
+            return
+
+        plan["agent_creator_called"] = True
+        plan["agent_request_id"] = proposal.get("agent_request_id")
+        plan["agent_creation_proposal"] = proposal
+        plan["agent_proposal_status"] = proposal.get("status")
+        plan["applied_to_core"] = False
+        self.storage.update(plan)
 
 
 def get_task_executor() -> TaskExecutor:

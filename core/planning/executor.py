@@ -1,17 +1,23 @@
 from __future__ import annotations
 
-import subprocess
+import os
 import re
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.agent_factory.agent_creator import AgentCreator
+
 
 class PlanExecutor:
-    def __init__(self, project_root: Path = Path("/etc/neron")):
+    def __init__(self, project_root: Path | None = None):
+        if project_root is None:
+            project_root = Path(os.getenv("NERON_PROJECT_ROOT", Path.cwd()))
         self.project_root = project_root
         self.draft_dir = self.project_root / "workspace" / "agent_drafts"
         self.draft_dir.mkdir(parents=True, exist_ok=True)
+        self.agent_creator = AgentCreator(project_root=self.project_root)
 
     def execute(self, plan: dict[str, Any]) -> dict[str, Any]:
         if not plan.get("approved"):
@@ -22,12 +28,20 @@ class PlanExecutor:
         plan["status"] = "running"
         plan["executed_at"] = datetime.now(timezone.utc).isoformat()
 
+        completed = 0
+        skipped = 0
+
         for step in plan.get("steps", []):
             step["status"] = "running"
 
             try:
                 step["result"] = self._execute_step(step, plan)
-                step["status"] = "completed"
+                if step["result"].get("status") == "skipped":
+                    step["status"] = "skipped"
+                    skipped += 1
+                else:
+                    step["status"] = "completed"
+                    completed += 1
                 step["error"] = None
             except Exception as exc:
                 step["status"] = "failed"
@@ -35,7 +49,20 @@ class PlanExecutor:
                 plan["status"] = "failed"
                 return plan
 
+        plan["task_counts"] = {
+            "total": completed + skipped,
+            "completed": completed,
+            "skipped": skipped,
+            "failed": 0,
+        }
+
+        if skipped and not completed:
+            plan["status"] = "partial"
+            plan["error"] = "Aucune étape exécutable n'a été terminée."
+            return plan
+
         plan["status"] = "plan_finished"
+        plan["error"] = None
         return plan
 
     def _execute_step(self, step: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
@@ -80,51 +107,22 @@ class PlanExecutor:
 
     def _create_agent_draft(self, plan: dict[str, Any]) -> dict[str, Any]:
         goal = str(plan.get("goal") or "nouvel agent")
-        goal_lower = goal.lower()
-
-        if "météo" in goal_lower or "meteo" in goal_lower:
-            safe_name = "weather_agent"
-            class_name = "WeatherAgent"
-        elif "wwdc" in goal_lower or "apple" in goal_lower:
-            safe_name = "wwdc_agent"
-            class_name = "WwdcAgent"
-        elif "test" in goal_lower:
-            safe_name = "test_agent"
-            class_name = "TestAgent"
-        else:
-            safe_name = self._safe_agent_name(goal)
-            class_name = "".join(part.capitalize() for part in safe_name.split("_"))
-
-        agent_file = self.draft_dir / (safe_name + ".py")
-
-        lines = [
-            "from __future__ import annotations",
-            "",
-            "",
-            "class " + class_name + ":",
-            "    name = " + repr(safe_name),
-            "",
-            "    def __init__(self):",
-            "        self.goal = " + repr(goal),
-            "",
-            "    async def run(self, action: str | None = None, params: dict | None = None) -> dict:",
-            "        return {",
-            "            'agent': self.name,",
-            "            'action': action,",
-            "            'params': params or {},",
-            "            'status': 'draft_only',",
-            "            'goal': self.goal,",
-            "        }",
-            "",
-        ]
-
-        agent_file.write_text("\n".join(lines), encoding="utf-8")
+        proposal = self.agent_creator.request_agent_creation(
+            goal=goal,
+            plan=plan,
+            missing_capability=self.agent_creator.infer_missing_capability(goal),
+        )
 
         return {
-            "draft_created": True,
-            "path": str(agent_file),
+            "proposal_created": True,
+            "agent_creation_proposal": proposal,
+            "proposal": proposal,
+            "agent_request_id": proposal.get("agent_request_id"),
+            "draft_created": False,
+            "draft_only": False,
+            "state": proposal.get("status"),
             "applied_to_core": False,
-            "state": "draft_only",
+            "code_executed": False,
         }
 
     def _safe_agent_name(self, goal: str) -> str:
@@ -158,6 +156,9 @@ class PlanExecutor:
             base = f"{base}_agent"
 
         return base
+
+    def _class_name_from_safe_name(self, safe_name: str) -> str:
+        return "".join(part.capitalize() for part in safe_name.split("_") if part)
 
     def _run_tests(self) -> dict[str, Any]:
         result = subprocess.run(

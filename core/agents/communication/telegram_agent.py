@@ -489,14 +489,25 @@ async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     status = result.get("status")
 
     if status == "plan_finished":
-        await update.message.reply_text(
-            "✅ Objectif reçu\n"
-            "🧠 Plan généré\n"
-            "⚙ Exécution automatique autorisée\n"
-            "📄 Rapport final envoyé\n\n"
-            f"ID plan : {short_id}\n"
-            f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)"
-        )
+        proposal = plan.get("agent_creation_proposal") or {}
+        lines = [
+            "✅ Objectif reçu",
+            "🧠 Plan généré",
+            "⚙ Exécution automatique autorisée",
+            "🏁 Objectif terminé",
+            "",
+            f"ID plan : {short_id}",
+            f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)",
+        ]
+        if proposal:
+            lines.extend(
+                [
+                    "",
+                    f"Proposition : {proposal.get('agent_name')}",
+                    f"État : {proposal.get('status')}",
+                ]
+            )
+        await update.message.reply_text("\n".join(lines))
         return
 
     if status in {"partial", "failed"}:

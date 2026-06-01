@@ -29,11 +29,27 @@ class GoalRunRequest(BaseModel):
     source: str = "api"
 
 
+class GoalAliasRequest(BaseModel):
+    goal: str | None = None
+    objective: str | None = None
+    source: str = "api"
+
+
 @router.post("/goals/run")
 async def run_goal(payload: GoalRunRequest) -> dict[str, Any]:
     orchestrator = get_goal_orchestrator()
     result = await orchestrator.run_goal(payload.objective, source=payload.source)
     return result
+
+
+@router.post("/goal")
+async def run_goal_alias(payload: GoalAliasRequest) -> dict[str, Any]:
+    objective = (payload.goal or payload.objective or "").strip()
+    if not objective:
+        raise HTTPException(status_code=422, detail="goal or objective is required")
+
+    orchestrator = get_goal_orchestrator()
+    return await orchestrator.run_goal(objective, source=payload.source)
 
 
 @router.get("/goals")

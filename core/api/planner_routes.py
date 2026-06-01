@@ -71,6 +71,7 @@ class PlanRequest(BaseModel):
 async def create_plan(payload: PlanRequest) -> dict:
     plan = planner.create_plan(payload.goal)
     data = plan.to_dict()
+    data["planner_called"] = True
     data["approved"] = False
     data["approval_required"] = True
     storage.save(data)
@@ -208,6 +209,7 @@ async def planner_from_goal() -> dict:
 
     plan = planner.create_plan(str(goal_text))
     data = plan.to_dict()
+    data["planner_called"] = True
     data["approved"] = False
     data["approval_required"] = True
     data["source"] = "goalsystem"
