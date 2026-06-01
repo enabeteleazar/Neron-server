@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -7,7 +9,9 @@ from typing import Any
 
 
 class PlanExecutor:
-    def __init__(self, project_root: Path = Path("/etc/neron")):
+    def __init__(self, project_root: Path | None = None):
+        if project_root is None:
+            project_root = Path(os.getenv("NERON_PROJECT_ROOT", Path.cwd()))
         self.project_root = project_root
         self.draft_dir = self.project_root / "workspace" / "agent_drafts"
         self.draft_dir.mkdir(parents=True, exist_ok=True)
@@ -21,12 +25,20 @@ class PlanExecutor:
         plan["status"] = "running"
         plan["executed_at"] = datetime.now(timezone.utc).isoformat()
 
+        completed = 0
+        skipped = 0
+
         for step in plan.get("steps", []):
             step["status"] = "running"
 
             try:
                 step["result"] = self._execute_step(step, plan)
-                step["status"] = "completed"
+                if step["result"].get("status") == "skipped":
+                    step["status"] = "skipped"
+                    skipped += 1
+                else:
+                    step["status"] = "completed"
+                    completed += 1
                 step["error"] = None
             except Exception as exc:
                 step["status"] = "failed"
@@ -34,7 +46,20 @@ class PlanExecutor:
                 plan["status"] = "failed"
                 return plan
 
+        plan["task_counts"] = {
+            "total": completed + skipped,
+            "completed": completed,
+            "skipped": skipped,
+            "failed": 0,
+        }
+
+        if skipped and not completed:
+            plan["status"] = "partial"
+            plan["error"] = "Aucune étape exécutable n'a été terminée."
+            return plan
+
         plan["status"] = "plan_finished"
+        plan["error"] = None
         return plan
 
     def _execute_step(self, step: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:
@@ -83,10 +108,14 @@ class PlanExecutor:
 
         if "météo" in goal_lower or "meteo" in goal_lower:
             safe_name = "weather_agent"
-            class_name = "WeatherAgent"
+        elif "wwdc" in goal_lower:
+            safe_name = "wwdc_agent"
+        elif "test" in goal_lower:
+            safe_name = "test_agent"
         else:
-            safe_name = "generated_agent"
-            class_name = "GeneratedAgent"
+            safe_name = self._agent_name_from_goal(goal)
+
+        class_name = self._class_name_from_safe_name(safe_name)
 
         agent_file = self.draft_dir / (safe_name + ".py")
 
@@ -116,8 +145,23 @@ class PlanExecutor:
         return {
             "draft_created": True,
             "path": str(agent_file),
+            "agent_path": str(agent_file),
+            "draft_only": True,
+            "state": "draft_only",
             "applied_to_core": False,
         }
+
+    def _agent_name_from_goal(self, goal: str) -> str:
+        normalized = goal.lower()
+        for token in ("créer", "creer", "agent", "qui", "me", "de", "la", "le", "un", "une", "des", "du", "prochaine", "prochain"):
+            normalized = normalized.replace(token, " ")
+
+        words = re.findall(r"[a-z0-9]+", normalized)
+        selected = words[:3] or ["generated"]
+        return "_".join(selected) + "_agent"
+
+    def _class_name_from_safe_name(self, safe_name: str) -> str:
+        return "".join(part.capitalize() for part in safe_name.split("_") if part)
 
     def _run_tests(self) -> dict[str, Any]:
         result = subprocess.run(
