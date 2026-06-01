@@ -36,6 +36,7 @@ class SelfModel:
     cognitive_state: dict[str, Any] = field(default_factory=dict)
     diagnostics: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
+    code_awareness: dict[str, Any] = field(default_factory=dict)
 
     active_goal: str = "maintenir la stabilité système"
     health_realtime: str = "unknown"
@@ -1280,6 +1281,7 @@ class SelfModel:
 
     def refresh(self) -> None:
         self.collect_runtime()
+        self.collect_code_awareness()
         self._compute_health()
         self.collect_services()
         self.compute_health()
@@ -1296,6 +1298,26 @@ class SelfModel:
         self.compute_diagnostics()
         self.compute_recommendations()
         self.last_update = time.time()
+
+    def collect_code_awareness(self) -> None:
+        try:
+            from core.code_awareness.scanner import scan_project
+
+            scan = scan_project(max_depth=1)
+            self.code_awareness = {
+                "modules": scan.get("modules", 0),
+                "files": scan.get("files", 0),
+                "last_scan": time.time(),
+                "architecture_known": True,
+            }
+        except Exception as exc:
+            self.code_awareness = {
+                "modules": 0,
+                "files": 0,
+                "last_scan": time.time(),
+                "architecture_known": False,
+                "error": str(exc),
+            }
 
     def _merge_state(self, patch: dict[str, Any]) -> None:
         STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -1530,6 +1552,7 @@ class SelfModel:
             "health_global": self.health_global,
             "active_goal": self.active_goal,
             "cognitive_state": self.cognitive_state,
+            "code_awareness": self.code_awareness,
             "diagnostics": self.diagnostics,
             "recommendations": self.recommendations,
             "last_update": self.last_update,

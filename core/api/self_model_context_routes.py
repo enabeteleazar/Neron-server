@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from core.self_model.self_model import get_self_model
 from core.task_system.task_manager import get_task_manager
+from core.code_awareness.scanner import scan_project
 
 router = APIRouter(tags=["self-model-context"])
 
@@ -56,6 +57,22 @@ async def self_model_context() -> dict:
         "failed": len(failed_tasks),
     }
 
+    try:
+        code_scan = scan_project(max_depth=1)
+        code_awareness = {
+            "modules": code_scan.get("modules", 0),
+            "files": code_scan.get("files", 0),
+            "last_scan": None,
+            "architecture_known": True,
+        }
+    except Exception:
+        code_awareness = {
+            "modules": 0,
+            "files": 0,
+            "last_scan": None,
+            "architecture_known": False,
+        }
+
     return {
         "identity": data.get("identity"),
         "health": {
@@ -79,6 +96,7 @@ async def self_model_context() -> dict:
         "capabilities": data.get("capabilities", {}),
         "performance_self_evaluation": data.get("performance_self_evaluation", {}),
         "services": data.get("services", {}),
+        "code_awareness": code_awareness,
         "cognitive_state": data.get("cognitive_state", {}),
         "last_activity": {
             "last_event": data.get("last_event"),

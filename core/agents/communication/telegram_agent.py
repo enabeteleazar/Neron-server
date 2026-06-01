@@ -19,6 +19,12 @@ from core.planning.executor import PlanExecutor
 from core.task_system.task_manager import get_task_manager
 from core.cognitive.critic_engine import get_critic_engine
 from core.goals.goal_orchestrator import get_goal_orchestrator
+from core.code_awareness.analyzer import analyze_file
+from core.code_awareness.architecture_mapper import map_architecture
+from core.code_awareness.reader import read_file
+from core.code_awareness.scanner import scan_project
+from core.code_awareness.searcher import search_code
+from core.code_awareness.security import CodeAwarenessSecurityError
 import unicodedata
 from pathlib import Path
 
@@ -116,6 +122,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "  /review — auto-review du code\n"
         "  /run &lt;fichier.py&gt; — exécute un script du workspace\n"
         "  /workspace — liste les fichiers du workspace\n\n"
+        "🧭 <b>Code Awareness</b>\n"
+        "  /code_map — carte simplifiée du dépôt\n"
+        "  /code_search &lt;terme&gt; — recherche dans le code\n"
+        "  /code_read &lt;fichier&gt; — lecture sécurisée\n"
+        "  /code_analyze &lt;fichier&gt; — analyse AST\n"
+        "  /architecture — vue globale\n\n"
         "🧠 <b>Mémoire</b>\n"
         "  /memory — 5 derniers échanges\n\n"
         "🏠 <b>Home Assistant</b>\n"
@@ -248,6 +260,144 @@ async def cmd_workspace(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text("\n".join(lines), parse_mode="HTML")
     except Exception as e:
         await update.message.reply_text(f"❌ Erreur workspace : {e}")
+
+
+def _telegram_limit(text: str, limit: int = 3900) -> str:
+    if len(text) <= limit:
+        return text
+
+    return text[: limit - 20].rstrip() + "\n…"
+
+
+def _tree_lines(node: dict, depth: int = 0, max_lines: int = 45) -> list[str]:
+    lines: list[str] = []
+    prefix = "  " * depth
+    name = node.get("name") or node.get("path") or "?"
+
+    if depth > 0:
+        lines.append(f"{prefix}- {name}")
+
+    for child in node.get("children", []):
+        if len(lines) >= max_lines:
+            break
+        lines.extend(_tree_lines(child, depth + 1, max_lines=max_lines - len(lines)))
+
+    return lines[:max_lines]
+
+
+async def cmd_code_map(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    scan = scan_project(max_depth=2)
+    lines = [
+        "🧭 Code Awareness",
+        "",
+        f"Fichiers : {scan.get('files')}",
+        f"Modules Python : {scan.get('modules')}",
+        "",
+        "Arborescence :",
+        *_tree_lines(scan.get("tree", {})),
+    ]
+    await update.message.reply_text(_telegram_limit("\n".join(lines)))
+
+
+async def cmd_code_search(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    query = " ".join(context.args).strip()
+    if not query:
+        return await update.message.reply_text("Usage : /code_search <terme>")
+
+    result = search_code(query, max_results=12)
+    lines = [f"🔎 Recherche : {query}", f"Résultats : {result.get('count', 0)}", ""]
+
+    for item in result.get("results", []):
+        lines.append(f"{item['file']}:{item['line']}")
+        lines.append(f"  {item['excerpt']}")
+
+    await update.message.reply_text(_telegram_limit("\n".join(lines)))
+
+
+async def cmd_code_read(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /code_read <fichier>")
+
+    try:
+        result = read_file(context.args[0], max_lines=80)
+    except (CodeAwarenessSecurityError, FileNotFoundError, IsADirectoryError) as exc:
+        return await update.message.reply_text(f"❌ Lecture refusée : {exc}")
+
+    header = (
+        f"📄 {result['path']}\n"
+        f"Lignes : {result['start_line']}-{result['end_line']} / {result['lines']}\n"
+        f"Tronqué : {result['truncated']}\n\n"
+    )
+    await update.message.reply_text(_telegram_limit(header + result["content"]))
+
+
+async def cmd_code_analyze(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /code_analyze <fichier.py>")
+
+    try:
+        result = analyze_file(context.args[0])
+    except (CodeAwarenessSecurityError, FileNotFoundError, IsADirectoryError) as exc:
+        return await update.message.reply_text(f"❌ Analyse refusée : {exc}")
+
+    classes = ", ".join(item["name"] for item in result.get("classes", [])[:8]) or "aucune"
+    functions = ", ".join(item["name"] for item in result.get("functions", [])[:12]) or "aucune"
+    deps = ", ".join(result.get("dependencies", [])[:10]) or "aucune"
+    routes = [
+        f"{route.get('decorators', ['route'])[0]} {route.get('path')} -> {route.get('function')}"
+        for route in result.get("routes", [])[:8]
+    ]
+
+    lines = [
+        f"🧩 Analyse : {result.get('path')}",
+        "",
+        f"Responsabilité : {result.get('responsibility')}",
+        f"Classes : {classes}",
+        f"Fonctions : {functions}",
+        f"Dépendances : {deps}",
+    ]
+    if routes:
+        lines.extend(["Routes :", *routes])
+
+    await update.message.reply_text(_telegram_limit("\n".join(lines)))
+
+
+async def cmd_architecture(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    architecture = map_architecture()
+    summary = architecture.get("summary", {})
+    lines = [
+        "🏛 Architecture Néron",
+        "",
+        f"Fichiers : {summary.get('files')}",
+        f"Modules : {summary.get('modules')}",
+        "",
+        "Domaines :",
+    ]
+
+    for group in architecture.get("groups", []):
+        lines.append(f"- {group['name']} : {group['files']} fichiers")
+
+    lines.append("")
+    lines.append("Flux clés :")
+    for flow in architecture.get("key_flows", []):
+        lines.append(" -> ".join(flow))
+
+    await update.message.reply_text(_telegram_limit("\n".join(lines)))
 
 
 async def cmd_fix(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -722,6 +872,11 @@ async def start_bot() -> None:
     _telegram_app.add_handler(CommandHandler("ha_reload", cmd_ha_reload))
     _telegram_app.add_handler(CommandHandler("call", cmd_call))
     _telegram_app.add_handler(CommandHandler("workspace", cmd_workspace))
+    _telegram_app.add_handler(CommandHandler("code_map", cmd_code_map))
+    _telegram_app.add_handler(CommandHandler("code_search", cmd_code_search))
+    _telegram_app.add_handler(CommandHandler("code_read", cmd_code_read))
+    _telegram_app.add_handler(CommandHandler("code_analyze", cmd_code_analyze))
+    _telegram_app.add_handler(CommandHandler("architecture", cmd_architecture))
     _telegram_app.add_handler(CommandHandler("fix", cmd_fix))
     _telegram_app.add_handler(CommandHandler("review", cmd_review))
     _telegram_app.add_handler(CommandHandler("run", cmd_run))
