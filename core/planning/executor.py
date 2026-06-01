@@ -14,7 +14,7 @@ class PlanExecutor:
 
     def execute(self, plan: dict[str, Any]) -> dict[str, Any]:
         if not plan.get("approved"):
-            plan["status"] = "blocked"
+            plan["status"] = "approval_required"
             plan["error"] = "Plan non approuvé."
             return plan
 
@@ -26,7 +26,7 @@ class PlanExecutor:
 
             try:
                 step["result"] = self._execute_step(step, plan)
-                step["status"] = "done"
+                step["status"] = "completed"
                 step["error"] = None
             except Exception as exc:
                 step["status"] = "failed"
@@ -34,7 +34,7 @@ class PlanExecutor:
                 plan["status"] = "failed"
                 return plan
 
-        plan["status"] = "done"
+        plan["status"] = "plan_finished"
         return plan
 
     def _execute_step(self, step: dict[str, Any], plan: dict[str, Any]) -> dict[str, Any]:

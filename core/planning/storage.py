@@ -54,7 +54,17 @@ class PlanStorage:
         plans = []
         for line in self.path.read_text(encoding="utf-8").splitlines():
             try:
-                plans.append(json.loads(line))
+                plan = json.loads(line)
             except json.JSONDecodeError:
                 continue
+
+            if plan.get("status") == "done":
+                plan["status"] = "plan_finished"
+
+            for step in plan.get("steps", []):
+                if step.get("status") == "done":
+                    step["status"] = "completed"
+
+            plans.append(plan)
+
         return plans

@@ -16,6 +16,7 @@ from core.task_system.task_manager import get_task_manager
 from core.task_system.task_executor import get_task_executor
 from core.agents.communication.telegram_agent import send_notification
 from core.cognitive.critic_engine import get_critic_engine
+from core.goals.goal_orchestrator import get_goal_orchestrator
 
 router = APIRouter(tags=["planner"])
 
@@ -61,7 +62,7 @@ def _sync_plan_task_status(plan_id: str) -> None:
     if not related_tasks:
         return
 
-    if all(task.get("status") == "completed" for task in related_tasks):
+    if all(task.get("status") in {"completed", "skipped"} for task in related_tasks):
         plan["status"] = "tasks_completed"
         plan["tasks_completed"] = True
         plan["completed_task_ids"] = [
@@ -109,9 +110,12 @@ async def planner_status() -> dict:
             "GET /planner/last",
             "POST /planner/approve/{plan_id}",
             "POST /planner/execute/{plan_id}",
+            "POST /planner/execute-approved/{plan_id}",
             "GET /planner/risk/{plan_id}",
             "POST /planner/from-goal",
             "POST /planner/generate-tasks/{plan_id}",
+            "POST /planner/sync-tasks",
+            "GET /planner/ready",
         ],
     }
 
@@ -172,9 +176,21 @@ async def execute_plan(plan_id: str) -> dict:
     result["risk"] = risk
 
     if result.get("status") == "done":
+        result["status"] = "plan_finished"
         result["error"] = None
 
     storage.update(result)
+    return result
+
+
+@router.post("/planner/execute-approved/{plan_id}")
+async def execute_approved_plan(plan_id: str) -> dict:
+    orchestrator = get_goal_orchestrator()
+    result = await orchestrator.execute_approved_plan(plan_id, approved_by="api")
+
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Plan introuvable.")
+
     return result
 
 
@@ -432,25 +448,13 @@ async def sync_all_plan_tasks() -> dict:
 
 @router.get("/planner/ready")
 async def planner_ready() -> dict:
-    ready = []
-
-    for plan in storage.history(limit=200):
-        if plan.get("status") != "tasks_completed":
-            continue
-
-        if plan.get("approved") is True:
-            continue
-
-        risk = plan.get("risk")
-
-        if not risk:
-            critic = get_critic_engine()
-            risk = critic.evaluate_plan(plan)
-            plan["risk"] = risk
-            storage.update(plan)
-
-        if risk.get("execution_allowed") is True:
-            ready.append(plan)
+    ready = [
+        plan
+        for plan in storage.history(limit=200)
+        if plan.get("status") == "approval_required"
+        and plan.get("approval_required") is True
+        and plan.get("approved") is not True
+    ]
 
     return {
         "count": len(ready),

@@ -107,14 +107,52 @@ class CriticEngine:
             risks.append("Le plan ne contient aucune étape.")
             recommendations.append("Refuser l'exécution tant que le plan est vide.")
 
+        sensitive_detected = False
+        sensitive_actions = {
+            "apply_patch",
+            "write_file",
+            "delete_file",
+            "modify_core",
+            "modify_system_config",
+            "modify_systemd",
+            "read_secret",
+            "write_secret",
+            "modify_secret",
+            "modify_security",
+            "apply_destructive_change",
+        }
+        sensitive_keywords = {
+            "suppression",
+            "supprimer",
+            "delete",
+            "destructive",
+            "destructif",
+            "systemd",
+            "secret",
+            "token",
+            "ssh",
+            "sécurité",
+            "security",
+        }
+
         for step in steps:
             action = step.get("action")
             agent = step.get("agent")
+            text = " ".join(
+                str(step.get(field) or "")
+                for field in ("title", "description", "action", "agent")
+            ).lower()
 
-            if action in {"apply_patch", "write_file", "delete_file", "modify_core"}:
+            if action in sensitive_actions:
+                sensitive_detected = True
                 risk_score += 50
                 risks.append(f"Action sensible détectée : {action}.")
-                recommendations.append("Exiger une validation humaine explicite.")
+                recommendations.append("Bloquer l'exécution automatique.")
+
+            for keyword in sensitive_keywords:
+                if keyword in text:
+                    sensitive_detected = True
+                    risks.append(f"Mot-clé sensible détecté : {keyword}.")
 
             if agent in {"code_agent", "agent_creator"}:
                 risk_score += 15
@@ -124,15 +162,18 @@ class CriticEngine:
             if action in {"run_tests", "prepare_tests"}:
                 risk_score += 5
 
+        if sensitive_detected:
+            risk_score = max(risk_score, 90)
+
         if plan.get("approved") is not True:
             risk_score += 20
             risks.append("Le plan n'est pas approuvé.")
             recommendations.append("Demander une approbation avant exécution.")
 
-        if risk_score >= 70:
-            level = "high"
+        if sensitive_detected or risk_score > 80:
+            level = "critical"
             execution_allowed = False
-        elif risk_score >= 35:
+        elif risk_score > 30:
             level = "medium"
             execution_allowed = True
         else:
@@ -143,6 +184,7 @@ class CriticEngine:
             "risk_score": min(risk_score, 100),
             "risk_level": level,
             "execution_allowed": execution_allowed,
+            "sensitive_action_detected": sensitive_detected,
             "risks": risks,
             "recommendations": recommendations,
         }

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from core.goals.goal_manager import get_goal_manager
+from core.goals.goal_orchestrator import get_goal_orchestrator
 
 
 router = APIRouter(tags=["goals"])
@@ -21,6 +22,18 @@ class GoalCreateRequest(BaseModel):
 
 class GoalProgressRequest(BaseModel):
     progress: float
+
+
+class GoalRunRequest(BaseModel):
+    objective: str
+    source: str = "api"
+
+
+@router.post("/goals/run")
+async def run_goal(payload: GoalRunRequest) -> dict[str, Any]:
+    orchestrator = get_goal_orchestrator()
+    result = await orchestrator.run_goal(payload.objective, source=payload.source)
+    return result
 
 
 @router.get("/goals")

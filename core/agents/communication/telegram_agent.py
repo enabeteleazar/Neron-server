@@ -18,6 +18,7 @@ from core.task_system.task_manager import get_task_manager
 from core.planning.executor import PlanExecutor
 from core.task_system.task_manager import get_task_manager
 from core.cognitive.critic_engine import get_critic_engine
+from core.goals.goal_orchestrator import get_goal_orchestrator
 import unicodedata
 from pathlib import Path
 
@@ -329,109 +330,49 @@ async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not title:
         return await update.message.reply_text("Usage : /goal <objectif>")
 
-    goals_state_path = Path("/etc/neron/data/goals_state.json")
-    goals_json_path = Path("/etc/neron/data/goals.json")
+    orchestrator = get_goal_orchestrator()
+    result = await orchestrator.run_goal(title, source="telegram")
 
-    goals_state_path.parent.mkdir(parents=True, exist_ok=True)
+    plan = result.get("plan", {})
+    risk = plan.get("risk", {})
+    short_id = str(plan.get("id") or "")[:8]
+    status = result.get("status")
 
-    try:
-        data = json.loads(goals_state_path.read_text(encoding="utf-8")) if goals_state_path.exists() else {}
-    except Exception:
-        data = {}
+    if status == "plan_finished":
+        await update.message.reply_text(
+            "✅ Objectif reçu\n"
+            "🧠 Plan généré\n"
+            "⚙ Exécution automatique autorisée\n"
+            "🏁 Objectif terminé\n\n"
+            f"ID plan : {short_id}\n"
+            f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)"
+        )
+        return
 
-    goals = data.get("goals", [])
-    if not isinstance(goals, list):
-        goals = []
+    if status == "approval_required":
+        await update.message.reply_text(
+            "✅ Objectif reçu\n"
+            "🧠 Plan généré\n"
+            "⚠ Validation requise\n\n"
+            f"ID plan : {short_id}\n"
+            f"Risque : {risk.get('risk_level', 'unknown')} ({risk.get('risk_score', '?')}/100)\n\n"
+            f"/approve {short_id}\n"
+            f"/refuse {short_id}"
+        )
+        return
 
-    now = datetime.now(timezone.utc).timestamp()
-    goal_id = "goal_" + uuid.uuid4().hex[:12]
-
-    for goal in goals:
-        if goal.get("status") == "active":
-            goal["status"] = "pending"
-            goal["updated_at"] = now
-
-    goal = {
-        "id": goal_id,
-        "title": title,
-        "description": "",
-        "priority": "high",
-        "status": "active",
-        "source": "telegram",
-        "progress": 0.0,
-        "dependencies": [],
-        "metadata": {},
-        "created_at": now,
-        "updated_at": now,
-    }
-
-    goals.append(goal)
-
-    goals_state_path.write_text(
-        json.dumps(
-            {
-                "active_goal_id": goal_id,
-                "goals": goals,
-                "last_update": now,
-            },
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    try:
-        old_goals = json.loads(goals_json_path.read_text(encoding="utf-8")) if goals_json_path.exists() else {}
-    except Exception:
-        old_goals = {}
-
-    history = old_goals.get("goals_history", [])
-    if not isinstance(history, list):
-        history = []
-
-    history.append(title)
-
-    goals_json_path.write_text(
-        json.dumps(
-            {
-                "active_goal": title,
-                "goals_history": history[-50:],
-                "long_term_goals": old_goals.get("long_term_goals", []),
-            },
-            indent=2,
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-
-    planner = AutonomousPlanner()
-    storage = PlanStorage()
-    task_manager = get_task_manager()
-
-    plan = planner.create_plan(title)
-    plan_data = plan.to_dict()
-    plan_data["approved"] = False
-    plan_data["approval_required"] = True
-    plan_data["source"] = "telegram_goal"
-
-    created_tasks = task_manager.create_tasks_from_plan(plan_data)
-
-    plan_data["tasks_generated"] = True
-    plan_data["generated_task_ids"] = [
-        task.get("id")
-        for task in created_tasks
-    ]
-
-    storage.save(plan_data)
+    if status == "blocked":
+        await update.message.reply_text(
+            "✅ Objectif reçu\n"
+            "🧠 Plan généré\n"
+            "🚫 Exécution bloquée par le CriticEngine\n\n"
+            f"ID plan : {short_id}\n"
+            f"Risque : {risk.get('risk_level', 'critical')} ({risk.get('risk_score', '?')}/100)"
+        )
+        return
 
     await update.message.reply_text(
-        f"✅ Objectif créé et activé\n\n"
-        f"ID objectif : {goal_id}\n"
-        f"Objectif : {title}\n\n"
-        f"🧠 Plan généré\n"
-        f"ID plan : {str(plan_data.get('id'))[:8]}\n"
-        f"Tâches créées : {len(created_tasks)}\n\n"
-        f"Consulte : /plans et /tasks"
+        f"✅ Objectif reçu\n🧠 Plan généré\nStatut : {status}\nID plan : {short_id}"
     )
 
 
@@ -464,25 +405,13 @@ async def cmd_ready(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return await unauthorized(update)
 
     storage = PlanStorage()
-    critic = get_critic_engine()
-
-    ready = []
-
-    for plan in storage.history(limit=200):
-        if plan.get("status") != "tasks_completed":
-            continue
-
-        if plan.get("approved") is True:
-            continue
-
-        risk = plan.get("risk")
-        if not risk:
-            risk = critic.evaluate_plan(plan)
-            plan["risk"] = risk
-            storage.update(plan)
-
-        if risk.get("execution_allowed") is True:
-            ready.append(plan)
+    ready = [
+        plan
+        for plan in storage.history(limit=200)
+        if plan.get("status") == "approval_required"
+        and plan.get("approval_required") is True
+        and plan.get("approved") is not True
+    ]
 
     if not ready:
         return await update.message.reply_text("✅ Aucun plan en attente d'approbation.")
@@ -496,7 +425,7 @@ async def cmd_ready(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         lines.extend([
             f"ID : {short_id}",
             f"Objectif : {plan.get('goal')}",
-            f"Risque : {risk.get('risk_level')} ({risk.get('risk_score')}/100)",
+            f"Risque : {risk.get('risk_level', 'unknown')} ({risk.get('risk_score', '?')}/100)",
             f"Approuver : /approve {short_id}",
             f"Refuser : /refuse {short_id}",
             "",
@@ -513,40 +442,35 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return await update.message.reply_text("Usage : /approve <plan_id>")
 
     wanted = context.args[0].strip()
-    storage = PlanStorage()
-
-    plan = None
-    for candidate in storage.history(limit=500):
-        plan_id = str(candidate.get("id"))
-        if plan_id == wanted or plan_id.startswith(wanted):
-            plan = candidate
-            break
+    orchestrator = get_goal_orchestrator()
+    plan = orchestrator.find_plan(wanted)
 
     if not plan:
         return await update.message.reply_text("❌ Plan introuvable.")
 
-    critic = get_critic_engine()
-    risk = critic.evaluate_plan(plan)
-    plan["risk"] = risk
+    await update.message.reply_text(
+        f"✅ Plan approuvé : {str(plan.get('id'))[:8]}\n"
+        f"⚙ Exécution contrôlée démarrée\nObjectif : {plan.get('goal')}"
+    )
 
-    if risk.get("execution_allowed") is not True:
-        plan["status"] = "blocked_by_risk"
-        plan["error"] = "Approbation refusée : risque non autorisé."
-        storage.update(plan)
+    result = await orchestrator.execute_approved_plan(wanted, approved_by="telegram")
+    updated = result.get("plan", plan)
+    status = result.get("status")
+
+    if status == "plan_finished":
         return await update.message.reply_text(
-            f"⛔ Plan bloqué par le risque : {risk.get('risk_level')} ({risk.get('risk_score')}/100)"
+            f"🏁 Objectif terminé\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
         )
 
-    plan["approved"] = True
-    plan["approval_required"] = False
-    plan["approved_at"] = datetime.now(timezone.utc).isoformat()
-    plan["approved_by"] = "telegram"
-    plan["status"] = "approved"
-    plan["error"] = None
-    storage.update(plan)
+    if status == "blocked":
+        risk = updated.get("risk", {})
+        return await update.message.reply_text(
+            f"🚫 Exécution interdite\n\nObjectif : {updated.get('goal')}\n"
+            f"Risque : {risk.get('risk_level', 'critical')} ({risk.get('risk_score', '?')}/100)"
+        )
 
-    await update.message.reply_text(
-        f"✅ Plan approuvé : {str(plan.get('id'))[:8]}\nObjectif : {plan.get('goal')}"
+    return await update.message.reply_text(
+        f"❌ Exécution non terminée\nStatut : {status}\nErreur : {result.get('error') or updated.get('error')}"
     )
 
 
@@ -610,7 +534,7 @@ async def cmd_plans(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     plans = [
         plan
         for plan in storage.history(limit=50)
-        if plan.get("status") not in {"superseded", "plan_finished", "archived", "failed"}
+        if plan.get("status") not in {"superseded", "plan_finished", "archived", "failed", "done"}
     ]
 
     await update.message.reply_text(
@@ -661,14 +585,8 @@ async def cmd_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return await update.message.reply_text("Usage : /execute <plan_id>")
 
     wanted = context.args[0].strip()
-    storage = PlanStorage()
-
-    plan = None
-    for candidate in storage.history(limit=500):
-        plan_id = str(candidate.get("id"))
-        if plan_id == wanted or plan_id.startswith(wanted):
-            plan = candidate
-            break
+    orchestrator = get_goal_orchestrator()
+    plan = orchestrator.find_plan(wanted)
 
     if not plan:
         return await update.message.reply_text("❌ Plan introuvable.")
@@ -678,21 +596,19 @@ async def cmd_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             f"⛔ Plan non approuvé. Utilise d'abord : /approve {str(plan.get('id'))[:8]}"
         )
 
-    executor = PlanExecutor()
-    result = executor.execute(plan)
-    storage.update(result)
-
+    result = await orchestrator.execute_plan(plan, approved_by="telegram")
+    updated = result.get("plan", plan)
     status = result.get("status")
-    goal = result.get("goal")
-    plan_id = str(result.get("id"))[:8]
 
-    if status == "done":
+    if status == "plan_finished":
         await update.message.reply_text(
-            f"✅ Plan exécuté\n\nID : {plan_id}\nObjectif : {goal}"
+            f"✅ Plan exécuté\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
         )
     else:
         await update.message.reply_text(
-            f"⚠ Exécution terminée avec statut : {status}\n\nID : {plan_id}\nObjectif : {goal}\nErreur : {result.get('error')}"
+            f"⚠ Exécution terminée avec statut : {status}\n\n"
+            f"ID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}\n"
+            f"Erreur : {result.get('error') or updated.get('error')}"
         )
 
 
@@ -704,7 +620,7 @@ async def cmd_plan_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     plans = [
         plan
         for plan in storage.history(limit=50)
-        if plan.get("status") in {"plan_finished", "superseded", "archived", "failed"}
+        if plan.get("status") in {"plan_finished", "superseded", "archived", "failed", "refused", "blocked_by_risk", "done"}
     ]
 
     await update.message.reply_text(
