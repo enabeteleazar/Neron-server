@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -84,9 +85,15 @@ class PlanExecutor:
         if "météo" in goal_lower or "meteo" in goal_lower:
             safe_name = "weather_agent"
             class_name = "WeatherAgent"
+        elif "wwdc" in goal_lower or "apple" in goal_lower:
+            safe_name = "wwdc_agent"
+            class_name = "WwdcAgent"
+        elif "test" in goal_lower:
+            safe_name = "test_agent"
+            class_name = "TestAgent"
         else:
-            safe_name = "generated_agent"
-            class_name = "GeneratedAgent"
+            safe_name = self._safe_agent_name(goal)
+            class_name = "".join(part.capitalize() for part in safe_name.split("_"))
 
         agent_file = self.draft_dir / (safe_name + ".py")
 
@@ -117,7 +124,40 @@ class PlanExecutor:
             "draft_created": True,
             "path": str(agent_file),
             "applied_to_core": False,
+            "state": "draft_only",
         }
+
+    def _safe_agent_name(self, goal: str) -> str:
+        normalized = goal.lower()
+        normalized = normalized.replace("é", "e").replace("è", "e").replace("ê", "e")
+        normalized = normalized.replace("à", "a").replace("ç", "c")
+        words = re.findall(r"[a-z0-9]+", normalized)
+        ignored = {
+            "creer",
+            "create",
+            "un",
+            "une",
+            "agent",
+            "de",
+            "du",
+            "des",
+            "pour",
+            "qui",
+            "me",
+            "la",
+            "le",
+            "les",
+            "automatique",
+            "nouvel",
+            "nouveau",
+        }
+        useful = [word for word in words if word not in ignored][:3]
+        base = "_".join(useful) or "generated"
+
+        if not base.endswith("_agent"):
+            base = f"{base}_agent"
+
+        return base
 
     def _run_tests(self) -> dict[str, Any]:
         result = subprocess.run(

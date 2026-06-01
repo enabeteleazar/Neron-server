@@ -47,37 +47,19 @@ def _notify_plan_ready(plan: dict) -> None:
         pass
 
 def _sync_plan_task_status(plan_id: str) -> None:
-    task_manager = get_task_manager()
-    plan = storage.get(plan_id)
+    orchestrator = get_goal_orchestrator()
+    plan = orchestrator.sync_plan_task_status(plan_id)
 
-    if not plan:
+    if not plan or plan.get("status") != "tasks_completed":
         return
 
-    related_tasks = [
-        task
-        for task in task_manager.list_tasks()
-        if task.get("plan_id") == plan_id
-    ]
-
-    if not related_tasks:
-        return
-
-    if all(task.get("status") in {"completed", "skipped"} for task in related_tasks):
-        plan["status"] = "tasks_completed"
-        plan["tasks_completed"] = True
-        plan["completed_task_ids"] = [
-            task.get("id")
-            for task in related_tasks
-        ]
-
-        if not plan.get("telegram_ready_notified"):
-            critic = get_critic_engine()
-            risk = plan.get("risk") or critic.evaluate_plan(plan)
-            plan["risk"] = risk
-            plan["telegram_ready_notified"] = True
-            plan["telegram_ready_notified_at"] = datetime.now(timezone.utc).isoformat()
-            _notify_plan_ready(plan)
-
+    if not plan.get("telegram_ready_notified"):
+        critic = get_critic_engine()
+        risk = plan.get("risk") or critic.evaluate_plan(plan)
+        plan["risk"] = risk
+        plan["telegram_ready_notified"] = True
+        plan["telegram_ready_notified_at"] = datetime.now(timezone.utc).isoformat()
+        _notify_plan_ready(plan)
         storage.update(plan)
 
 
@@ -336,17 +318,20 @@ async def execute_next_task() -> dict:
                     "error": None,
                 },
             )
-        else:
+        elif result.get("status") == "skipped":
             updated = task_manager.update_task(
                 task["id"],
                 {
                     "status": "skipped",
+                    "progress": 100,
                     "result": result,
                 },
             )
-
-        if updated and updated.get("plan_id"):
-            _sync_plan_task_status(str(updated.get("plan_id")))
+        else:
+            updated = task_manager.fail_task(
+                task["id"],
+                result.get("error") or result.get("summary") or "Action échouée.",
+            )
 
         if updated and updated.get("plan_id"):
             _sync_plan_task_status(str(updated.get("plan_id")))
@@ -398,14 +383,23 @@ async def execute_task(task_id: str) -> dict:
                     "error": None,
                 },
             )
-        else:
+        elif result.get("status") == "skipped":
             updated = task_manager.update_task(
                 task_id,
                 {
                     "status": "skipped",
+                    "progress": 100,
                     "result": result,
                 },
             )
+        else:
+            updated = task_manager.fail_task(
+                task_id,
+                result.get("error") or result.get("summary") or "Action échouée.",
+            )
+
+        if updated and updated.get("plan_id"):
+            _sync_plan_task_status(str(updated.get("plan_id")))
 
         return {
             "status": "success",

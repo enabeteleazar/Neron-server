@@ -343,9 +343,19 @@ async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             "✅ Objectif reçu\n"
             "🧠 Plan généré\n"
             "⚙ Exécution automatique autorisée\n"
-            "🏁 Objectif terminé\n\n"
+            "📄 Rapport final envoyé\n\n"
             f"ID plan : {short_id}\n"
             f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)"
+        )
+        return
+
+    if status in {"partial", "failed"}:
+        await update.message.reply_text(
+            "✅ Objectif reçu\n"
+            "🧠 Plan généré\n"
+            "📄 Rapport d'exécution envoyé\n\n"
+            f"ID plan : {short_id}\n"
+            f"Statut : {status}"
         )
         return
 
@@ -450,7 +460,14 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if status == "plan_finished":
         return await update.message.reply_text(
-            f"🏁 Objectif terminé\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
+            f"📄 Rapport final envoyé\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
+        )
+
+    if status in {"partial", "failed"}:
+        return await update.message.reply_text(
+            f"📄 Rapport d'exécution envoyé\n\n"
+            f"ID : {str(updated.get('id'))[:8]}\n"
+            f"Statut : {status}"
         )
 
     if status == "blocked":
@@ -593,7 +610,13 @@ async def cmd_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     if status == "plan_finished":
         await update.message.reply_text(
-            f"✅ Plan exécuté\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
+            f"✅ Plan exécuté\n📄 Rapport final envoyé\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
+        )
+    elif status in {"partial", "failed"}:
+        await update.message.reply_text(
+            f"📄 Rapport d'exécution envoyé\n\n"
+            f"ID : {str(updated.get('id'))[:8]}\n"
+            f"Statut : {status}"
         )
     else:
         await update.message.reply_text(
