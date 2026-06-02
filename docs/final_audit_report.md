@@ -23,8 +23,8 @@ Neron OS est fonctionnel et les validations Python passent apres corrections. Le
 - `venv/bin/python -m pytest tests/test_status_module.py -v`
 - Import direct verifie: `venv/bin/python -c "import core.app; print('ok')"`
 - Import direct verifie: `venv/bin/python -c "import core.status; print('ok')"`
-
-La suite complete doit etre relancee apres ce rapport avant push final.
+- `venv/bin/python -m pytest -q` -> 261 tests passes, 3 warnings de depreciation.
+- `git diff --check`
 
 ## Modules stables
 
@@ -66,4 +66,3 @@ La suite complete doit etre relancee apres ce rapport avant push final.
 3. Documenter ou fusionner les deux WorldModel.
 4. Ajouter lint en CI en mode warning, puis rendre bloquant fichier par fichier.
 5. Avant Phase 2, finaliser un contrat de plan unique entre Planner, Agent Creator, Codex runner et Agent Runtime.
-
