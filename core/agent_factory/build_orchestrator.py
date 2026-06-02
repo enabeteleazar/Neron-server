@@ -74,13 +74,33 @@ class AgentBuildOrchestrator:
         source_channel: str = "api",
     ) -> dict[str, Any]:
         spec = self.plan_spec(query)
+        metadata = self._project_metadata(spec, query)
+        existing = self.project_manager.find_existing_agent_project(
+            agent_name=spec.name,
+            intent_key=metadata["intent_key"],
+            spec_signature=metadata["spec_signature"],
+        )
+        if existing:
+            return self._reuse_existing_project(existing, spec)
+
+        registered_path = self._registered_agent_path(spec)
+        if registered_path:
+            return await self._reuse_registered_agent(
+                spec,
+                registered_path,
+                query=query,
+                requested_by=requested_by,
+                source_channel=source_channel,
+                metadata=metadata,
+            )
+
         project = self.project_manager.create_project(
             title=spec.title,
             project_type=spec.kind,
             requested_by=requested_by,
             source_channel=source_channel,
             query=query,
-            metadata={"spec": spec.to_dict()},
+            metadata=metadata,
         )
         project_id = str(project["project_id"])
 
@@ -166,6 +186,7 @@ class AgentBuildOrchestrator:
                 "status": "completed",
                 "project": completed,
                 "spec": spec.to_dict(),
+                "reused_existing_project": False,
                 "response": self.format_project_response(completed),
             }
         except Exception as exc:
@@ -174,6 +195,7 @@ class AgentBuildOrchestrator:
                 "status": "failed",
                 "project": failed["project"],
                 "spec": spec.to_dict(),
+                "reused_existing_project": False,
                 "response": self.format_project_response(failed["project"]),
             }
 
@@ -226,12 +248,19 @@ class AgentBuildOrchestrator:
         registered = project.get("registry_status") == "registered" and bool(
             project.get("registered_agent")
         )
+        metadata = project.get("metadata") or {}
+        reused_registered = bool(metadata.get("reused_registered_agent"))
 
-        if project.get("status") == "completed" and available and tests_ok and registered:
+        if project.get("status") == "completed" and available and registered and (tests_ok or reused_registered):
+            tests_line = (
+                "Tests : non relancés (agent déjà enregistré)."
+                if reused_registered and not tests_ok
+                else "Tests : OK."
+            )
             return (
                 f"Projet terminé : {project.get('project_id')}.\n"
                 f"Agent créé : {result.get('agent')}.\n"
-                "Tests : OK.\n"
+                f"{tests_line}\n"
                 "Agent enregistré : oui.\n"
                 "Appel de vérification : OK."
             )
@@ -321,6 +350,95 @@ class AgentBuildOrchestrator:
         shutil.copy2(agent_file, destination)
         return destination
 
+    def _registered_agent_path(self, spec: AgentSpec) -> Path | None:
+        path = self.generated_agents / f"{spec.name}.py"
+        return path if path.exists() else None
+
+    def _project_metadata(self, spec: AgentSpec, query: str) -> dict[str, Any]:
+        return {
+            "spec": spec.to_dict(),
+            "agent_name": spec.name,
+            "intent_key": self._intent_key(spec),
+            "normalized_query": self._normalize_for_key(query),
+            "spec_signature": self._spec_signature(spec),
+        }
+
+    def _reuse_existing_project(self, project: dict[str, Any], spec: AgentSpec) -> dict[str, Any]:
+        return {
+            "status": project.get("status") or "completed",
+            "project": project,
+            "spec": spec.to_dict(),
+            "reused_existing_project": True,
+            "response": self.format_project_response(project),
+        }
+
+    async def _reuse_registered_agent(
+        self,
+        spec: AgentSpec,
+        registered_path: Path,
+        *,
+        query: str,
+        requested_by: str,
+        source_channel: str,
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        project = self.project_manager.create_project(
+            title=spec.title,
+            project_type=spec.kind,
+            requested_by=requested_by,
+            source_channel=source_channel,
+            query=query,
+            metadata={**metadata, "reused_registered_agent": True},
+        )
+        project_id = str(project["project_id"])
+        self._step(project_id, "planning", "done", 10)
+
+        verification = await self._verify_agent(spec)
+        if not verification.get("ok"):
+            failed = self._fail(
+                project_id,
+                "verification",
+                verification.get("error", "verification_failed"),
+            )
+            return {
+                "status": "failed",
+                "project": failed["project"],
+                "spec": spec.to_dict(),
+                "reused_existing_project": False,
+                "reused_registered_agent": True,
+                "response": self.format_project_response(failed["project"]),
+            }
+
+        completed = self.project_manager.update_project(
+            project_id,
+            {
+                "status": "completed",
+                "current_step": "completed",
+                "progress": 100,
+                "created_files": [self._relative(registered_path)],
+                "registry_status": "registered",
+                "registered_agent": spec.name,
+                "result": {
+                    "agent": spec.name,
+                    "verification": verification,
+                    "available": True,
+                    "reused_registered_agent": True,
+                },
+                "error": None,
+            },
+            step="verification",
+            step_status="done",
+            progress=100,
+        )
+        return {
+            "status": "completed",
+            "project": completed,
+            "spec": spec.to_dict(),
+            "reused_existing_project": False,
+            "reused_registered_agent": True,
+            "response": self.format_project_response(completed),
+        }
+
     async def _verify_agent(self, spec: AgentSpec) -> dict[str, Any]:
         if not self.runtime_check:
             return {"ok": True, "skipped": True}
@@ -402,9 +520,36 @@ class AgentBuildOrchestrator:
             return str(path)
 
     def _normalize(self, value: str) -> str:
-        text = unicodedata.normalize("NFD", value.lower())
+        text = unicodedata.normalize("NFKD", value.lower())
         text = "".join(char for char in text if unicodedata.category(char) != "Mn")
         return " ".join(text.split())
+
+    def _normalize_for_key(self, value: str) -> str:
+        text = self._normalize(value)
+        cleaned = []
+        for char in text:
+            cleaned.append(char if char.isalnum() else " ")
+        return " ".join("".join(cleaned).split())
+
+    def _intent_key(self, spec: AgentSpec) -> str:
+        return self._normalize_for_key(
+            " ".join(
+                [
+                    spec.kind,
+                    spec.name,
+                    spec.title,
+                    spec.goal,
+                    " ".join(spec.inputs),
+                    " ".join(spec.outputs),
+                    " ".join(spec.capabilities),
+                ]
+            )
+        )
+
+    def _spec_signature(self, spec: AgentSpec) -> str:
+        return self._normalize_for_key(
+            json.dumps(spec.to_dict(), sort_keys=True, ensure_ascii=False)
+        )
 
     def _name_from_query(self, normalized: str) -> str:
         ignored = {"cree", "creer", "agent", "tool", "outil", "ajoute", "un", "une", "qui", "me", "pour"}

@@ -101,6 +101,116 @@ async def test_agent_build_creates_validated_registered_project(tmp_path: Path):
     assert (tmp_path / "core" / "agents" / "generated" / "event_countdown_agent.py").exists()
 
 
+@pytest.mark.asyncio
+async def test_agent_build_deduplicates_wwdc_apostrophe_variants(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+
+    first = await orchestrator.build_from_request(
+        "Crée un agent qui me donne le temps restant avant la prochaine WWDC d Apple"
+    )
+    second = await orchestrator.build_from_request(
+        "Crée un agent qui me donne le temps restant avant la prochaine WWDC d’Apple"
+    )
+
+    projects = manager.list_projects(limit=10)
+    assert len(projects) == 1
+    assert first["project"]["project_id"] == second["project"]["project_id"]
+    assert second["reused_existing_project"] is True
+
+
+@pytest.mark.asyncio
+async def test_repeated_agent_build_returns_reused_existing_project(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+
+    query = "Créer un agent qui me donne le temps restant avant la prochaine WWDC d’Apple"
+    first = await orchestrator.build_from_request(query)
+    second = await orchestrator.build_from_request(query)
+
+    assert first["reused_existing_project"] is False
+    assert second["reused_existing_project"] is True
+    assert second["project"]["project_id"] == first["project"]["project_id"]
+
+
+def test_completed_project_current_step_is_completed(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    project = manager.create_project(
+        title="Agent finalisé",
+        project_type="agent",
+        requested_by="test",
+        source_channel="api",
+        query="Créer un agent finalisé",
+    )
+
+    completed = manager.update_project(
+        project["project_id"],
+        {"status": "completed"},
+        step="verification",
+        step_status="done",
+        progress=100,
+    )
+
+    assert completed["status"] == "completed"
+    assert completed["current_step"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_registered_agent_is_reused_without_reconstruction(monkeypatch, tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    generated_agents = tmp_path / "core" / "agents" / "generated"
+    generated_agents.mkdir(parents=True)
+    registered_agent = generated_agents / "event_countdown_agent.py"
+    registered_agent.write_text(
+        "class Agent:\n"
+        "    name = 'event_countdown_agent'\n"
+        "    async def execute(self, text=''):\n"
+        "        return {'status': 'ok', 'response': 'available'}\n",
+        encoding="utf-8",
+    )
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=generated_agents,
+        runtime_check=False,
+    )
+
+    monkeypatch.setattr(orchestrator, "_write_agent", lambda *_args, **_kwargs: pytest.fail("agent rewritten"))
+    monkeypatch.setattr(orchestrator, "_write_agent_test", lambda *_args, **_kwargs: pytest.fail("test rewritten"))
+    monkeypatch.setattr(orchestrator, "_register_agent", lambda *_args, **_kwargs: pytest.fail("agent re-registered"))
+
+    result = await orchestrator.build_from_request(
+        "Créer un agent qui me donne le temps restant avant la prochaine WWDC d’Apple"
+    )
+
+    project = result["project"]
+    assert result["status"] == "completed"
+    assert result["reused_registered_agent"] is True
+    assert result["reused_existing_project"] is False
+    assert project["status"] == "completed"
+    assert project["current_step"] == "completed"
+    assert project["registry_status"] == "registered"
+    assert project["registered_agent"] == "event_countdown_agent"
+    assert project["metadata"]["reused_registered_agent"] is True
+    assert project["created_files"] == ["core/agents/generated/event_countdown_agent.py"]
+
+
 def test_failed_project_is_not_announced_as_completed(tmp_path: Path):
     manager = ProjectManager(tmp_path / "projects.json")
     orchestrator = AgentBuildOrchestrator(project_manager=manager, project_root=tmp_path, runtime_check=False)

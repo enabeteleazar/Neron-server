@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any
@@ -86,6 +87,8 @@ class ProjectManager:
                 project["progress"] = max(0, min(100, int(progress)))
             if error:
                 project["error"] = error
+            if project.get("status") == "completed":
+                project["current_step"] = "completed"
             project["updated_at"] = _now()
             self._save(projects)
             return project
@@ -127,6 +130,43 @@ class ProjectManager:
                 break
         return matches
 
+    def find_existing_agent_project(
+        self,
+        *,
+        agent_name: str,
+        intent_key: str,
+        spec_signature: str,
+        statuses: set[str] | None = None,
+    ) -> dict[str, Any] | None:
+        allowed_statuses = statuses or {"completed", "running"}
+        normalized_agent = self._normalize(agent_name)
+        normalized_intent = self._normalize(intent_key)
+        normalized_spec = self._normalize(spec_signature)
+
+        for project in reversed(self._load()):
+            if project.get("status") not in allowed_statuses:
+                continue
+
+            metadata = project.get("metadata") or {}
+            spec = metadata.get("spec") or {}
+            candidates = [
+                project.get("registered_agent"),
+                metadata.get("agent_name"),
+                spec.get("name") if isinstance(spec, dict) else None,
+            ]
+            if normalized_agent and any(self._normalize(str(item or "")) == normalized_agent for item in candidates):
+                return project
+
+            project_intent = self._normalize(str(metadata.get("intent_key") or ""))
+            if normalized_intent and project_intent == normalized_intent:
+                return project
+
+            project_signature = self._normalize(str(metadata.get("spec_signature") or ""))
+            if normalized_spec and project_signature == normalized_spec:
+                return project
+
+        return None
+
     def _load(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
@@ -154,9 +194,7 @@ class ProjectManager:
         return f"{project_type}_{base}_{uuid.uuid4().hex[:8]}"
 
     def _normalize(self, value: str) -> str:
-        import unicodedata
-
-        text = unicodedata.normalize("NFD", value.lower())
+        text = unicodedata.normalize("NFKD", value.lower())
         text = "".join(char for char in text if unicodedata.category(char) != "Mn")
         cleaned = []
         for char in text:
