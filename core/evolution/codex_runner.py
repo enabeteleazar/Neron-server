@@ -4,10 +4,18 @@ import asyncio
 import os
 import re
 import shlex
+import shutil
 import sys
 from pathlib import Path
 
 from core.evolution.models import CommandResult
+
+CODEX_MISSING_ERROR = "Codex CLI introuvable. Configure NERON_CODEX_BIN ou PATH systemd."
+KNOWN_CODEX_PATHS = (
+    Path("/home/neron/.local/bin/codex"),
+    Path("/usr/local/bin/codex"),
+    Path("/usr/bin/codex"),
+)
 
 
 SECRET_PATTERNS = [
@@ -33,6 +41,25 @@ def redact_secrets(text: str) -> str:
     return redacted
 
 
+def resolve_codex_bin() -> tuple[str | None, str | None]:
+    configured = os.getenv("NERON_CODEX_BIN", "").strip()
+    if configured:
+        configured_path = Path(configured)
+        if configured_path.is_file() and os.access(configured_path, os.X_OK):
+            return str(configured_path), None
+        return None, CODEX_MISSING_ERROR
+
+    path_match = shutil.which("codex")
+    if path_match:
+        return path_match, None
+
+    for known_path in KNOWN_CODEX_PATHS:
+        if known_path.is_file() and os.access(known_path, os.X_OK):
+            return str(known_path), None
+
+    return None, CODEX_MISSING_ERROR
+
+
 class CodexRunner:
     def __init__(
         self,
@@ -45,6 +72,14 @@ class CodexRunner:
         self.timeout_seconds = timeout_seconds or int(os.getenv("NERON_CODEX_TIMEOUT", "1800"))
         self.dry_run = bool(dry_run) if dry_run is not None else os.getenv("NERON_CODEX_DRY_RUN") == "1"
         self._process: asyncio.subprocess.Process | None = None
+
+    def codex_status(self) -> dict[str, str | bool | None]:
+        codex_bin, error = resolve_codex_bin()
+        return {
+            "codex_available": codex_bin is not None,
+            "codex_bin": codex_bin,
+            "codex_error": error,
+        }
 
     async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
         if self.dry_run:
@@ -61,6 +96,15 @@ class CodexRunner:
                 "codex exec --ask-for-approval never --sandbox workspace-write",
             )
         )
+        codex_bin, error = resolve_codex_bin()
+        if not codex_bin:
+            return CommandResult(
+                name="codex",
+                command=command,
+                returncode=1,
+                stderr=error or CODEX_MISSING_ERROR,
+            )
+        command[0] = codex_bin
         return await self.run_command("codex", command + [prompt], timeout=self.timeout_seconds)
 
     async def run_tests(self) -> list[CommandResult]:

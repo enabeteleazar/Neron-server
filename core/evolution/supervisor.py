@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from core.evolution.codex_runner import CodexRunner, redact_secrets
+from core.evolution.codex_runner import CODEX_MISSING_ERROR, CodexRunner, redact_secrets
 from core.evolution.models import EvolutionProposal
 from core.evolution.proposal_engine import ProposalEngine
 from core.evolution.storage import EvolutionStorage
@@ -147,6 +147,24 @@ class EvolutionSupervisor:
         if not prompt:
             return self._fail_run(run, "Proposition sans prompt Codex.")
 
+        codex_status = self._codex_status()
+        if not codex_status["codex_available"]:
+            failed = self._fail_run(
+                run,
+                CODEX_MISSING_ERROR,
+                codex={
+                    "ok": False,
+                    "name": "codex",
+                    "command": [],
+                    "returncode": 1,
+                    "stdout": "",
+                    "stderr": codex_status.get("codex_error") or CODEX_MISSING_ERROR,
+                    "timed_out": False,
+                },
+            )
+            await self._notify_telegram(_short_run_report(failed))
+            return failed
+
         self._update_project(project_id, status="running", step="codex_running", progress=25)
         run = self._update_run(run_id, current_step="codex_running", progress=25, status="running")
         codex_result = await self.codex_runner.run_codex(prompt, run_id)
@@ -213,7 +231,9 @@ class EvolutionSupervisor:
         return completed
 
     def status(self) -> dict[str, Any]:
-        return self.storage.status()
+        status = self.storage.status()
+        status.update(self._codex_status())
+        return status
 
     async def stop(self) -> dict[str, Any]:
         self.storage.set_stopped(True)
@@ -285,6 +305,12 @@ class EvolutionSupervisor:
     def _project_for_run(self, run: dict[str, Any]) -> dict[str, Any] | None:
         project_id = run.get("project_id")
         return self.project_manager.get_project(project_id) if project_id else None
+
+    def _codex_status(self) -> dict[str, Any]:
+        status_getter = getattr(self.codex_runner, "codex_status", None)
+        if callable(status_getter):
+            return dict(status_getter())
+        return {"codex_available": True, "codex_bin": None, "codex_error": None}
 
     async def _notify_telegram(self, message: str) -> None:
         try:

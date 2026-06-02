@@ -63,11 +63,29 @@ dans le dernier cycle (`1`, `2`, `3`).
 - Aucune proposition n'est exécutée sans acceptation.
 - Aucun second run ne démarre si un run est déjà `pending` ou `running`.
 - Codex réel n'est appelé que par `CodexRunner` au runtime.
+- `/evolution/status` expose `codex_available`, `codex_bin` et `codex_error`.
 - Les tests unitaires injectent un runner factice.
 - Les logs sont filtrés par `redact_secrets`.
 - Aucun commit n'est tenté si Codex ou les tests échouent.
 - Aucun push n'est tenté si le commit échoue.
 - Obsidian n'est pas utilisé comme stockage opérationnel.
+
+## Configuration systemd
+
+Le service systemd peut avoir un `PATH` plus restreint que le shell utilisateur.
+Il faut configurer explicitement le binaire Codex si nécessaire :
+
+```ini
+Environment="NERON_CODEX_BIN=/chemin/vers/codex"
+```
+
+Sans cette variable, `CodexRunner` cherche `codex` dans le `PATH`, puis dans
+`/home/neron/.local/bin/codex`, `/usr/local/bin/codex` et `/usr/bin/codex`.
+Si aucun binaire exécutable n'est trouvé, le run échoue avec :
+
+```text
+Codex CLI introuvable. Configure NERON_CODEX_BIN ou PATH systemd.
+```
 
 ## Stockage
 

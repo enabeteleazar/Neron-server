@@ -6,7 +6,13 @@ from pathlib import Path
 import pytest
 
 from core.agents.communication.telegram_agent import route_evolution_telegram_text
-from core.evolution.codex_runner import redact_secrets
+from core.evolution import codex_runner as codex_runner_module
+from core.evolution.codex_runner import (
+    CODEX_MISSING_ERROR,
+    CodexRunner,
+    redact_secrets,
+    resolve_codex_bin,
+)
 from core.evolution.models import CommandResult
 from core.evolution.proposal_engine import ProposalEngine
 from core.evolution.storage import EvolutionStorage
@@ -65,6 +71,12 @@ def make_supervisor(tmp_path: Path, runner: FakeCodexRunner | None = None) -> Ev
         project_manager=project_manager,
         workspace=workspace,
     )
+
+
+def make_executable(path: Path) -> Path:
+    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    path.chmod(0o755)
+    return path
 
 
 def test_generates_three_proposals_max(tmp_path: Path):
@@ -214,3 +226,94 @@ def test_logs_are_filtered_to_avoid_secrets():
     assert "supersecret" not in redacted
     assert "eyJ.test" not in redacted
     assert "key123" not in redacted
+
+
+def test_codex_bin_resolves_from_neron_codex_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    codex = make_executable(tmp_path / "codex-custom")
+    monkeypatch.setenv("NERON_CODEX_BIN", str(codex))
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(codex_runner_module, "KNOWN_CODEX_PATHS", ())
+
+    codex_bin, error = resolve_codex_bin()
+
+    assert codex_bin == str(codex)
+    assert error is None
+
+
+def test_codex_bin_resolves_from_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    codex = make_executable(bin_dir / "codex")
+    monkeypatch.delenv("NERON_CODEX_BIN", raising=False)
+    monkeypatch.setenv("PATH", str(bin_dir))
+    monkeypatch.setattr(codex_runner_module, "KNOWN_CODEX_PATHS", ())
+
+    codex_bin, error = resolve_codex_bin()
+
+    assert codex_bin == str(codex)
+    assert error is None
+
+
+def test_codex_bin_resolves_from_known_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    codex = make_executable(tmp_path / "known-codex")
+    monkeypatch.delenv("NERON_CODEX_BIN", raising=False)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(codex_runner_module, "KNOWN_CODEX_PATHS", (codex,))
+
+    codex_bin, error = resolve_codex_bin()
+
+    assert codex_bin == str(codex)
+    assert error is None
+
+
+def test_codex_bin_returns_clear_error_when_missing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("NERON_CODEX_BIN", raising=False)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(codex_runner_module, "KNOWN_CODEX_PATHS", ())
+
+    codex_bin, error = resolve_codex_bin()
+
+    assert codex_bin is None
+    assert error == CODEX_MISSING_ERROR
+
+
+def test_codex_runner_does_not_launch_subprocess_when_codex_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    calls = 0
+
+    async def fake_create_subprocess_exec(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("subprocess should not be launched")
+
+    monkeypatch.delenv("NERON_CODEX_BIN", raising=False)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(codex_runner_module, "KNOWN_CODEX_PATHS", ())
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_create_subprocess_exec)
+    runner = CodexRunner(workspace=tmp_path)
+
+    result = asyncio.run(runner.run_codex("do the work", "run-1"))
+
+    assert calls == 0
+    assert not result.ok
+    assert result.stderr == CODEX_MISSING_ERROR
+
+
+def test_evolution_status_exposes_codex_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    codex = make_executable(tmp_path / "codex")
+    monkeypatch.setenv("NERON_CODEX_BIN", str(codex))
+    supervisor = EvolutionSupervisor(
+        storage=EvolutionStorage(tmp_path / "evolution_state.json"),
+        proposal_engine=ProposalEngine(tmp_path),
+        codex_runner=CodexRunner(workspace=tmp_path),
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        workspace=tmp_path,
+    )
+
+    status = supervisor.status()
+
+    assert status["codex_available"] is True
+    assert status["codex_bin"] == str(codex)
+    assert status["codex_error"] is None
