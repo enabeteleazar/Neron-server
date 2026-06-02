@@ -67,6 +67,18 @@ class FakeCodexRunner:
         self.cancel_calls += 1
 
 
+class FailingCodexRunner(FakeCodexRunner):
+    async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
+        self.codex_calls += 1
+        self.codex_started.set()
+        return CommandResult(
+            "codex",
+            ["codex", "exec", prompt],
+            2,
+            stderr="error: unexpected argument '--ask-for-approval' found",
+        )
+
+
 def make_supervisor(
     tmp_path: Path,
     runner: FakeCodexRunner | None = None,
@@ -282,6 +294,27 @@ def test_failed_tests_prevent_commit_and_push(tmp_path: Path):
     assert runner.tests_calls == 1
     assert runner.commit_calls == 0
     assert "Tests en échec" in result["error"]
+
+
+def test_codex_failure_context_is_stored_on_project(tmp_path: Path):
+    runner = FailingCodexRunner()
+    supervisor = make_supervisor(tmp_path, runner)
+    supervisor.generate_proposals()
+
+    accepted = asyncio.run(supervisor.accept_proposal("1", execute=False))
+    result = asyncio.run(supervisor.run_accepted_proposal(accepted["run"]["run_id"]))
+    project = supervisor.project_manager.get_project(result["project_id"])
+    diagnostics = supervisor.project_manager.diagnose_recent_failures(limit=1)
+
+    assert result["status"] == "failed"
+    assert project is not None
+    context = project["metadata"]["failure_context"]
+    assert context["retry_requires_validation"] is True
+    assert context["codex"]["returncode"] == 2
+    assert "unexpected argument" in context["codex"]["stderr_tail"]
+    assert diagnostics["projects"][0]["category"] == "codex_cli_arguments"
+    assert runner.tests_calls == 0
+    assert runner.commit_calls == 0
 
 
 def test_after_completion_new_proposals_are_generated_but_not_executed(tmp_path: Path):

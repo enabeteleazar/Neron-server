@@ -17,8 +17,9 @@ def _now() -> float:
 
 
 class ProjectManager:
-    def __init__(self, path: Path = PROJECTS_PATH) -> None:
+    def __init__(self, path: Path = PROJECTS_PATH, evolution_state_path: Path | None = None) -> None:
         self.path = path
+        self.evolution_state_path = evolution_state_path or path.parent / "evolution_state.json"
 
     def create_project(
         self,
@@ -114,7 +115,14 @@ class ProjectManager:
         ]
         failed_projects.sort(key=lambda project: float(project.get("updated_at") or project.get("created_at") or 0))
         selected = list(reversed(failed_projects[-max(1, min(limit, 100)):]))
-        diagnostics = [self._diagnose_failed_project(project) for project in selected]
+        evolution_runs = self._load_evolution_runs_by_project()
+        diagnostics = [
+            self._diagnose_failed_project(
+                project,
+                evolution_runs.get(str(project.get("project_id") or "")),
+            )
+            for project in selected
+        ]
         categories = Counter(item["category"] for item in diagnostics)
 
         return {
@@ -247,12 +255,17 @@ class ProjectManager:
             cleaned.append(char if char.isalnum() else " ")
         return " ".join("".join(cleaned).split())
 
-    def _diagnose_failed_project(self, project: dict[str, Any]) -> dict[str, Any]:
-        category, cause, evidence = self._failure_category(project)
+    def _diagnose_failed_project(
+        self,
+        project: dict[str, Any],
+        related_run: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        category, cause, evidence = self._failure_category(project, related_run)
         last_failed_step = self._last_step_with_status(project, "failed")
         last_completed_step = self._last_completed_step(project)
         return {
             "project_id": project.get("project_id"),
+            "related_run_id": related_run.get("run_id") if related_run else None,
             "title": project.get("title"),
             "type": project.get("type"),
             "current_step": project.get("current_step"),
@@ -267,14 +280,18 @@ class ProjectManager:
             "retry_requires_validation": True,
         }
 
-    def _failure_category(self, project: dict[str, Any]) -> tuple[str, str, list[str]]:
-        text = self._failure_text(project)
+    def _failure_category(
+        self,
+        project: dict[str, Any],
+        related_run: dict[str, Any] | None = None,
+    ) -> tuple[str, str, list[str]]:
+        text = self._failure_text(project, related_run)
         current_step = str(project.get("current_step") or "")
         last_failed_step = self._last_step_with_status(project, "failed")
         failed_step_name = str((last_failed_step or {}).get("name") or current_step)
         last_completed_step = self._last_completed_step(project)
         last_completed_name = str((last_completed_step or {}).get("name") or "")
-        evidence = self._failure_evidence(project, last_failed_step, last_completed_step)
+        evidence = self._failure_evidence(project, last_failed_step, last_completed_step, related_run)
 
         if self._contains_any(text, ("codex cli introuvable", "no such file or directory codex")):
             return (
@@ -337,11 +354,20 @@ class ProjectManager:
             evidence,
         )
 
-    def _failure_text(self, project: dict[str, Any]) -> str:
+    def _failure_text(
+        self,
+        project: dict[str, Any],
+        related_run: dict[str, Any] | None = None,
+    ) -> str:
         parts = [
             str(project.get("current_step") or ""),
             str(project.get("error") or ""),
         ]
+        metadata = project.get("metadata") or {}
+        if isinstance(metadata, dict):
+            for key in ("failure_context", "codex", "commit", "tests"):
+                if metadata.get(key):
+                    parts.append(json.dumps(metadata.get(key), ensure_ascii=False))
         for step in project.get("steps") or []:
             if isinstance(step, dict):
                 parts.extend(
@@ -360,6 +386,11 @@ class ProjectManager:
                         str(result.get("stderr_tail") or result.get("stderr") or ""),
                     ]
                 )
+        if related_run:
+            parts.append(str(related_run.get("error") or ""))
+            for key in ("codex", "commit", "tests"):
+                if related_run.get(key):
+                    parts.append(self._diagnostic_payload_text(related_run.get(key)))
         return self._normalize(" ".join(parts))
 
     def _failure_evidence(
@@ -367,12 +398,28 @@ class ProjectManager:
         project: dict[str, Any],
         last_failed_step: dict[str, Any] | None,
         last_completed_step: dict[str, Any] | None,
+        related_run: dict[str, Any] | None = None,
     ) -> list[str]:
         evidence = [
             f"status={project.get('status')}",
             f"current_step={project.get('current_step')}",
             f"progress={project.get('progress')}",
         ]
+        if related_run:
+            evidence.append(f"related_run_id={related_run.get('run_id')}")
+            evidence.append(f"run_step={related_run.get('current_step')}")
+            if related_run.get("error"):
+                evidence.append(f"run_error={related_run.get('error')}")
+            codex = related_run.get("codex")
+            if isinstance(codex, dict):
+                evidence.append(f"codex_returncode={codex.get('returncode')}")
+                evidence.append(f"codex_timed_out={bool(codex.get('timed_out'))}")
+                stderr_tail = self._tail_text(str(codex.get("stderr") or ""))
+                stdout_tail = self._tail_text(str(codex.get("stdout") or ""))
+                if stderr_tail:
+                    evidence.append(f"codex_stderr_tail={stderr_tail}")
+                if stdout_tail:
+                    evidence.append(f"codex_stdout_tail={stdout_tail}")
         if last_completed_step:
             evidence.append(f"last_completed_step={last_completed_step.get('name')}")
         if last_failed_step:
@@ -384,6 +431,57 @@ class ProjectManager:
         if project.get("test_results"):
             evidence.append(f"test_results={len(project.get('test_results') or [])}")
         return evidence
+
+    def _load_evolution_runs_by_project(self) -> dict[str, dict[str, Any]]:
+        if not self.evolution_state_path.exists():
+            return {}
+        try:
+            data = json.loads(self.evolution_state_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+        runs = data.get("runs", []) if isinstance(data, dict) else []
+        if not isinstance(runs, list):
+            return {}
+
+        by_project: dict[str, dict[str, Any]] = {}
+        for run in runs:
+            if not isinstance(run, dict):
+                continue
+            project_id = str(run.get("project_id") or "")
+            if not project_id:
+                continue
+            current = by_project.get(project_id)
+            if not current or self._run_sort_key(run) >= self._run_sort_key(current):
+                by_project[project_id] = run
+        return by_project
+
+    def _run_sort_key(self, run: dict[str, Any]) -> str:
+        return str(run.get("updated_at") or run.get("created_at") or "")
+
+    def _diagnostic_payload_text(self, payload: Any) -> str:
+        if isinstance(payload, list):
+            return " ".join(self._diagnostic_payload_text(item) for item in payload)
+        if not isinstance(payload, dict):
+            return str(payload)
+
+        parts = [
+            str(payload.get("name") or ""),
+            str(payload.get("returncode") or ""),
+            str(payload.get("timed_out") or ""),
+            str(payload.get("error") or ""),
+            str(payload.get("stderr") or payload.get("stderr_tail") or ""),
+            str(payload.get("stdout") or payload.get("stdout_tail") or ""),
+        ]
+        for key in ("add", "commit", "push", "status"):
+            if isinstance(payload.get(key), dict):
+                parts.append(self._diagnostic_payload_text(payload[key]))
+        return " ".join(parts)
+
+    def _tail_text(self, value: str, limit: int = 240) -> str:
+        text = " ".join(value.split())
+        if len(text) <= limit:
+            return text
+        return text[-limit:]
 
     def _last_step_with_status(self, project: dict[str, Any], status: str) -> dict[str, Any] | None:
         for step in reversed(project.get("steps") or []):

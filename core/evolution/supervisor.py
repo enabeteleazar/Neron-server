@@ -333,8 +333,70 @@ class EvolutionSupervisor:
             step="failed",
             progress=int(run.get("progress") or 0),
             error=payload["error"],
+            metadata_update=self._failure_project_metadata(run, payload),
         )
         return failed
+
+    def _failure_project_metadata(
+        self,
+        run: dict[str, Any],
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        context: dict[str, Any] = {
+            "run_id": run.get("run_id"),
+            "run_error": payload.get("error") or run.get("error"),
+            "retry_requires_validation": True,
+        }
+
+        codex = payload.get("codex") or run.get("codex")
+        if isinstance(codex, dict):
+            context["codex"] = self._compact_command_result(codex)
+
+        tests = payload.get("tests") or run.get("tests")
+        if isinstance(tests, list) and tests:
+            context["tests"] = [
+                self._compact_command_result(test)
+                for test in tests
+                if isinstance(test, dict)
+            ]
+
+        commit = payload.get("commit") or run.get("commit")
+        if isinstance(commit, dict):
+            context["commit"] = self._compact_commit_result(commit)
+
+        return {"failure_context": context}
+
+    def _compact_commit_result(self, commit: dict[str, Any]) -> dict[str, Any]:
+        compact: dict[str, Any] = {
+            "ok": bool(commit.get("ok")),
+            "pushed": bool(commit.get("pushed")),
+        }
+        for key in ("add", "commit", "push", "status"):
+            value = commit.get(key)
+            if isinstance(value, dict):
+                compact[key] = self._compact_command_result(value)
+        return compact
+
+    def _compact_command_result(self, result: dict[str, Any]) -> dict[str, Any]:
+        compact: dict[str, Any] = {
+            "name": result.get("name"),
+            "returncode": result.get("returncode"),
+            "timed_out": bool(result.get("timed_out")),
+            "ok": bool(result.get("ok")),
+        }
+        stdout_tail = self._tail_text(str(result.get("stdout") or ""))
+        stderr_tail = self._tail_text(str(result.get("stderr") or ""))
+        if stdout_tail:
+            compact["stdout_tail"] = stdout_tail
+        if stderr_tail:
+            compact["stderr_tail"] = stderr_tail
+        return compact
+
+    def _tail_text(self, value: str, limit: int = 800) -> str:
+        text = redact_secrets(value)
+        if len(text) <= limit:
+            return text
+        return text[-limit:]
 
     def _update_run(self, run_id: str, **updates: Any) -> dict[str, Any]:
         run = self.storage.update_run(run_id, updates)

@@ -148,6 +148,59 @@ def test_project_manager_diagnoses_recent_failed_projects(tmp_path: Path):
     assert "Relance automatique : non" in text
 
 
+def test_project_manager_enriches_evolution_failures_from_run_state(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    project = manager.create_project(
+        title="Evolution Codex",
+        project_type="evolution",
+        requested_by="test",
+        source_channel="api",
+        query="Faire évoluer Néron",
+    )
+    manager.update_project(project["project_id"], {"status": "running"}, step="accepted")
+    manager.update_project(project["project_id"], {"status": "running"}, step="codex_running")
+    manager.update_project(
+        project["project_id"],
+        {"status": "failed", "current_step": "failed"},
+        step="failed",
+        step_status="failed",
+        error="Codex a échoué.",
+    )
+    (tmp_path / "evolution_state.json").write_text(
+        json.dumps(
+            {
+                "runs": [
+                    {
+                        "run_id": "evo_run_1",
+                        "project_id": project["project_id"],
+                        "status": "failed",
+                        "current_step": "failed",
+                        "error": "Codex a échoué.",
+                        "updated_at": "2026-06-02T10:00:00+00:00",
+                        "codex": {
+                            "name": "codex",
+                            "returncode": 2,
+                            "stderr": "error: unexpected argument '--ask-for-approval' found",
+                            "stdout": "",
+                            "timed_out": False,
+                        },
+                    }
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    report = manager.diagnose_recent_failures(limit=1)
+
+    diagnostic = report["projects"][0]
+    assert diagnostic["category"] == "codex_cli_arguments"
+    assert diagnostic["related_run_id"] == "evo_run_1"
+    assert any("codex_returncode=2" in item for item in diagnostic["evidence"])
+    assert diagnostic["retry_requires_validation"] is True
+
+
 @pytest.mark.asyncio
 async def test_agent_build_creates_validated_registered_project(tmp_path: Path):
     manager = ProjectManager(tmp_path / "projects.json")
