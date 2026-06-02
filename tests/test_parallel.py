@@ -519,9 +519,8 @@ def test_llm_request_rejects_empty_message():
 
 def test_reload_closes_old_manager():
     """Old manager's aclose() must be called after a successful reload."""
-    import os
     import importlib
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import AsyncMock
 
     import llm.api.routes as routes_mod
     importlib.reload(routes_mod)
@@ -529,13 +528,9 @@ def test_reload_closes_old_manager():
     old_manager = routes_mod.manager
     old_manager.aclose = AsyncMock()
 
-    from fastapi.testclient import TestClient
-    from llm.app import app
+    resp = asyncio.run(routes_mod.reload())
 
-    with TestClient(app) as client:
-        resp = client.post("/llm/reload", headers={"X-Neron-API-Key": os.environ["NERON_API_KEY"]})
-
-    assert resp.status_code == 200
+    assert resp["status"] == "ok"
     old_manager.aclose.assert_awaited_once()
 
     print("\n  RELOAD: old manager.aclose() called ✓")
@@ -543,7 +538,6 @@ def test_reload_closes_old_manager():
 
 def test_reload_keeps_old_manager_on_failure():
     """If new manager construction fails, old manager must be preserved."""
-    import os
     import importlib
     from unittest.mock import patch
 
@@ -553,13 +547,12 @@ def test_reload_keeps_old_manager_on_failure():
     original_manager = routes_mod.manager
 
     with patch("llm.api.routes.LLMManager", side_effect=RuntimeError("bad config")):
-        from fastapi.testclient import TestClient
-        from llm.app import app
+        try:
+            asyncio.run(routes_mod.reload())
+            assert False, "Should have raised HTTPException"
+        except HTTPException as exc:
+            assert exc.status_code == 500
 
-        with TestClient(app) as client:
-            resp = client.post("/llm/reload", headers={"X-Neron-API-Key": os.environ["NERON_API_KEY"]})
-
-    assert resp.status_code == 500
     # Manager must be unchanged after failed reload
     assert routes_mod.manager is original_manager
 

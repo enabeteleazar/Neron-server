@@ -2,52 +2,48 @@ from __future__ import annotations
 
 import re
 import unicodedata
-import unicodedata
 from pathlib import Path
+import warnings
 
 from core.agents.base_agent import AgentResult
-from core.agent_factory.validator import validate_agent
+from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 
 
 WORKSPACE = Path("/etc/neron/workspace/agents")
 
 
 class AgentFactoryAgent:
+    """
+    Compatibility facade for legacy callers.
+
+    Real agent/tool creation is centralized in AgentBuildOrchestrator so this
+    class no longer writes draft files itself.
+    """
 
     async def execute(self, text: str = ""):
-
-        WORKSPACE.mkdir(parents=True, exist_ok=True)
-
-        name = self._extract_name(text)
-
-        filename = f"{name}_agent.py"
-
-        path = WORKSPACE / filename
-
-        code = f'''class Agent:
-
-    async def execute(self, text: str = ""):
-        return {{
-            "response": "Agent {name} exécuté"
-        }}
-'''
-
-        path.write_text(code, encoding="utf-8")
-
-        validation = validate_agent(str(path))
+        warnings.warn(
+            "AgentFactoryAgent is deprecated; use AgentBuildOrchestrator.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        result = await AgentBuildOrchestrator().build_from_request(
+            text,
+            requested_by="legacy_agent_factory",
+            source_channel="agent_factory",
+        )
+        project = result.get("project") or {}
 
         return AgentResult(
-            success=True,
+            success=result.get("status") == "completed",
             source="agent_factory",
-            content=(
-                f"Agent brouillon créé : {path}\n"
-                f"Validation : {'OK' if validation['ok'] else validation['error']}\n"
-                f"Promotion manuelle requise."
-            ),
+            content=result.get("response") or str(result),
             metadata={
-                "workspace_path": str(path),
-                "validation": validation,
-                "promotion_required": True,
+                "compatibility_facade": True,
+                "orchestrator": "AgentBuildOrchestrator",
+                "project_id": project.get("project_id"),
+                "project_status": project.get("status"),
+                "registry_status": project.get("registry_status"),
+                "created_files": project.get("created_files", []),
             },
         )
 

@@ -29,8 +29,11 @@ class Intent(str, Enum):
     CODE_AUDIT           = "code_audit"
 
     AGENT_CREATION       = "agent_creation"
+    TOOL_CREATION        = "tool_creation"
     AGENT_LIST           = "agent_list"
     AGENT_RUN            = "agent_run"
+    PROJECT_STATUS       = "project_status"
+    PROJECT_LIST         = "project_list"
 
     SYSTEM_STATUS        = "system_status"
     NETWORK_STATUS       = "network_status"
@@ -149,9 +152,49 @@ def _fallback_intent(query: str) -> Intent | None:
     agent_creation_keywords = [
         "cree un agent",
         "crée un agent",
+        "creer un agent",
+        "créer un agent",
+        "j aimerais un agent",
+        "je veux un agent",
         "nouvel agent",
         "genere un agent",
         "génère un agent",
+        "ajoute un agent",
+    ]
+
+    tool_creation_keywords = [
+        "cree un tool",
+        "crée un tool",
+        "creer un tool",
+        "créer un tool",
+        "ajoute un tool",
+        "ajoute un outil",
+        "cree un outil",
+        "crée un outil",
+        "creer un outil",
+        "créer un outil",
+    ]
+
+    project_status_keywords = [
+        "ou en est le projet",
+        "où en est le projet",
+        "il en est ou l agent",
+        "il en est où l agent",
+        "etat du projet",
+        "état du projet",
+        "detaille le projet",
+        "détaille le projet",
+        "statut du projet",
+    ]
+
+    project_list_keywords = [
+        "liste mes projets",
+        "liste les projets",
+        "quels agents sont en cours de creation",
+        "quels agents sont en cours de création",
+        "projets en cours",
+        "agents en cours de creation",
+        "agents en cours de création",
     ]
 
     agent_list_keywords = [
@@ -265,23 +308,23 @@ def _fallback_intent(query: str) -> Intent | None:
     if any(k in q for k in time_keywords):
         return Intent.TIME_QUERY
 
-    if any(k in q for k in weather_keywords):
-        return Intent.WEATHER_QUERY
+    if q.startswith("/goal ") and any(k in q for k in agent_creation_keywords):
+        return Intent.AGENT_CREATION
 
-    if any(k in q for k in news_keywords):
-        return Intent.NEWS_QUERY
+    if q.startswith("/goal ") and any(k in q for k in tool_creation_keywords):
+        return Intent.TOOL_CREATION
 
-    if any(k in q for k in ha_keywords):
-        return Intent.HA_ACTION
+    if any(k in q for k in project_list_keywords):
+        return Intent.PROJECT_LIST
 
-    if any(k in q for k in personality_keywords):
-        return Intent.PERSONALITY_FEEDBACK
+    if any(k in q for k in project_status_keywords):
+        return Intent.PROJECT_STATUS
 
-    if any(k in q for k in code_audit_keywords):
-        return Intent.CODE_AUDIT
+    if any(k in q for k in agent_creation_keywords):
+        return Intent.AGENT_CREATION
 
-    if any(k in q for k in code_keywords):
-        return Intent.CODE
+    if any(k in q for k in tool_creation_keywords):
+        return Intent.TOOL_CREATION
 
     # Les salutations simples restent conversationnelles pour éviter
     # de détourner les échanges courts comme "bonjour".
@@ -300,17 +343,29 @@ def _fallback_intent(query: str) -> Intent | None:
     if any(k in q for k in self_status_keywords):
         return Intent.SELF_STATUS
 
+    if any(k in q for k in weather_keywords):
+        return Intent.WEATHER_QUERY
+
+    if any(k in q for k in news_keywords):
+        return Intent.NEWS_QUERY
+
+    if any(k in q for k in ha_keywords):
+        return Intent.HA_ACTION
+
+    if any(k in q for k in personality_keywords):
+        return Intent.PERSONALITY_FEEDBACK
+
     if any(k in q for k in code_audit_keywords):
         return Intent.CODE_AUDIT
+
+    if any(k in q for k in code_keywords):
+        return Intent.CODE
 
     if any(k in q for k in system_keywords):
         return Intent.SYSTEM_STATUS
 
     if any(k in q for k in network_keywords):
         return Intent.NETWORK_STATUS
-
-    if any(k in q for k in agent_creation_keywords):
-        return Intent.AGENT_CREATION
 
     if any(k in q for k in agent_list_keywords):
         return Intent.AGENT_LIST

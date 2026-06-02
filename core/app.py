@@ -10,6 +10,7 @@ from core.api.cognitive_report_routes import router as cognitive_report_router
 from core.api.action_history_routes import router as action_history_router
 from core.api.critic_history_routes import router as critic_history_router
 from core.code_awareness.routes import router as code_awareness_router
+from core.projects.routes import router as projects_router
 
 
 # core/app.py
@@ -479,6 +480,7 @@ app.include_router(cognitive_report_router)
 app.include_router(action_history_router)
 app.include_router(critic_history_router)
 app.include_router(code_awareness_router)
+app.include_router(projects_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -825,13 +827,28 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             await _publish_response_ready(intent_result, "system_agent", result)
 
             return result
-        elif intent_result.intent == Intent.AGENT_CREATION:
+        elif intent_result.intent in (Intent.AGENT_CREATION, Intent.TOOL_CREATION):
             response_text = await agent_router.route(intent_result, query)
 
             return CoreResponse(
                 response=response_text,
                 intent=intent_result.intent.value,
-                agent="agent_factory",
+                agent="agent_build_orchestrator",
+                confidence=intent_result.confidence,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata=metadata,
+            )
+        elif intent_result.intent in (Intent.PROJECT_STATUS, Intent.PROJECT_LIST):
+            response_text = await agent_router.route(intent_result, query)
+
+            return CoreResponse(
+                response=response_text,
+                intent=intent_result.intent.value,
+                agent="project_manager",
                 confidence=intent_result.confidence,
                 timestamp=datetime.now(timezone.utc).isoformat(),
                 execution_time_ms=round((time.monotonic() - start) * 1000, 2),

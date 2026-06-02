@@ -155,6 +155,44 @@ def _list_dynamic_agents() -> str:
     return "\n".join(lines)
 
 
+def _project_status_text(query: str) -> str:
+    from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+    from core.projects.manager import get_project_manager
+
+    manager = get_project_manager()
+    matches = manager.find_project_by_query(query, limit=1)
+    project = matches[0] if matches else None
+    return AgentBuildOrchestrator().format_status_response(project)
+
+
+def _project_list_text() -> str:
+    from core.projects.manager import get_project_manager
+
+    projects = get_project_manager().list_projects(limit=20)
+    if not projects:
+        return "Aucun projet suivi."
+
+    lines = ["Projets suivis :"]
+    for project in projects[:20]:
+        lines.append(
+            f"- {project.get('project_id')} | {project.get('status')} | "
+            f"{project.get('progress')}% | {project.get('current_step')}"
+        )
+    return "\n".join(lines)
+
+
+async def _build_tracked_agent(query: str, source_channel: str = "api") -> str:
+    from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+
+    orchestrator = AgentBuildOrchestrator()
+    result = await orchestrator.build_from_request(
+        query,
+        requested_by="user",
+        source_channel=source_channel,
+    )
+    return result.get("response") or orchestrator.format_project_response(result.get("project"))
+
+
 def _extract_agent_name(query: str, prefixes: list[str]) -> str | None:
     text = _normalize(query)
 
@@ -227,24 +265,6 @@ async def _run_dynamic_agent(query: str) -> str:
         return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
 
     return result["response"]
-
-    lookup_names = [agent_name, f"{agent_name}_agent"]
-
-    agent = None
-    selected_name = None
-
-    for name in lookup_names:
-        agent = AGENT_REGISTRY.get(name)
-        if agent is not None:
-            selected_name = name
-            break
-
-    if agent is None:
-        available = ", ".join(sorted(AGENT_REGISTRY.keys())) or "aucun"
-        return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
-
-    result = await agent.execute(text=query)
-    return _result_to_text(result)
 
 
 async def _promote_dynamic_agent(query: str) -> str:
@@ -353,9 +373,14 @@ class AgentRouter:
             result = await _get_system().run(query)
             return _result_to_text(result)
 
-        if intent == Intent.AGENT_CREATION:
-            result = await _get_agent_factory().execute(text=query)
-            return _result_to_text(result)
+        if intent in (Intent.AGENT_CREATION, Intent.TOOL_CREATION):
+            return await _build_tracked_agent(query)
+
+        if intent == Intent.PROJECT_STATUS:
+            return _project_status_text(query)
+
+        if intent == Intent.PROJECT_LIST:
+            return _project_list_text()
 
         if intent == Intent.AGENT_LIST:
             return _list_dynamic_agents()
