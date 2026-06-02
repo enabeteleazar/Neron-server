@@ -152,6 +152,9 @@ async def test_existing_public_route_handlers_remain_callable(monkeypatch):
         def refresh(self):
             return None
 
+        def collect_runtime(self):
+            return None
+
         def to_dict(self):
             return {
                 "identity": {"name": "Néron"},
@@ -174,6 +177,7 @@ async def test_existing_public_route_handlers_remain_callable(monkeypatch):
     monkeypatch.setattr(self_model_context_routes, "scan_project", lambda max_depth=1: {"modules": 0, "files": 0})
 
     assert core_app.health()["status"] == "healthy"
+    assert (await self_model_context_routes.self_model_status())["diagnostics"] == []
     assert (await goal_routes.active_goal())["active_goal"]["id"] == "goal-1"
     context = await self_model_context_routes.self_model_context()
     assert context["identity"]["name"] == "Néron"

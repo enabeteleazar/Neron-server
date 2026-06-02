@@ -9,6 +9,20 @@ from core.code_awareness.scanner import scan_project
 router = APIRouter(tags=["self-model-context"])
 
 
+@router.get("/self-model/status")
+async def self_model_status() -> dict:
+    model = get_self_model()
+    model.collect_runtime()
+    data = model.to_dict()
+
+    return {
+        "health": data.get("health"),
+        "runtime_mode": data.get("runtime_mode"),
+        "last_update": data.get("last_update"),
+        "diagnostics": data.get("diagnostics", []),
+    }
+
+
 @router.get("/self-model/context")
 async def self_model_context() -> dict:
     model = get_self_model()
