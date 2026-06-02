@@ -1,13 +1,16 @@
-from pathlib import Path
 import os
 import logging
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 # =========================
 # CONFIG
 # =========================
 
-LOGS_DIR = Path("/var/log/neron")
+DEFAULT_LOGS_DIR = Path("/var/log/neron")
+FALLBACK_LOGS_DIR = Path("/tmp/neron/logs")
+CONFIGURED_LOGS_DIR = os.getenv("NERON_LOGS_DIR")
+LOGS_DIR = Path(CONFIGURED_LOGS_DIR) if CONFIGURED_LOGS_DIR else DEFAULT_LOGS_DIR
 LOG_FILE = LOGS_DIR / "neron.log"
 
 LOG_MAX_MB = 10
@@ -17,10 +20,24 @@ LOG_BACKUP_COUNT = 5
 # INIT DOSSIER
 # =========================
 
+try:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+except PermissionError:
+    if CONFIGURED_LOGS_DIR:
+        raise
+    LOGS_DIR = FALLBACK_LOGS_DIR
+
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
 if not os.access(LOGS_DIR, os.W_OK):
-    raise PermissionError(f"Logs directory not writable: {LOGS_DIR}")
+    if CONFIGURED_LOGS_DIR:
+        raise PermissionError(f"Logs directory not writable: {LOGS_DIR}")
+    LOGS_DIR = FALLBACK_LOGS_DIR
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    if not os.access(LOGS_DIR, os.W_OK):
+        raise PermissionError(f"Logs directory not writable: {LOGS_DIR}")
+
+LOG_FILE = LOGS_DIR / "neron.log"
 
 # =========================
 # LOGGER CENTRAL
