@@ -31,17 +31,21 @@ Proteges par `X-API-Key`:
 - `/input/stream`
 - API historique `core/memory/world_model/api.py`
 
-Endpoints operationnels publics dans l'application interne:
+Endpoints operationnels proteges depuis le chantier de resolution:
 
 - `/planner/*`
 - `/tasks/*`
-- `/goals/*`
 - `/evolution/*`
 - `/projects/*`
+- `/agents` et `/agents/build`
+
+Endpoints operationnels encore publics:
+
+- `/goals/*`
 - `/code-awareness/*`
 - `/runtime/governor/policy`
 
-Risque: si `neron-core` est expose hors reseau de confiance, ces endpoints peuvent declencher des actions ou exposer des informations internes. Compatibilite API conservee pendant cet audit; durcissement recommande via dependance d'auth partagee ou proxy.
+Risque residuel: si `neron-core` est expose hors reseau de confiance, les endpoints encore publics peuvent exposer des informations internes. Compatibilite API conservee pour ces surfaces non ciblees par le chantier.
 
 ## Secrets et API keys
 
@@ -63,4 +67,3 @@ Risque: si `neron-core` est expose hors reseau de confiance, ces endpoints peuve
 - Les commandes Telegram `/run`, `/fix`, `/review` restent puissantes par design; elles doivent rester reservees a l'utilisateur autorise.
 - Couplage Telegram/orchestration pouvant compliquer la gestion d'erreur en cas d'import circulaire futur.
 - Multiples dossiers hors core (`client/node_modules`, `client_vocal/node_modules`, `venv`, backups) augmentent le bruit des audits; les scans de securite doivent les exclure explicitement.
-

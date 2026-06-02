@@ -39,10 +39,9 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import psutil
-from fastapi import Depends, FastAPI, File, HTTPException, Security, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import PlainTextResponse, StreamingResponse
-from fastapi.security.api_key import APIKeyHeader
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -58,6 +57,7 @@ from pydantic import BaseModel, Field
 # =========================
 
 from core.agents.base_agent import get_logger
+from core.api.auth import API_KEY_HEADER, verify_api_key
 
 # DEV
 from core.agents.dev.code_agent.agent import CodeAgent
@@ -508,20 +508,6 @@ class CoreResponse(BaseModel):
     error:             Optional[str] = None
     transcription:     Optional[str] = None
     metadata:          dict          = Field(default_factory=dict)
-
-
-# ── Auth ──────────────────────────────────────────────────────────────────────
-
-API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> None:
-    if not settings.API_KEY or settings.API_KEY == "changez_moi":
-        return
-    if api_key is None:
-        raise HTTPException(status_code=401, detail="API Key manquante")
-    if api_key != settings.API_KEY:
-        raise HTTPException(status_code=403, detail="API Key invalide")
 
 
 # ── Routes systeme ────────────────────────────────────────────────────────────

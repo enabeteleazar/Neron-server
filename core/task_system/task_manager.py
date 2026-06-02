@@ -66,6 +66,7 @@ class TaskManager:
         priority: str = "medium",
         status: str = "active",
         source: str = "manual",
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         task = {
             "id": str(uuid.uuid4()),
@@ -74,6 +75,7 @@ class TaskManager:
             "priority": priority,
             "status": status,
             "source": source,
+            "metadata": metadata or {},
             "progress": 0,
             "created_at": self._now(),
             "updated_at": self._now(),
@@ -84,8 +86,17 @@ class TaskManager:
         self.save()
         return task
 
-    def list_tasks(self) -> list[dict[str, Any]]:
-        return self.tasks
+    def list_tasks(
+        self,
+        status: str | None = None,
+        priority: str | None = None,
+    ) -> list[dict[str, Any]]:
+        tasks = self.tasks
+        if status:
+            tasks = [task for task in tasks if task.get("status") == status]
+        if priority:
+            tasks = [task for task in tasks if task.get("priority") == priority]
+        return tasks
 
     def list_active_tasks(self) -> list[dict[str, Any]]:
         return [
@@ -96,6 +107,35 @@ class TaskManager:
 
     def get_active_tasks(self) -> list[dict[str, Any]]:
         return self.list_active_tasks()
+
+    def list_running_tasks(self) -> list[dict[str, Any]]:
+        return [task for task in self.tasks if task.get("status") in {"running", "in_progress"}]
+
+    def get_next_task(self) -> dict[str, Any] | None:
+        return self.next_active_task()
+
+    def start_next_task(self) -> dict[str, Any] | None:
+        task = self.next_active_task()
+        if not task:
+            return None
+        return self.update_status(str(task.get("id")), "running")
+
+    def get_status_summary(self) -> dict[str, Any]:
+        by_status: dict[str, int] = {}
+        by_priority: dict[str, int] = {}
+        for task in self.tasks:
+            status = str(task.get("status") or "unknown")
+            priority = str(task.get("priority") or "unknown")
+            by_status[status] = by_status.get(status, 0) + 1
+            by_priority[priority] = by_priority.get(priority, 0) + 1
+
+        return {
+            "total": len(self.tasks),
+            "active": len(self.list_active_tasks()),
+            "running": len(self.list_running_tasks()),
+            "by_status": by_status,
+            "by_priority": by_priority,
+        }
 
     def ensure_default_tasks_for_goal(self, goal: str | None) -> None:
         if not goal:
@@ -227,6 +267,47 @@ class TaskManager:
         task["updated_at"] = self._now()
         self.save()
         return task
+
+    def update_status(self, task_id: str, status: str) -> dict[str, Any] | None:
+        allowed_statuses = {
+            "pending",
+            "active",
+            "todo",
+            "in_progress",
+            "running",
+            "done",
+            "completed",
+            "failed",
+            "cancelled",
+        }
+        if status not in allowed_statuses:
+            raise ValueError(f"Invalid task status: {status}")
+
+        updates: dict[str, Any] = {"status": status}
+        if status in {"done", "completed"}:
+            updates["progress"] = 100
+            updates["completed_at"] = self._now()
+        elif status in {"running", "in_progress"}:
+            updates["progress"] = max(1, int(self.get_task(task_id).get("progress") or 0)) if self.get_task(task_id) else 1
+
+        return self.update_task(task_id, updates)
+
+    def delete_task(self, task_id: str) -> bool:
+        before = len(self.tasks)
+        self.tasks = [task for task in self.tasks if task.get("id") != task_id]
+        deleted = len(self.tasks) != before
+        if deleted:
+            self.save()
+        return deleted
+
+    def clear_done(self) -> int:
+        done_statuses = {"done", "completed"}
+        before = len(self.tasks)
+        self.tasks = [task for task in self.tasks if task.get("status") not in done_statuses]
+        removed = before - len(self.tasks)
+        if removed:
+            self.save()
+        return removed
 
     def fail_task(
         self,

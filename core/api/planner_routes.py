@@ -6,9 +6,10 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from core.api.auth import verify_api_key
 from core.planning import AutonomousPlanner
 from core.planning.executor import PlanExecutor
 from core.planning.storage import PlanStorage
@@ -18,7 +19,7 @@ from core.agents.communication.telegram_agent import send_notification
 from core.cognitive.critic_engine import get_critic_engine
 from core.goals.goal_orchestrator import get_goal_orchestrator
 
-router = APIRouter(tags=["planner"])
+router = APIRouter(tags=["planner"], dependencies=[Depends(verify_api_key)])
 
 planner = AutonomousPlanner()
 storage = PlanStorage()

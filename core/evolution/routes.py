@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from core.api.auth import verify_api_key
 from core.evolution.supervisor import get_evolution_supervisor
 
 
-router = APIRouter(prefix="/evolution", tags=["evolution"])
+router = APIRouter(prefix="/evolution", tags=["evolution"], dependencies=[Depends(verify_api_key)])
 
 
 @router.get("/status")

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from core.api.auth import verify_api_key
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.projects.manager import get_project_manager
 from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
 
-router = APIRouter(tags=["projects"])
+router = APIRouter(tags=["projects"], dependencies=[Depends(verify_api_key)])
 
 
 class AgentBuildRequest(BaseModel):
