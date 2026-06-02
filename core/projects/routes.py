@@ -31,6 +31,12 @@ async def search_projects(q: str = Query(..., min_length=1), limit: int = 10) ->
     return {"count": len(projects), "projects": projects}
 
 
+@router.get("/projects/diagnostics/failures")
+async def diagnose_project_failures(limit: int = 10) -> dict:
+    manager = get_project_manager()
+    return manager.diagnose_recent_failures(limit=limit)
+
+
 @router.get("/projects/{project_id}")
 async def get_project(project_id: str) -> dict:
     manager = get_project_manager()

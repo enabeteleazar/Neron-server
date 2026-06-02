@@ -4,6 +4,7 @@ import json
 import time
 import unicodedata
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -106,6 +107,51 @@ class ProjectManager:
             projects = [project for project in projects if project.get("status") == status]
         return list(reversed(projects[-max(1, min(limit, 500)):]))
 
+    def diagnose_recent_failures(self, limit: int = 10) -> dict[str, Any]:
+        failed_projects = [
+            project for project in self._load()
+            if project.get("status") == "failed"
+        ]
+        failed_projects.sort(key=lambda project: float(project.get("updated_at") or project.get("created_at") or 0))
+        selected = list(reversed(failed_projects[-max(1, min(limit, 100)):]))
+        diagnostics = [self._diagnose_failed_project(project) for project in selected]
+        categories = Counter(item["category"] for item in diagnostics)
+
+        return {
+            "generated_at": _now(),
+            "count": len(diagnostics),
+            "categories": [
+                {"category": category, "count": count}
+                for category, count in categories.most_common()
+            ],
+            "projects": diagnostics,
+            "summary": self._format_failure_summary(diagnostics, categories),
+        }
+
+    def format_failure_report(self, limit: int = 10) -> str:
+        report = self.diagnose_recent_failures(limit=limit)
+        lines = [
+            "Diagnostic projets failed récents",
+            f"Total : {report['count']}",
+        ]
+        if not report["projects"]:
+            lines.append("Aucun projet failed trouvé.")
+            return "\n".join(lines)
+
+        lines.append("Catégories :")
+        for category in report["categories"]:
+            lines.append(f"- {category['category']} : {category['count']}")
+        lines.append("Projets :")
+        for project in report["projects"]:
+            lines.append(
+                "- "
+                f"{project['project_id']} | "
+                f"{project['category']} | "
+                f"{project['probable_cause']}"
+            )
+        lines.append("Relance automatique : non, validation humaine requise.")
+        return "\n".join(lines)
+
     def find_project_by_query(self, query: str, limit: int = 10) -> list[dict[str, Any]]:
         normalized = self._normalize(query)
         keywords = [word for word in normalized.split() if len(word) >= 3]
@@ -200,6 +246,175 @@ class ProjectManager:
         for char in text:
             cleaned.append(char if char.isalnum() else " ")
         return " ".join("".join(cleaned).split())
+
+    def _diagnose_failed_project(self, project: dict[str, Any]) -> dict[str, Any]:
+        category, cause, evidence = self._failure_category(project)
+        last_failed_step = self._last_step_with_status(project, "failed")
+        last_completed_step = self._last_completed_step(project)
+        return {
+            "project_id": project.get("project_id"),
+            "title": project.get("title"),
+            "type": project.get("type"),
+            "current_step": project.get("current_step"),
+            "last_failed_step": last_failed_step.get("name") if last_failed_step else None,
+            "last_completed_step": last_completed_step.get("name") if last_completed_step else None,
+            "progress": project.get("progress"),
+            "updated_at": project.get("updated_at"),
+            "error": project.get("error"),
+            "category": category,
+            "probable_cause": cause,
+            "evidence": evidence,
+            "retry_requires_validation": True,
+        }
+
+    def _failure_category(self, project: dict[str, Any]) -> tuple[str, str, list[str]]:
+        text = self._failure_text(project)
+        current_step = str(project.get("current_step") or "")
+        last_failed_step = self._last_step_with_status(project, "failed")
+        failed_step_name = str((last_failed_step or {}).get("name") or current_step)
+        last_completed_step = self._last_completed_step(project)
+        last_completed_name = str((last_completed_step or {}).get("name") or "")
+        evidence = self._failure_evidence(project, last_failed_step, last_completed_step)
+
+        if self._contains_any(text, ("codex cli introuvable", "no such file or directory codex")):
+            return (
+                "codex_cli_unavailable",
+                "Codex n'était pas disponible dans l'environnement d'exécution.",
+                evidence,
+            )
+        if self._contains_any(text, ("unexpected argument", "ask for approval", "approval mode", "approval policy")):
+            return (
+                "codex_cli_arguments",
+                "La commande Codex a échoué à cause d'une option CLI incompatible.",
+                evidence,
+            )
+        if (
+            self._contains_any(text, ("codex a echoue", "codex failed"))
+            or failed_step_name == "codex_running"
+            or (failed_step_name == "failed" and last_completed_name == "codex_running")
+        ):
+            return (
+                "codex_execution_failed",
+                "Codex a échoué avant la phase de tests; consulter stderr/stdout du run d'évolution.",
+                evidence,
+            )
+        if self._contains_any(text, ("tests en echec", "pytest", "test failed")) or failed_step_name == "tests":
+            return (
+                "tests_failed",
+                "La validation automatisée a échoué.",
+                evidence,
+            )
+        if self._contains_any(text, ("py_compile", "compile", "syntax_error")) or failed_step_name == "compile":
+            return (
+                "compile_failed",
+                "Le code généré ne compile pas.",
+                evidence,
+            )
+        if (
+            self._contains_any(text, ("validation", "class agent manquante", "execute manquante"))
+            or failed_step_name == "validation"
+        ):
+            return (
+                "validation_failed",
+                "La structure de l'agent généré ne respecte pas le contrat attendu.",
+                evidence,
+            )
+        if self._contains_any(text, ("verification", "runtime")) or failed_step_name == "verification":
+            return (
+                "runtime_verification_failed",
+                "L'agent existe mais son appel de vérification runtime a échoué.",
+                evidence,
+            )
+        if self._contains_any(text, ("commit", "push")) or failed_step_name == "commit":
+            return (
+                "commit_failed",
+                "La phase de commit ou push a échoué après les changements.",
+                evidence,
+            )
+        return (
+            "unknown_failed",
+            "Les données stockées ne suffisent pas à isoler une cause précise.",
+            evidence,
+        )
+
+    def _failure_text(self, project: dict[str, Any]) -> str:
+        parts = [
+            str(project.get("current_step") or ""),
+            str(project.get("error") or ""),
+        ]
+        for step in project.get("steps") or []:
+            if isinstance(step, dict):
+                parts.extend(
+                    [
+                        str(step.get("name") or ""),
+                        str(step.get("status") or ""),
+                        str(step.get("error") or ""),
+                    ]
+                )
+        for result in project.get("test_results") or []:
+            if isinstance(result, dict):
+                parts.extend(
+                    [
+                        str(result.get("name") or ""),
+                        str(result.get("stdout_tail") or result.get("stdout") or ""),
+                        str(result.get("stderr_tail") or result.get("stderr") or ""),
+                    ]
+                )
+        return self._normalize(" ".join(parts))
+
+    def _failure_evidence(
+        self,
+        project: dict[str, Any],
+        last_failed_step: dict[str, Any] | None,
+        last_completed_step: dict[str, Any] | None,
+    ) -> list[str]:
+        evidence = [
+            f"status={project.get('status')}",
+            f"current_step={project.get('current_step')}",
+            f"progress={project.get('progress')}",
+        ]
+        if last_completed_step:
+            evidence.append(f"last_completed_step={last_completed_step.get('name')}")
+        if last_failed_step:
+            evidence.append(f"last_failed_step={last_failed_step.get('name')}")
+            if last_failed_step.get("error"):
+                evidence.append(f"step_error={last_failed_step.get('error')}")
+        if project.get("error"):
+            evidence.append(f"error={project.get('error')}")
+        if project.get("test_results"):
+            evidence.append(f"test_results={len(project.get('test_results') or [])}")
+        return evidence
+
+    def _last_step_with_status(self, project: dict[str, Any], status: str) -> dict[str, Any] | None:
+        for step in reversed(project.get("steps") or []):
+            if isinstance(step, dict) and step.get("status") == status:
+                return step
+        return None
+
+    def _last_completed_step(self, project: dict[str, Any]) -> dict[str, Any] | None:
+        for step in reversed(project.get("steps") or []):
+            if isinstance(step, dict) and step.get("status") == "done":
+                return step
+        return None
+
+    def _contains_any(self, text: str, needles: tuple[str, ...]) -> bool:
+        return any(self._normalize(needle) in text for needle in needles)
+
+    def _format_failure_summary(
+        self,
+        diagnostics: list[dict[str, Any]],
+        categories: Counter[str],
+    ) -> str:
+        if not diagnostics:
+            return "Aucun projet failed récent à diagnostiquer."
+        category_text = ", ".join(
+            f"{category}={count}" for category, count in categories.most_common()
+        )
+        return (
+            f"{len(diagnostics)} projet(s) failed analysé(s). "
+            f"Catégories probables: {category_text}. "
+            "Aucune relance automatique n'est déclenchée."
+        )
 
 
 _project_manager: ProjectManager | None = None

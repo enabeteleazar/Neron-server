@@ -75,6 +75,79 @@ def test_project_manager_create_update_and_search(tmp_path: Path):
     assert manager.find_project_by_query("WWDC")[0]["project_id"] == project["project_id"]
 
 
+def test_project_manager_diagnoses_recent_failed_projects(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+
+    codex_project = manager.create_project(
+        title="Diagnostiquer les projets en échec",
+        project_type="evolution",
+        requested_by="test",
+        source_channel="api",
+        query="3 projets failed récents",
+    )
+    manager.update_project(codex_project["project_id"], {"status": "running"}, step="accepted")
+    manager.update_project(codex_project["project_id"], {"status": "running"}, step="codex_running")
+    manager.update_project(
+        codex_project["project_id"],
+        {"status": "failed", "current_step": "failed"},
+        step="failed",
+        step_status="failed",
+        error="Codex a échoué.",
+    )
+
+    tests_project = manager.create_project(
+        title="Agent tests cassés",
+        project_type="agent",
+        requested_by="test",
+        source_channel="api",
+        query="Créer un agent cassé",
+    )
+    manager.update_project(
+        tests_project["project_id"],
+        {
+            "status": "failed",
+            "current_step": "tests",
+            "test_results": [{"name": "pytest_agent", "returncode": 1, "stderr_tail": "pytest failed"}],
+        },
+        step="tests",
+        step_status="failed",
+        error="pytest failed",
+    )
+
+    compile_project = manager.create_project(
+        title="Agent syntaxe cassée",
+        project_type="agent",
+        requested_by="test",
+        source_channel="api",
+        query="Créer un agent invalide",
+    )
+    manager.update_project(
+        compile_project["project_id"],
+        {"status": "failed", "current_step": "compile"},
+        step="compile",
+        step_status="failed",
+        error="py_compile failed",
+    )
+
+    report = manager.diagnose_recent_failures(limit=3)
+
+    categories = {item["category"]: item["count"] for item in report["categories"]}
+    by_id = {item["project_id"]: item for item in report["projects"]}
+    assert report["count"] == 3
+    assert categories == {
+        "compile_failed": 1,
+        "tests_failed": 1,
+        "codex_execution_failed": 1,
+    }
+    assert by_id[codex_project["project_id"]]["last_completed_step"] == "codex_running"
+    assert by_id[codex_project["project_id"]]["retry_requires_validation"] is True
+    assert "Aucune relance automatique" in report["summary"]
+
+    text = manager.format_failure_report(limit=3)
+    assert "Diagnostic projets failed récents" in text
+    assert "Relance automatique : non" in text
+
+
 @pytest.mark.asyncio
 async def test_agent_build_creates_validated_registered_project(tmp_path: Path):
     manager = ProjectManager(tmp_path / "projects.json")
@@ -519,3 +592,33 @@ async def test_project_routes_list_get_and_search(monkeypatch, tmp_path: Path):
     assert listed["count"] == 1
     assert fetched["project"]["project_id"] == project["project_id"]
     assert searched["projects"][0]["project_id"] == project["project_id"]
+
+
+@pytest.mark.asyncio
+async def test_project_route_exposes_failure_diagnostics(monkeypatch, tmp_path: Path):
+    from core.projects import routes
+
+    manager = ProjectManager(tmp_path / "projects.json")
+    project = manager.create_project(
+        title="Evolution Codex",
+        project_type="evolution",
+        requested_by="test",
+        source_channel="api",
+        query="Faire évoluer Néron",
+    )
+    manager.update_project(project["project_id"], {"status": "running"}, step="codex_running")
+    manager.update_project(
+        project["project_id"],
+        {"status": "failed", "current_step": "failed"},
+        step="failed",
+        step_status="failed",
+        error="Codex a échoué.",
+    )
+    monkeypatch.setattr(routes, "get_project_manager", lambda: manager)
+
+    diagnostics = await routes.diagnose_project_failures(limit=5)
+
+    assert diagnostics["count"] == 1
+    assert diagnostics["projects"][0]["project_id"] == project["project_id"]
+    assert diagnostics["projects"][0]["category"] == "codex_execution_failed"
+    assert diagnostics["projects"][0]["retry_requires_validation"] is True
