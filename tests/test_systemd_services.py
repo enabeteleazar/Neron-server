@@ -34,3 +34,16 @@ def test_install_systemd_references_existing_deploy_units():
     assert unit_names
     for unit in unit_names:
         assert (DEPLOY_DIR / unit).exists(), f"missing deploy unit referenced by installer: {unit}"
+
+
+def test_legacy_neron_service_is_marked_and_not_used_by_server_script():
+    legacy_unit = ROOT / "deploy" / "systemd" / "neron.service"
+    server_script = ROOT / "scripts" / "server.sh"
+
+    legacy_content = legacy_unit.read_text(encoding="utf-8")
+    server_content = server_script.read_text(encoding="utf-8")
+
+    assert "LEGACY" in legacy_content
+    assert "server.core.app:app" in legacy_content
+    assert 'SERVICE="neron-core.service"' in server_content
+    assert 'SERVICE="neron.service"' not in server_content
