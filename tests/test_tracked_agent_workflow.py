@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import json
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,9 @@ import pytest
 from core.agent_factory import build_orchestrator
 from core.agent_factory.factory_agent import AgentFactoryAgent
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+from core.agent_factory.registry import DynamicAgentRegistry
+from core.events import event_types
+from core.events.event_bus import event_bus
 from core.pipeline.routing import agent_router
 from core.pipeline.intent.intent_router import Intent, IntentRouter
 from core.projects.manager import ProjectManager
@@ -169,19 +173,43 @@ def test_completed_project_current_step_is_completed(tmp_path: Path):
     assert completed["current_step"] == "completed"
 
 
+def test_dynamic_agent_registry_finds_registered_agent_by_spec(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+    spec = orchestrator.plan_spec(
+        "Créer un agent qui me donne le temps restant avant la prochaine WWDC d’Apple"
+    )
+    generated_agents = tmp_path / "core" / "agents" / "generated"
+    generated_agents.mkdir(parents=True)
+    registered_agent = generated_agents / "event_countdown_agent.py"
+    registered_agent.write_text(
+        f"AGENT_SPEC = {json.dumps(spec.to_dict(), sort_keys=True)}\n"
+        f"AGENT_SPEC_SIGNATURE = {orchestrator._spec_signature(spec)!r}\n"
+        "class Agent:\n"
+        "    name = 'event_countdown_agent'\n",
+        encoding="utf-8",
+    )
+
+    match = DynamicAgentRegistry(generated_agents).find_registered_agent_for_spec(
+        spec.to_dict(),
+        orchestrator._spec_signature(spec),
+    )
+
+    assert match is not None
+    assert match["agent_name"] == "event_countdown_agent"
+    assert match["path"] == str(registered_agent)
+
+
 @pytest.mark.asyncio
 async def test_registered_agent_is_reused_without_reconstruction(monkeypatch, tmp_path: Path):
     manager = ProjectManager(tmp_path / "projects.json")
     generated_agents = tmp_path / "core" / "agents" / "generated"
     generated_agents.mkdir(parents=True)
-    registered_agent = generated_agents / "event_countdown_agent.py"
-    registered_agent.write_text(
-        "class Agent:\n"
-        "    name = 'event_countdown_agent'\n"
-        "    async def execute(self, text=''):\n"
-        "        return {'status': 'ok', 'response': 'available'}\n",
-        encoding="utf-8",
-    )
     orchestrator = AgentBuildOrchestrator(
         project_manager=manager,
         project_root=tmp_path,
@@ -190,25 +218,44 @@ async def test_registered_agent_is_reused_without_reconstruction(monkeypatch, tm
         generated_agents=generated_agents,
         runtime_check=False,
     )
+    spec = orchestrator.plan_spec(
+        "Créer un agent qui me donne le temps restant avant la prochaine WWDC d’Apple"
+    )
+    registered_agent = generated_agents / "event_countdown_agent.py"
+    registered_agent.write_text(
+        f"AGENT_SPEC = {json.dumps(spec.to_dict(), sort_keys=True)}\n"
+        f"AGENT_SPEC_SIGNATURE = {orchestrator._spec_signature(spec)!r}\n"
+        "class Agent:\n"
+        "    name = 'event_countdown_agent'\n"
+        "    async def execute(self, text=''):\n"
+        "        return {'status': 'ok', 'response': 'available'}\n",
+        encoding="utf-8",
+    )
+    published = []
+
+    async def fake_publish(event):
+        published.append(event)
 
     monkeypatch.setattr(orchestrator, "_write_agent", lambda *_args, **_kwargs: pytest.fail("agent rewritten"))
     monkeypatch.setattr(orchestrator, "_write_agent_test", lambda *_args, **_kwargs: pytest.fail("test rewritten"))
     monkeypatch.setattr(orchestrator, "_register_agent", lambda *_args, **_kwargs: pytest.fail("agent re-registered"))
+    monkeypatch.setattr(event_bus, "publish", fake_publish)
 
     result = await orchestrator.build_from_request(
         "Créer un agent qui me donne le temps restant avant la prochaine WWDC d’Apple"
     )
 
-    project = result["project"]
     assert result["status"] == "completed"
     assert result["reused_registered_agent"] is True
     assert result["reused_existing_project"] is False
-    assert project["status"] == "completed"
-    assert project["current_step"] == "completed"
-    assert project["registry_status"] == "registered"
-    assert project["registered_agent"] == "event_countdown_agent"
-    assert project["metadata"]["reused_registered_agent"] is True
-    assert project["created_files"] == ["core/agents/generated/event_countdown_agent.py"]
+    assert result["project"] is None
+    assert result["agent"]["agent_name"] == "event_countdown_agent"
+    assert result["agent"]["path"] == str(registered_agent)
+    assert manager.list_projects(limit=10) == []
+    assert "Projet de build : non créé" in result["response"]
+    assert "Tests : non relancés" in result["response"]
+    assert [event.type for event in published] == [event_types.AGENT_CONSULTED]
+    assert published[0].payload["agent"] == "event_countdown_agent"
 
 
 def test_failed_project_is_not_announced_as_completed(tmp_path: Path):

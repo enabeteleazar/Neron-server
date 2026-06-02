@@ -77,6 +77,7 @@ def register_default_subscribers() -> None:
         event_types.INTENT_DETECTED,
         event_types.AGENT_SELECTED,
         event_types.AGENT_EXECUTED,
+        event_types.AGENT_CONSULTED,
         event_types.RESPONSE_READY,
         event_types.SYSTEM_ALERT,
         event_types.MEMORY_UPDATED,
