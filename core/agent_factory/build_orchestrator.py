@@ -185,6 +185,7 @@ class AgentBuildOrchestrator:
                 "status": "completed",
                 "project": completed,
                 "spec": spec.to_dict(),
+                "build_executed": True,
                 "reused_existing_project": False,
                 "response": self.format_project_response(completed),
             }
@@ -194,6 +195,7 @@ class AgentBuildOrchestrator:
                 "status": "failed",
                 "project": failed["project"],
                 "spec": spec.to_dict(),
+                "build_executed": True,
                 "reused_existing_project": False,
                 "response": self.format_project_response(failed["project"]),
             }
@@ -249,6 +251,14 @@ class AgentBuildOrchestrator:
         )
         metadata = project.get("metadata") or {}
         reused_registered = bool(metadata.get("reused_registered_agent"))
+        build_executed = metadata.get("build_executed")
+        reused_existing = bool(metadata.get("reused_existing_project")) or build_executed is False
+
+        if reused_existing:
+            return self._format_reused_agent_response(
+                str(result.get("agent") or project.get("registered_agent") or metadata.get("agent_name") or "inconnu"),
+                str(project.get("project_id") or "inconnu"),
+            )
 
         if project.get("status") == "completed" and available and registered and (tests_ok or reused_registered):
             tests_line = (
@@ -375,8 +385,12 @@ class AgentBuildOrchestrator:
             "status": project.get("status") or "completed",
             "project": project,
             "spec": spec.to_dict(),
+            "build_executed": False,
             "reused_existing_project": True,
-            "response": self.format_project_response(project),
+            "response": self._format_reused_agent_response(
+                str(project.get("registered_agent") or spec.name),
+                str(project.get("project_id") or "inconnu"),
+            ),
         }
 
     async def _return_registered_agent(
@@ -395,6 +409,8 @@ class AgentBuildOrchestrator:
                 "project": None,
                 "agent": registered_agent,
                 "spec": spec.to_dict(),
+                "build_executed": False,
+                "reused_existing_agent": True,
                 "reused_existing_project": False,
                 "reused_registered_agent": True,
                 "response": self._format_registered_agent_response(
@@ -409,6 +425,8 @@ class AgentBuildOrchestrator:
             "project": None,
             "agent": registered_agent,
             "spec": spec.to_dict(),
+            "build_executed": False,
+            "reused_existing_agent": True,
             "reused_existing_project": False,
             "reused_registered_agent": True,
             "response": self._format_registered_agent_response(
@@ -459,11 +477,15 @@ class AgentBuildOrchestrator:
             )
 
         return (
-            f"Agent existant réutilisé : {spec.name}.\n"
-            f"Fichier enregistré : {registered_agent.get('path') or 'inconnu'}.\n"
-            "Projet de build : non créé.\n"
-            "Tests : non relancés.\n"
-            "Disponibilité : OK."
+            self._format_reused_agent_response(spec.name, "aucun projet de build")
+        )
+
+    def _format_reused_agent_response(self, agent_name: str, project_id: str) -> str:
+        return (
+            f"Agent déjà disponible : {agent_name}.\n"
+            f"Projet existant : {project_id}.\n"
+            "Tests déjà validés : OK.\n"
+            "Aucune reconstruction nécessaire."
         )
 
     async def _verify_agent(self, spec: AgentSpec) -> dict[str, Any]:

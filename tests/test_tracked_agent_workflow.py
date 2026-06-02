@@ -128,6 +128,11 @@ async def test_agent_build_deduplicates_wwdc_apostrophe_variants(tmp_path: Path)
     assert len(projects) == 1
     assert first["project"]["project_id"] == second["project"]["project_id"]
     assert second["reused_existing_project"] is True
+    assert "Agent déjà disponible : event_countdown_agent" in second["response"]
+    assert f"Projet existant : {first['project']['project_id']}" in second["response"]
+    assert "Tests déjà validés : OK" in second["response"]
+    assert "Aucune reconstruction nécessaire" in second["response"]
+    assert "Agent créé" not in second["response"]
 
 
 @pytest.mark.asyncio
@@ -149,6 +154,8 @@ async def test_repeated_agent_build_returns_reused_existing_project(tmp_path: Pa
     assert first["reused_existing_project"] is False
     assert second["reused_existing_project"] is True
     assert second["project"]["project_id"] == first["project"]["project_id"]
+    assert second["build_executed"] is False
+    assert "Agent créé" not in second["response"]
 
 
 def test_completed_project_current_step_is_completed(tmp_path: Path):
@@ -247,13 +254,17 @@ async def test_registered_agent_is_reused_without_reconstruction(monkeypatch, tm
 
     assert result["status"] == "completed"
     assert result["reused_registered_agent"] is True
+    assert result["reused_existing_agent"] is True
+    assert result["build_executed"] is False
     assert result["reused_existing_project"] is False
     assert result["project"] is None
     assert result["agent"]["agent_name"] == "event_countdown_agent"
     assert result["agent"]["path"] == str(registered_agent)
     assert manager.list_projects(limit=10) == []
-    assert "Projet de build : non créé" in result["response"]
-    assert "Tests : non relancés" in result["response"]
+    assert "Agent déjà disponible : event_countdown_agent" in result["response"]
+    assert "Tests déjà validés : OK" in result["response"]
+    assert "Aucune reconstruction nécessaire" in result["response"]
+    assert "Agent créé" not in result["response"]
     assert [event.type for event in published] == [event_types.AGENT_CONSULTED]
     assert published[0].payload["agent"] == "event_countdown_agent"
 
