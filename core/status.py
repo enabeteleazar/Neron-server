@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import psutil
-from agents.watchdog_agent import get_health_score, get_status as _get_status
-from modules.scheduler import get_jobs
+from core.agents.automation.watchdog_agent import get_health_score, get_status as _get_status
+from core.modules.scheduler import get_jobs
 
 
 def check_all_improved() -> dict:
