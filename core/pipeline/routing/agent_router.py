@@ -503,6 +503,22 @@ class AgentRouter:
 
             return "Salut, je suis là. Que veux-tu faire ?"
 
+        from core.agents.conversation.conversation_agent import ConversationAgent
+
+        dynamic_result = await ConversationAgent().delegate_to_registered_agent(query)
+        if dynamic_result:
+            agent_name = str(dynamic_result.get("agent") or "dynamic_agent")
+            model.set_last_agent(agent_name)
+            model.set_last_action("agent dynamique exécuté")
+            model.set_last_decision("router vers un agent enregistré compatible")
+            model.set_last_reasoning("un agent dynamique enregistré correspond à l'intention utilisateur")
+            model.add_recent_activity(f"{agent_name} exécuté")
+            model.set_last_error(dynamic_result.get("error"))
+
+            if dynamic_result.get("ok"):
+                return str(dynamic_result.get("response") or "")
+            return f"⚠️ Erreur agent dynamique : {dynamic_result.get('error') or 'erreur inconnue'}"
+
         memory = _get_memory()
         context = await memory.get_context(query) if hasattr(memory, "get_context") else None
         result = await _get_llm().execute(query, context_data=context)

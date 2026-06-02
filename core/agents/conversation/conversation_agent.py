@@ -1,9 +1,84 @@
 from __future__ import annotations
 
+import time
+import unicodedata
+from typing import Any
+
+from core.agent_factory.registry import AGENT_REGISTRY, DynamicAgentRegistry
 from core.self_model.self_model import get_self_model
 
 
 class ConversationAgent:
+    def __init__(self, registry: DynamicAgentRegistry | None = None) -> None:
+        self.registry = registry or DynamicAgentRegistry()
+
+    async def delegate_to_registered_agent(self, query: str) -> dict[str, Any] | None:
+        record = self.match_registered_agent(query)
+        if not record:
+            return None
+
+        agent_name = str(record.get("module_name") or record.get("agent_name") or "")
+        agent = AGENT_REGISTRY.get(agent_name)
+        if not agent:
+            return None
+
+        start = time.monotonic()
+        try:
+            if hasattr(agent, "execute"):
+                raw = await agent.execute(text=query)
+            elif hasattr(agent, "run"):
+                raw = await agent.run(query)
+            else:
+                return None
+        except Exception as exc:
+            return {
+                "ok": False,
+                "agent": agent_name,
+                "error": str(exc),
+                "execution_time_ms": round((time.monotonic() - start) * 1000, 2),
+            }
+
+        return {
+            "ok": True,
+            "agent": agent_name,
+            "response": self._result_to_text(raw),
+            "raw": raw,
+            "execution_time_ms": round((time.monotonic() - start) * 1000, 2),
+        }
+
+    def match_registered_agent(self, query: str) -> dict[str, Any] | None:
+        query_tokens = self._tokens(query)
+        if not query_tokens:
+            return None
+
+        best: tuple[int, dict[str, Any] | None] = (0, None)
+        for record in self.registry.list_agent_records():
+            match_text = str(record.get("match_text") or "")
+            record_tokens = self._tokens(match_text)
+            overlap = query_tokens & record_tokens
+            score = len(overlap)
+
+            distinctive_overlap = {
+                token
+                for token in overlap
+                if len(token) >= 4 and token not in self._generic_agent_tokens()
+            }
+            if distinctive_overlap and (
+                len(overlap) >= 2 or self._has_action_match(query, record_tokens)
+            ):
+                score += 2
+
+            if score > best[0]:
+                best = (score, record)
+
+        score, record = best
+        if not record:
+            return None
+
+        if score >= 3:
+            return record
+
+        return None
 
     async def greeting(self) -> str:
         return "Salut, je suis là. Que veux-tu faire ?"
@@ -75,3 +150,71 @@ class ConversationAgent:
             return f"{hours}h {minutes}min"
 
         return f"{minutes}min"
+
+    @classmethod
+    def _tokens(cls, text: str) -> set[str]:
+        normalized = cls._normalize(text)
+        return {
+            token
+            for token in normalized.split()
+            if len(token) >= 3 and token not in cls._stop_words()
+        }
+
+    @staticmethod
+    def _normalize(text: str) -> str:
+        text = unicodedata.normalize("NFKD", text.lower())
+        text = "".join(char for char in text if unicodedata.category(char) != "Mn")
+        cleaned = []
+        for char in text:
+            cleaned.append(char if char.isalnum() else " ")
+        return " ".join("".join(cleaned).split())
+
+    @staticmethod
+    def _result_to_text(result: Any) -> str:
+        if isinstance(result, str):
+            return result
+        if isinstance(result, dict):
+            return str(result.get("response") or result)
+        if hasattr(result, "content"):
+            return str(result.content if getattr(result, "success", True) else result.error)
+        return str(result)
+
+    @staticmethod
+    def _stop_words() -> set[str]:
+        return {
+            "avant",
+            "avec",
+            "dans",
+            "des",
+            "donc",
+            "est",
+            "les",
+            "pour",
+            "que",
+            "qui",
+            "quoi",
+            "reste",
+            "restant",
+            "temps",
+            "une",
+        }
+
+    @staticmethod
+    def _generic_agent_tokens() -> set[str]:
+        return {
+            "agent",
+            "generated",
+            "static",
+            "fallback",
+            "source",
+        }
+
+    @classmethod
+    def _has_action_match(cls, query: str, record_tokens: set[str]) -> bool:
+        normalized = cls._normalize(query)
+        countdown_query = any(
+            token in normalized
+            for token in ("combien", "reste", "restant", "temps", "avant")
+        )
+        countdown_agent = bool(record_tokens & {"countdown", "rebours", "event", "evenement"})
+        return countdown_query and countdown_agent

@@ -11,6 +11,7 @@ from core.api.action_history_routes import router as action_history_router
 from core.api.critic_history_routes import router as critic_history_router
 from core.code_awareness.routes import router as code_awareness_router
 from core.projects.routes import router as projects_router
+from core.evolution.routes import router as evolution_router
 
 
 # core/app.py
@@ -481,6 +482,7 @@ app.include_router(action_history_router)
 app.include_router(critic_history_router)
 app.include_router(code_awareness_router)
 app.include_router(projects_router)
+app.include_router(evolution_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -1199,6 +1201,46 @@ async def _store_memory(query: str, response: str, metadata: dict) -> None:
 
 
 async def _handle_conversation(query, intent_result, metadata, start) -> CoreResponse:
+    from core.agents.conversation.conversation_agent import ConversationAgent
+
+    dynamic_result = await ConversationAgent().delegate_to_registered_agent(query)
+    if dynamic_result:
+        agent_name = str(dynamic_result.get("agent") or "dynamic_agent")
+        execution_time_ms = round((time.monotonic() - start) * 1000, 2)
+        if dynamic_result.get("ok"):
+            response_text = str(dynamic_result.get("response") or "")
+            await _store_memory(query, response_text, {**metadata, "agent": agent_name})
+            return CoreResponse(
+                response=response_text,
+                intent=metadata.get("intent", "conversation"),
+                agent=agent_name,
+                confidence=metadata.get("confidence", "low"),
+                timestamp=utc_now_iso(),
+                execution_time_ms=execution_time_ms,
+                model=None,
+                metadata={
+                    **metadata,
+                    "dynamic_agent_routed": True,
+                    "obsidian_context_used": False,
+                },
+            )
+
+        return CoreResponse(
+            response=f"⚠️ Erreur agent dynamique : {dynamic_result.get('error') or 'erreur inconnue'}",
+            intent=metadata.get("intent", "conversation"),
+            agent=agent_name,
+            confidence=metadata.get("confidence", "low"),
+            timestamp=utc_now_iso(),
+            execution_time_ms=execution_time_ms,
+            model=None,
+            error=dynamic_result.get("error"),
+            metadata={
+                **metadata,
+                "dynamic_agent_routed": True,
+                "obsidian_context_used": False,
+            },
+        )
+
     memory_context = await _get_memory_context(query)
 
     obsidian_context = ""

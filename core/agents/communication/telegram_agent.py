@@ -25,6 +25,11 @@ from core.code_awareness.reader import read_file
 from core.code_awareness.scanner import scan_project
 from core.code_awareness.searcher import search_code
 from core.code_awareness.security import CodeAwarenessSecurityError
+from core.evolution.supervisor import (
+    EvolutionSupervisor,
+    format_proposals_for_telegram,
+    get_evolution_supervisor,
+)
 import unicodedata
 from pathlib import Path
 
@@ -134,6 +139,12 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         "  /ha_reload — recharge les entités HA\n\n"
         "📊 <b>Système</b>\n"
         "  /status — CPU, RAM, disque, uptime\n\n"
+        "🧬 <b>Évolution supervisée</b>\n"
+        "  /evolution propose — propose les prochaines évolutions\n"
+        "  /evolution status — état des évolutions\n"
+        "  /accept_evolution 1 — valide une proposition\n"
+        "  /reject_evolution 1 — refuse une proposition\n"
+        "  /evolution_stop — stoppe la mission active\n\n"
         "📞 <b>Téléphonie</b>\n"
         "  /call [message] — appel vocal via Twilio\n\n"
         "❓ /help — cette aide",
@@ -464,6 +475,163 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await sent.edit_text("⏱ Timeout — script interrompu après 30s")
     except Exception as e:
         await sent.edit_text(f"❌ Erreur exécution : {e}")
+
+
+async def route_evolution_telegram_text(
+    text: str,
+    *,
+    supervisor: EvolutionSupervisor | None = None,
+    source_channel: str = "telegram",
+    user_id: str = "telegram",
+) -> str | None:
+    supervisor = supervisor or get_evolution_supervisor()
+    raw = text.strip()
+    normalized = _normalize(raw)
+
+    wants_proposals = normalized in {
+        "propose les prochaines evolutions",
+        "quelles sont les prochaines evolutions",
+        "quelles sont les prochaines evolutions ?",
+    } or (
+        "prochaines evolutions" in normalized
+        and any(token in normalized for token in ("propose", "quelles", "liste"))
+    )
+    if wants_proposals or normalized == "/evolution propose":
+        proposals = supervisor.generate_proposals()
+        return format_proposals_for_telegram(proposals)
+
+    if normalized in {"/evolution status", "/evolution_status", "evolution status"}:
+        status = supervisor.status()
+        active = status.get("active_run")
+        if active:
+            return (
+                "Évolution en cours\n"
+                f"Run : {active.get('run_id')}\n"
+                f"Statut : {active.get('status')}\n"
+                f"Étape : {active.get('current_step')}"
+            )
+        return f"Aucune mission d'évolution active. Propositions disponibles : {len(status.get('latest_proposals') or [])}"
+
+    if normalized.startswith("/accept_evolution "):
+        proposal_id = raw.split(maxsplit=1)[1].strip()
+        result = await supervisor.accept_proposal(
+            proposal_id,
+            source_channel=source_channel,
+            accepted_by=user_id,
+        )
+        return _format_evolution_result(result)
+
+    if normalized.startswith("/reject_evolution "):
+        proposal_id = raw.split(maxsplit=1)[1].strip()
+        result = supervisor.reject_proposal(
+            proposal_id,
+            source_channel=source_channel,
+            rejected_by=user_id,
+        )
+        return _format_evolution_result(result)
+
+    if normalized in {"/evolution_stop", "evolution stop", "/evolution stop"}:
+        result = await supervisor.stop()
+        return _format_evolution_result(result)
+
+    return None
+
+
+def _format_evolution_result(result: dict) -> str:
+    status = result.get("status")
+    if status == "not_found":
+        return "Proposition introuvable."
+    if status == "refused" and result.get("reason") == "evolution_run_already_active":
+        active = result.get("active_run") or {}
+        return (
+            "Une mission d'évolution est déjà active.\n"
+            f"Run : {active.get('run_id')}\n"
+            f"Étape : {active.get('current_step')}"
+        )
+    if status == "rejected":
+        proposal = result.get("proposal") or {}
+        return f"Proposition refusée : {proposal.get('proposal_id')} - {proposal.get('title')}"
+    if status == "stopped":
+        return "Évolution stoppée. Aucune nouvelle mission ne sera lancée sans validation."
+
+    run = result.get("run") or {}
+    project = result.get("project") or {}
+    lines = [
+        f"Évolution {status}",
+        f"Run : {run.get('run_id')}",
+        f"Projet : {project.get('project_id')}",
+        f"Étape : {run.get('current_step')}",
+    ]
+    if run.get("error"):
+        lines.append(f"Erreur : {run.get('error')}")
+    if run.get("commit_hash"):
+        lines.append(f"Commit : {run.get('commit_hash')}")
+    if status == "completed":
+        lines.append("Nouvelles propositions générées. En attente de validation.")
+    return "\n".join(line for line in lines if line and not line.endswith(": None"))
+
+
+async def cmd_evolution(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    command = " ".join(context.args).strip() or "status"
+    response = await route_evolution_telegram_text(
+        f"/evolution {command}",
+        user_id=str(update.message.chat_id),
+    )
+    await update.message.reply_text(response or "Usage : /evolution propose | /evolution status")
+
+
+async def cmd_evolution_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    response = await route_evolution_telegram_text(
+        "/evolution_status",
+        user_id=str(update.message.chat_id),
+    )
+    await update.message.reply_text(response or "Statut indisponible.")
+
+
+async def cmd_accept_evolution(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /accept_evolution 1")
+
+    sent = await update.message.reply_text("Validation reçue. Exécution contrôlée en cours...")
+    response = await route_evolution_telegram_text(
+        f"/accept_evolution {context.args[0]}",
+        user_id=str(update.message.chat_id),
+    )
+    await sent.edit_text((response or "Exécution terminée.")[:4096])
+
+
+async def cmd_reject_evolution(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    if not context.args:
+        return await update.message.reply_text("Usage : /reject_evolution 1")
+
+    response = await route_evolution_telegram_text(
+        f"/reject_evolution {context.args[0]}",
+        user_id=str(update.message.chat_id),
+    )
+    await update.message.reply_text(response or "Proposition refusée.")
+
+
+async def cmd_evolution_stop(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update):
+        return await unauthorized(update)
+
+    response = await route_evolution_telegram_text(
+        "/evolution_stop",
+        user_id=str(update.message.chat_id),
+    )
+    await update.message.reply_text(response or "Évolution stoppée.")
 
 
 
@@ -834,6 +1002,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     user_message = update.message.text
     await update.message.chat.send_action("typing")
+
+    evolution_response = await route_evolution_telegram_text(
+        user_message,
+        user_id=str(update.message.chat_id),
+    )
+    if evolution_response:
+        await update.message.reply_text(evolution_response[:4096])
+        return
+
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
 
     q = _normalize(user_message)
@@ -891,6 +1068,11 @@ async def start_bot() -> None:
     _telegram_app.add_handler(CommandHandler("fix", cmd_fix))
     _telegram_app.add_handler(CommandHandler("review", cmd_review))
     _telegram_app.add_handler(CommandHandler("run", cmd_run))
+    _telegram_app.add_handler(CommandHandler("evolution", cmd_evolution))
+    _telegram_app.add_handler(CommandHandler("evolution_status", cmd_evolution_status))
+    _telegram_app.add_handler(CommandHandler("accept_evolution", cmd_accept_evolution))
+    _telegram_app.add_handler(CommandHandler("reject_evolution", cmd_reject_evolution))
+    _telegram_app.add_handler(CommandHandler("evolution_stop", cmd_evolution_stop))
     _telegram_app.add_handler(CommandHandler("goal", cmd_goal))
     _telegram_app.add_handler(CommandHandler("goal_active", cmd_goal_active))
     _telegram_app.add_handler(CommandHandler("ready", cmd_ready))

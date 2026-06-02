@@ -90,7 +90,12 @@ class DynamicAgentRegistry:
             "path": str(path),
             "spec": spec,
             "spec_signature": spec_signature,
+            "match_text": self._match_text(module_name, agent_name, module, agent, spec),
         }
+
+    def list_agent_records(self) -> list[dict[str, Any]]:
+        self.load_generated_agents()
+        return list(self._records.values())
 
     def spec_signature(self, spec: dict[str, Any] | None) -> str:
         if not spec:
@@ -107,3 +112,23 @@ class DynamicAgentRegistry:
 
     def _normalize_for_key(self, value: str) -> str:
         return self._normalize(value)
+
+    def _match_text(
+        self,
+        module_name: str,
+        agent_name: str,
+        module: Any,
+        agent: Any,
+        spec: dict[str, Any] | None,
+    ) -> str:
+        parts = [module_name, agent_name]
+        if spec:
+            parts.append(json.dumps(spec, sort_keys=True, ensure_ascii=False))
+
+        for source in (module, agent):
+            for attr in ("name", "title", "goal", "target_event", "source", "description"):
+                value = getattr(source, attr, None)
+                if isinstance(value, (str, int, float, bool)):
+                    parts.append(str(value))
+
+        return self._normalize(" ".join(parts))

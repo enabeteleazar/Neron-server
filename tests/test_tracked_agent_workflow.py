@@ -11,10 +11,12 @@ from core.agent_factory import build_orchestrator
 from core.agent_factory.factory_agent import AgentFactoryAgent
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.agent_factory.registry import DynamicAgentRegistry
+from core.agents.conversation.conversation_agent import ConversationAgent
 from core.events import event_types
 from core.events.event_bus import event_bus
 from core.pipeline.routing import agent_router
 from core.pipeline.intent.intent_router import Intent, IntentRouter
+from core.pipeline.intent.intent_router import IntentResult
 from core.projects.manager import ProjectManager
 
 
@@ -210,6 +212,69 @@ def test_dynamic_agent_registry_finds_registered_agent_by_spec(tmp_path: Path):
     assert match is not None
     assert match["agent_name"] == "event_countdown_agent"
     assert match["path"] == str(registered_agent)
+
+
+@pytest.mark.asyncio
+async def test_conversation_agent_discovers_and_runs_matching_registered_agent(tmp_path: Path):
+    generated_agents = tmp_path / "core" / "agents" / "generated"
+    generated_agents.mkdir(parents=True)
+    (generated_agents / "event_countdown_agent.py").write_text(
+        "class Agent:\n"
+        "    name = 'event_countdown_agent'\n"
+        "    target_event = 'WWDC'\n"
+        "    source = 'static Apple WWDC countdown'\n"
+        "    async def execute(self, text=''):\n"
+        "        return {'status': 'ok', 'response': 'Temps restant avant la WWDC : 5 jours'}\n",
+        encoding="utf-8",
+    )
+
+    result = await ConversationAgent(
+        registry=DynamicAgentRegistry(generated_agents)
+    ).delegate_to_registered_agent("Combien de temps reste-t-il avant la WWDC ?")
+
+    assert result is not None
+    assert result["ok"] is True
+    assert result["agent"] == "event_countdown_agent"
+    assert result["response"] == "Temps restant avant la WWDC : 5 jours"
+
+
+@pytest.mark.asyncio
+async def test_agent_router_routes_conversation_to_registered_agent_before_llm(monkeypatch):
+    class FakeModel:
+        def set_last_intent(self, *_args):
+            return None
+
+        def add_recent_activity(self, *_args):
+            return None
+
+        def set_last_agent(self, *_args):
+            return None
+
+        def set_last_action(self, *_args):
+            return None
+
+        def set_last_decision(self, *_args):
+            return None
+
+        def set_last_reasoning(self, *_args):
+            return None
+
+        def set_last_error(self, *_args):
+            return None
+
+    class ForbiddenLLM:
+        async def execute(self, *_args, **_kwargs):
+            raise AssertionError("LLM fallback must not run when a registered agent matches")
+
+    monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
+    monkeypatch.setattr(agent_router, "_get_llm", lambda: ForbiddenLLM())
+
+    response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        "Combien de temps reste-t-il avant la WWDC ?",
+    )
+
+    assert "Temps restant avant la WWDC" in response
 
 
 @pytest.mark.asyncio
