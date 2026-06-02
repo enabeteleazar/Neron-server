@@ -18,18 +18,13 @@ from core.task_system.task_manager import get_task_manager
 from core.planning.executor import PlanExecutor
 from core.task_system.task_manager import get_task_manager
 from core.cognitive.critic_engine import get_critic_engine
-from core.goals.goal_orchestrator import get_goal_orchestrator
 from core.code_awareness.analyzer import analyze_file
 from core.code_awareness.architecture_mapper import map_architecture
 from core.code_awareness.reader import read_file
 from core.code_awareness.scanner import scan_project
 from core.code_awareness.searcher import search_code
 from core.code_awareness.security import CodeAwarenessSecurityError
-from core.evolution.supervisor import (
-    EvolutionSupervisor,
-    format_proposals_for_telegram,
-    get_evolution_supervisor,
-)
+from core.orchestration.command_dispatcher import dispatch_command, route_evolution_text
 import unicodedata
 from pathlib import Path
 
@@ -480,98 +475,22 @@ async def cmd_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def route_evolution_telegram_text(
     text: str,
     *,
-    supervisor: EvolutionSupervisor | None = None,
+    supervisor=None,
     source_channel: str = "telegram",
     user_id: str = "telegram",
 ) -> str | None:
-    supervisor = supervisor or get_evolution_supervisor()
-    raw = text.strip()
-    normalized = _normalize(raw)
-
-    wants_proposals = normalized in {
-        "propose les prochaines evolutions",
-        "quelles sont les prochaines evolutions",
-        "quelles sont les prochaines evolutions ?",
-    } or (
-        "prochaines evolutions" in normalized
-        and any(token in normalized for token in ("propose", "quelles", "liste"))
+    return await route_evolution_text(
+        text,
+        supervisor=supervisor,
+        source_channel=source_channel,
+        user_id=user_id,
     )
-    if wants_proposals or normalized == "/evolution propose":
-        proposals = supervisor.generate_proposals()
-        return format_proposals_for_telegram(proposals)
-
-    if normalized in {"/evolution status", "/evolution_status", "evolution status"}:
-        status = supervisor.status()
-        active = status.get("active_run")
-        if active:
-            return (
-                "Évolution en cours\n"
-                f"Run : {active.get('run_id')}\n"
-                f"Statut : {active.get('status')}\n"
-                f"Étape : {active.get('current_step')}\n"
-                f"Progression : {active.get('progress')}%"
-            )
-        return f"Aucune mission d'évolution active. Propositions disponibles : {len(status.get('latest_proposals') or [])}"
-
-    if normalized.startswith("/accept_evolution "):
-        proposal_id = raw.split(maxsplit=1)[1].strip()
-        result = await supervisor.accept_proposal(
-            proposal_id,
-            source_channel=source_channel,
-            accepted_by=user_id,
-        )
-        return _format_evolution_result(result)
-
-    if normalized.startswith("/reject_evolution "):
-        proposal_id = raw.split(maxsplit=1)[1].strip()
-        result = supervisor.reject_proposal(
-            proposal_id,
-            source_channel=source_channel,
-            rejected_by=user_id,
-        )
-        return _format_evolution_result(result)
-
-    if normalized in {"/evolution_stop", "evolution stop", "/evolution stop"}:
-        result = await supervisor.stop()
-        return _format_evolution_result(result)
-
-    return None
 
 
 def _format_evolution_result(result: dict) -> str:
-    status = result.get("status")
-    if status == "accepted" and result.get("message"):
-        return str(result["message"])
-    if status == "not_found":
-        return "Proposition introuvable."
-    if status == "refused" and result.get("reason") == "evolution_run_already_active":
-        active = result.get("active_run") or {}
-        return (
-            "Une mission d'évolution est déjà active.\n"
-            f"Run : {active.get('run_id')}\n"
-            f"Étape : {active.get('current_step')}"
-        )
-    if status == "rejected":
-        proposal = result.get("proposal") or {}
-        return f"Proposition refusée : {proposal.get('proposal_id')} - {proposal.get('title')}"
-    if status == "stopped":
-        return "Évolution stoppée. Aucune nouvelle mission ne sera lancée sans validation."
+    from core.orchestration.command_dispatcher import get_command_dispatcher
 
-    run = result.get("run") or {}
-    project = result.get("project") or {}
-    lines = [
-        f"Évolution {status}",
-        f"Run : {run.get('run_id')}",
-        f"Projet : {project.get('project_id')}",
-        f"Étape : {run.get('current_step')}",
-    ]
-    if run.get("error"):
-        lines.append(f"Erreur : {run.get('error')}")
-    if run.get("commit_hash"):
-        lines.append(f"Commit : {run.get('commit_hash')}")
-    if status == "completed":
-        lines.append("Nouvelles propositions générées. En attente de validation.")
-    return "\n".join(line for line in lines if line and not line.endswith(": None"))
+    return get_command_dispatcher().format_evolution_result(result)
 
 
 async def cmd_evolution(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -650,87 +569,32 @@ async def cmd_goal(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not title:
         return await update.message.reply_text("Usage : /goal <objectif>")
 
-    orchestrator = get_goal_orchestrator()
-    result = await orchestrator.run_goal(title, source="telegram")
-
-    plan = result.get("plan", {})
-    risk = plan.get("risk", {})
-    short_id = str(plan.get("id") or "")[:8]
-    status = result.get("status")
-
-    if status == "plan_finished":
-        proposal = plan.get("agent_creation_proposal") or {}
-        lines = [
-            "✅ Objectif reçu",
-            "🧠 Plan généré",
-            "⚙ Exécution automatique autorisée",
-            "🏁 Objectif terminé",
-            "",
-            f"ID plan : {short_id}",
-            f"Risque : {risk.get('risk_level', 'low')} ({risk.get('risk_score', '?')}/100)",
-        ]
-        if proposal:
-            lines.extend(
-                [
-                    "",
-                    f"Proposition : {proposal.get('agent_name')}",
-                    f"État : {proposal.get('status')}",
-                ]
-            )
-        await update.message.reply_text("\n".join(lines))
-        return
-
-    if status in {"partial", "failed"}:
-        await update.message.reply_text(
-            "✅ Objectif reçu\n"
-            "🧠 Plan généré\n"
-            "📄 Rapport d'exécution envoyé\n\n"
-            f"ID plan : {short_id}\n"
-            f"Statut : {status}"
-        )
-        return
-
-    if status == "approval_required":
-        return
-
-    if status == "blocked":
-        await update.message.reply_text(
-            "✅ Objectif reçu\n"
-            "🧠 Plan généré\n"
-            "🚫 Exécution bloquée par le CriticEngine\n\n"
-            f"ID plan : {short_id}\n"
-            f"Risque : {risk.get('risk_level', 'critical')} ({risk.get('risk_score', '?')}/100)"
-        )
-        return
-
-    await update.message.reply_text(
-        f"✅ Objectif reçu\n🧠 Plan généré\nStatut : {status}\nID plan : {short_id}"
+    result = await dispatch_command(
+        {
+            "source": "telegram",
+            "type": "goal_request",
+            "payload": title,
+            "user_id": str(update.message.chat_id),
+        }
     )
+    for message in result.get("messages") or []:
+        if message:
+            await update.message.reply_text(message)
 
 
 async def cmd_goal_active(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
         return await unauthorized(update)
 
-    path = Path("/etc/neron/data/goals_state.json")
-
-    if not path.exists():
-        return await update.message.reply_text("Aucun objectif actif trouvé.")
-
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return await update.message.reply_text("Erreur lecture GoalSystem.")
-
-    active_id = data.get("active_goal_id")
-
-    for goal in data.get("goals", []):
-        if goal.get("id") == active_id or goal.get("status") == "active":
-            return await update.message.reply_text(
-                f"🎯 Objectif actif\n\nID : {goal.get('id')}\nTitre : {goal.get('title')}\nPriorité : {goal.get('priority')}"
-            )
-
-    await update.message.reply_text("Aucun objectif actif trouvé.")
+    result = await dispatch_command(
+        {
+            "source": "telegram",
+            "type": "active_goal",
+            "user_id": str(update.message.chat_id),
+        }
+    )
+    for message in result.get("messages") or ["Aucun objectif actif trouvé."]:
+        await update.message.reply_text(message)
 
 async def cmd_ready(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
@@ -773,44 +637,16 @@ async def cmd_approve(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not context.args:
         return await update.message.reply_text("Usage : /approve <plan_id>")
 
-    wanted = context.args[0].strip()
-    orchestrator = get_goal_orchestrator()
-    plan = orchestrator.find_plan(wanted)
-
-    if not plan:
-        return await update.message.reply_text("❌ Plan introuvable.")
-
-    await update.message.reply_text(
-        f"✅ Plan approuvé : {str(plan.get('id'))[:8]}\n"
-        f"⚙ Exécution contrôlée démarrée\nObjectif : {plan.get('goal')}"
+    result = await dispatch_command(
+        {
+            "source": "telegram",
+            "type": "approve_plan",
+            "payload": context.args[0].strip(),
+            "user_id": "telegram",
+        }
     )
-
-    result = await orchestrator.execute_approved_plan(wanted, approved_by="telegram")
-    updated = result.get("plan", plan)
-    status = result.get("status")
-
-    if status == "plan_finished":
-        return await update.message.reply_text(
-            f"📄 Rapport final envoyé\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
-        )
-
-    if status in {"partial", "failed"}:
-        return await update.message.reply_text(
-            f"📄 Rapport d'exécution envoyé\n\n"
-            f"ID : {str(updated.get('id'))[:8]}\n"
-            f"Statut : {status}"
-        )
-
-    if status == "blocked":
-        risk = updated.get("risk", {})
-        return await update.message.reply_text(
-            f"🚫 Exécution interdite\n\nObjectif : {updated.get('goal')}\n"
-            f"Risque : {risk.get('risk_level', 'critical')} ({risk.get('risk_score', '?')}/100)"
-        )
-
-    return await update.message.reply_text(
-        f"❌ Exécution non terminée\nStatut : {status}\nErreur : {result.get('error') or updated.get('error')}"
-    )
+    for message in result.get("messages") or []:
+        await update.message.reply_text(message)
 
 
 async def cmd_refuse(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -923,38 +759,16 @@ async def cmd_execute(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     if not context.args:
         return await update.message.reply_text("Usage : /execute <plan_id>")
 
-    wanted = context.args[0].strip()
-    orchestrator = get_goal_orchestrator()
-    plan = orchestrator.find_plan(wanted)
-
-    if not plan:
-        return await update.message.reply_text("❌ Plan introuvable.")
-
-    if plan.get("approved") is not True:
-        return await update.message.reply_text(
-            f"⛔ Plan non approuvé. Utilise d'abord : /approve {str(plan.get('id'))[:8]}"
-        )
-
-    result = await orchestrator.execute_plan(plan, approved_by="telegram")
-    updated = result.get("plan", plan)
-    status = result.get("status")
-
-    if status == "plan_finished":
-        await update.message.reply_text(
-            f"✅ Plan exécuté\n📄 Rapport final envoyé\n\nID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}"
-        )
-    elif status in {"partial", "failed"}:
-        await update.message.reply_text(
-            f"📄 Rapport d'exécution envoyé\n\n"
-            f"ID : {str(updated.get('id'))[:8]}\n"
-            f"Statut : {status}"
-        )
-    else:
-        await update.message.reply_text(
-            f"⚠ Exécution terminée avec statut : {status}\n\n"
-            f"ID : {str(updated.get('id'))[:8]}\nObjectif : {updated.get('goal')}\n"
-            f"Erreur : {result.get('error') or updated.get('error')}"
-        )
+    result = await dispatch_command(
+        {
+            "source": "telegram",
+            "type": "execute_plan",
+            "payload": context.args[0].strip(),
+            "user_id": "telegram",
+        }
+    )
+    for message in result.get("messages") or []:
+        await update.message.reply_text(message)
 
 
 async def cmd_plan_history(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
