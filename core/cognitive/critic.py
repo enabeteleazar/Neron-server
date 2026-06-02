@@ -1,10 +1,6 @@
-"""Critic engine skeleton.
+"""Lightweight critic fallback.
 
 Responsible for evaluating candidate plans or actions.
-
-TODO:
-- Provide scoring interface
-- Connect to DecisionEngine
 """
 
 class Critic:

@@ -1,8 +1,8 @@
 # core/constants.py
 # Source de vérité unique pour tous les mots-clés de détection d'intent.
-# Importé par intent_router.py et telegram_agent.py.
+# Importé par les routeurs et agents qui détectent les commandes utilisateur.
 #
-# v2.0 — Ajout des intents : NEWS_QUERY, WEATHER_QUERY, TODO_ACTION, WIKI_QUERY
+# v2.0 — Ajout des intents : NEWS_QUERY, WEATHER_QUERY, tâche utilisateur, WIKI_QUERY
 #         Inspiré de J.A.R.V.I.S (GauravSingh9356) — fonctionnalités portées
 #         dans l'architecture agent Néron (sans dépendances Windows/cloud).
 
@@ -122,7 +122,7 @@ WEATHER_KEYWORDS: list[str] = [
     "vent aujourd", "humidite aujourd",
 ]
 
-# ── Mots-clés todo list ───────────────────────────────────────────────────────
+# ── Mots-clés liste de tâches utilisateur ─────────────────────────────────────
 
 TODO_KEYWORDS: list[str] = [
     "ma liste", "mes taches", "mes tâches",

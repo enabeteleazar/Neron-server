@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import ast
 import hashlib
+import io
 import json
+import re
 import subprocess
+import tokenize
 from pathlib import Path
 from typing import Any
 
 from core.evolution.models import EvolutionProposal
+
+
+TODO_MARKER_RE = re.compile(r"(?<![A-Za-z0-9_/])(?:TODO|FIXME)(?::|\s|$)")
 
 
 class ProposalEngine:
@@ -351,21 +358,97 @@ class ProposalEngine:
 
     def _collect_todos(self, path: Path, results: list[dict[str, Any]]) -> None:
         try:
-            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            text = path.read_text(encoding="utf-8", errors="replace")
         except Exception:
             return
+
+        lines = text.splitlines()
+
+        if path.suffix == ".py":
+            self._collect_python_todos(path, text, lines, results)
+            return
+
         for line_number, line in enumerate(lines, start=1):
-            upper = line.upper()
-            if "TODO" in upper or "FIXME" in upper:
-                results.append(
-                    {
-                        "file": str(path.relative_to(self.workspace)),
-                        "line": line_number,
-                        "text": line.strip()[:160],
-                    }
-                )
+            self._append_todo_if_present(path, line_number, line, results)
+            if len(results) >= 30:
+                return
+
+    def _collect_python_todos(
+        self,
+        path: Path,
+        text: str,
+        lines: list[str],
+        results: list[dict[str, Any]],
+    ) -> None:
+        docstring_lines = self._python_docstring_lines(text)
+
+        try:
+            tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        except tokenize.TokenError:
+            tokens = iter(())
+
+        for token in tokens:
+            if token.type != tokenize.COMMENT:
+                continue
+            self._append_todo_if_present(
+                path,
+                token.start[0],
+                lines[token.start[0] - 1],
+                results,
+            )
+            if len(results) >= 30:
+                return
+
+        for line_number in sorted(docstring_lines):
+            if line_number <= len(lines):
+                self._append_todo_if_present(path, line_number, lines[line_number - 1], results)
                 if len(results) >= 30:
                     return
+
+    def _python_docstring_lines(self, text: str) -> set[int]:
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            return set()
+
+        lines: set[int] = set()
+
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not node.body:
+                continue
+
+            first = node.body[0]
+            if (
+                isinstance(first, ast.Expr)
+                and isinstance(first.value, ast.Constant)
+                and isinstance(first.value.value, str)
+            ):
+                start = getattr(first, "lineno", None)
+                end = getattr(first, "end_lineno", start)
+                if start is not None and end is not None:
+                    lines.update(range(start, end + 1))
+
+        return lines
+
+    def _append_todo_if_present(
+        self,
+        path: Path,
+        line_number: int,
+        line: str,
+        results: list[dict[str, Any]],
+    ) -> None:
+        if not TODO_MARKER_RE.search(line):
+            return
+
+        results.append(
+            {
+                "file": str(path.relative_to(self.workspace)),
+                "line": line_number,
+                "text": line.strip()[:160],
+            }
+        )
 
     def _route_snapshot(self) -> list[str]:
         paths: set[str] = set()

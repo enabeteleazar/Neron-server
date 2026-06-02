@@ -508,7 +508,8 @@ async def route_evolution_telegram_text(
                 "Évolution en cours\n"
                 f"Run : {active.get('run_id')}\n"
                 f"Statut : {active.get('status')}\n"
-                f"Étape : {active.get('current_step')}"
+                f"Étape : {active.get('current_step')}\n"
+                f"Progression : {active.get('progress')}%"
             )
         return f"Aucune mission d'évolution active. Propositions disponibles : {len(status.get('latest_proposals') or [])}"
 
@@ -539,6 +540,8 @@ async def route_evolution_telegram_text(
 
 def _format_evolution_result(result: dict) -> str:
     status = result.get("status")
+    if status == "accepted" and result.get("message"):
+        return str(result["message"])
     if status == "not_found":
         return "Proposition introuvable."
     if status == "refused" and result.get("reason") == "evolution_run_already_active":
@@ -601,12 +604,11 @@ async def cmd_accept_evolution(update: Update, context: ContextTypes.DEFAULT_TYP
     if not context.args:
         return await update.message.reply_text("Usage : /accept_evolution 1")
 
-    sent = await update.message.reply_text("Validation reçue. Exécution contrôlée en cours...")
     response = await route_evolution_telegram_text(
         f"/accept_evolution {context.args[0]}",
         user_id=str(update.message.chat_id),
     )
-    await sent.edit_text((response or "Exécution terminée.")[:4096])
+    await update.message.reply_text((response or "Évolution acceptée. Exécution en arrière-plan.")[:4096])
 
 
 async def cmd_reject_evolution(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

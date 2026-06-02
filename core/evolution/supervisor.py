@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from core.evolution.codex_runner import CODEX_MISSING_ERROR, CodexRunner, redact_secrets
 from core.evolution.models import EvolutionProposal
@@ -12,6 +14,8 @@ from core.projects.manager import ProjectManager, get_project_manager
 
 
 logger = logging.getLogger("neron.evolution")
+
+EVOLUTION_ACCEPTED_BACKGROUND_MESSAGE = "Évolution acceptée. Exécution en arrière-plan."
 
 
 class EvolutionSupervisor:
@@ -23,11 +27,17 @@ class EvolutionSupervisor:
         codex_runner: CodexRunner | None = None,
         project_manager: ProjectManager | None = None,
         workspace: Path = Path("/etc/neron"),
+        timeout_seconds: int | None = None,
+        telegram_notifier: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self.storage = storage or EvolutionStorage()
         self.proposal_engine = proposal_engine or ProposalEngine(workspace)
         self.codex_runner = codex_runner or CodexRunner(workspace=workspace)
         self.project_manager = project_manager or get_project_manager()
+        self.timeout_seconds = timeout_seconds or int(os.getenv("NERON_EVOLUTION_RUN_TIMEOUT", "1800"))
+        self._telegram_notifier = telegram_notifier
+        self._accept_lock = asyncio.Lock()
+        self._background_tasks: dict[str, asyncio.Task[dict[str, Any] | None]] = {}
 
     def observe(self) -> dict[str, Any]:
         return self.proposal_engine.observe()
@@ -59,63 +69,69 @@ class EvolutionSupervisor:
         accepted_by: str = "user",
         execute: bool = True,
     ) -> dict[str, Any]:
-        active = self.storage.active_run()
-        if active:
-            return {
-                "status": "refused",
-                "reason": "evolution_run_already_active",
-                "active_run": active,
-            }
+        async with self._accept_lock:
+            active = self.storage.active_run()
+            if active:
+                return {
+                    "status": "refused",
+                    "reason": "evolution_run_already_active",
+                    "active_run": active,
+                }
 
-        proposal = self.storage.get_proposal(proposal_id)
-        if not proposal:
-            return {"status": "not_found", "proposal_id": proposal_id}
+            proposal = self.storage.get_proposal(proposal_id)
+            if not proposal:
+                return {"status": "not_found", "proposal_id": proposal_id}
 
-        self.storage.record_decision(
-            proposal,
-            "accepted",
-            source_channel=source_channel,
-            decided_by=accepted_by,
-        )
-        self.storage.mark_proposal(str(proposal["proposal_id"]), "accepted")
-        project = self.project_manager.create_project(
-            title=str(proposal.get("title") or "Evolution Néron"),
-            project_type="evolution",
-            requested_by=accepted_by,
-            source_channel=source_channel,
-            query=str(proposal.get("summary") or ""),
-            metadata={
-                "proposal_id": proposal.get("proposal_id"),
-                "title": proposal.get("title"),
-                "codex_prompt": proposal.get("codex_prompt"),
-                "tests": [],
-                "commit_hash": None,
-                "branch": None,
-            },
-        )
-        project = self.project_manager.update_project(
-            project["project_id"],
-            {"status": "running"},
-            step="accepted",
-            step_status="done",
-            progress=10,
-        ) or project
-        run = self.storage.create_run(
-            proposal,
-            project_id=project.get("project_id"),
-            source_channel=source_channel,
-            accepted_by=accepted_by,
-        )
-        run = self.storage.update_run(
-            run["run_id"],
-            {"status": "running", "current_step": "accepted", "progress": 10},
-        ) or run
+            self.storage.record_decision(
+                proposal,
+                "accepted",
+                source_channel=source_channel,
+                decided_by=accepted_by,
+            )
+            self.storage.mark_proposal(str(proposal["proposal_id"]), "accepted")
+            project = self.project_manager.create_project(
+                title=str(proposal.get("title") or "Evolution Néron"),
+                project_type="evolution",
+                requested_by=accepted_by,
+                source_channel=source_channel,
+                query=str(proposal.get("summary") or ""),
+                metadata={
+                    "proposal_id": proposal.get("proposal_id"),
+                    "title": proposal.get("title"),
+                    "codex_prompt": proposal.get("codex_prompt"),
+                    "tests": [],
+                    "commit_hash": None,
+                    "branch": None,
+                },
+            )
+            project = self.project_manager.update_project(
+                project["project_id"],
+                {"status": "running"},
+                step="accepted",
+                step_status="done",
+                progress=10,
+            ) or project
+            run = self.storage.create_run(
+                proposal,
+                project_id=project.get("project_id"),
+                source_channel=source_channel,
+                accepted_by=accepted_by,
+            )
+            run = self.storage.update_run(
+                run["run_id"],
+                {"status": "running", "current_step": "accepted", "progress": 10},
+            ) or run
 
         if not execute:
             return {"status": "accepted", "run": run, "project": project}
 
-        result = await self.run_accepted_proposal(run["run_id"])
-        return {"status": result.get("status"), "run": result, "project": self._project_for_run(result)}
+        self._start_background_run(str(run["run_id"]))
+        return {
+            "status": "accepted",
+            "message": EVOLUTION_ACCEPTED_BACKGROUND_MESSAGE,
+            "run": run,
+            "project": project,
+        }
 
     def reject_proposal(
         self,
@@ -145,7 +161,9 @@ class EvolutionSupervisor:
         project_id = run.get("project_id")
         prompt = str(proposal.get("codex_prompt") or "")
         if not prompt:
-            return self._fail_run(run, "Proposition sans prompt Codex.")
+            failed = self._fail_run(run, "Proposition sans prompt Codex.")
+            await self._notify_telegram(_short_run_report(failed))
+            return failed
 
         codex_status = self._codex_status()
         if not codex_status["codex_available"]:
@@ -239,6 +257,8 @@ class EvolutionSupervisor:
     async def stop(self) -> dict[str, Any]:
         self.storage.set_stopped(True)
         await self.codex_runner.cancel()
+        for task in list(self._background_tasks.values()):
+            task.cancel()
         active = self.storage.active_run()
         if not active:
             return {"status": "stopped", "active_run": None}
@@ -252,6 +272,52 @@ class EvolutionSupervisor:
         )
         self._update_project(active.get("project_id"), status="cancelled", step="cancelled", progress=0)
         return {"status": "stopped", "active_run": run}
+
+    def _start_background_run(self, run_id: str) -> None:
+        task = asyncio.create_task(self._run_background(run_id), name=f"evolution-{run_id}")
+        self._background_tasks[run_id] = task
+        task.add_done_callback(lambda done_task: self._on_background_done(run_id, done_task))
+
+    async def _run_background(self, run_id: str) -> dict[str, Any] | None:
+        try:
+            return await asyncio.wait_for(
+                self.run_accepted_proposal(run_id),
+                timeout=self.timeout_seconds,
+            )
+        except asyncio.TimeoutError:
+            await self.codex_runner.cancel()
+            run = self.storage.get_run(run_id)
+            if not run:
+                return None
+            failed = self._fail_run(run, f"Evolution timeout après {self.timeout_seconds}s.")
+            await self._notify_telegram(_short_run_report(failed))
+            self.generate_proposals()
+            return failed
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            run = self.storage.get_run(run_id)
+            if not run:
+                logger.exception("Evolution background run failed before state was available: %s", run_id)
+                return None
+            failed = self._fail_run(run, f"Erreur worker EvolutionSupervisor: {exc}")
+            await self._notify_telegram(_short_run_report(failed))
+            self.generate_proposals()
+            logger.exception("Evolution background run failed: %s", run_id)
+            return failed
+
+    def _on_background_done(
+        self,
+        run_id: str,
+        task: asyncio.Task[dict[str, Any] | None],
+    ) -> None:
+        self._background_tasks.pop(run_id, None)
+        if task.cancelled():
+            return
+        try:
+            task.result()
+        except Exception:
+            logger.exception("Evolution background task ended with an unhandled error: %s", run_id)
 
     def _fail_run(self, run: dict[str, Any], error: str, **updates: Any) -> dict[str, Any]:
         payload = {
@@ -320,6 +386,9 @@ class EvolutionSupervisor:
         }
 
     async def _notify_telegram(self, message: str) -> None:
+        if self._telegram_notifier:
+            await self._telegram_notifier(redact_secrets(message[:3500]))
+            return
         try:
             from core.agents.communication.telegram_agent import send_notification
 

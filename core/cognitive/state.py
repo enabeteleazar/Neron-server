@@ -1,10 +1,6 @@
-"""Cognitive state skeleton.
+"""Cognitive state container.
 
 Hold lightweight cognitive state and provide serialization.
-
-TODO:
-- Add consolidation and memory interfaces
-- Expose safe update/merge methods
 """
 
 from dataclasses import dataclass, field

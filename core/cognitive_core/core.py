@@ -273,9 +273,6 @@ class CognitiveCore:
             runtime_policy=runtime_policy,
             next_action=next_action,
         )
-
-    
-
     def to_dict(self) -> dict[str, Any]:
         return asdict(self.evaluate())
 
@@ -415,38 +412,3 @@ class CognitiveCore:
                 pass
 
         return []
-
-    def _decide_next_action(
-        self,
-        self_health: str | None,
-        world_status: str | None,
-        active_goal: str | None,
-        active_tasks: list[dict[str, Any]],
-        diagnostics: list[str],
-    ) -> str | None:
-
-        if self_health in {
-            "critical",
-            "warning",
-            "stable_with_warning",
-            "unknown",
-        }:
-            return "stabilize_self_model"
-
-        if world_status not in {
-            None,
-            "stable",
-            "healthy",
-        }:
-            return "stabilize_world_model"
-
-        if not active_goal:
-            return "restore_active_goal"
-
-        if not active_tasks:
-            return "create_task_from_active_goal"
-
-        if diagnostics:
-            return "run_critic_engine"
-
-        return "continue_current_plan"
