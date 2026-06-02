@@ -1,6 +1,9 @@
 # core/gateway/telegram_gateway.py
-# Gateway Telegram Néron.
-# Utilise InternalGateway directement (pas d'appels HTTP vers soi-même).
+# Compatibility Telegram gateway for the control-plane stack.
+#
+# The main neron-core runtime starts `core.agents.communication.telegram_agent`.
+# This gateway is retained for `core.control_plane.core.NeronCore` and should
+# not be started concurrently with the main Telegram bot.
 
 from __future__ import annotations
 

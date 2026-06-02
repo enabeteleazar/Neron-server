@@ -1,4 +1,7 @@
-# PATCH : core/agents/communication/telegram_agent.py
+# LEGACY PATCH NOTES: core/agents/communication/telegram_agent.py
+#
+# This file documents an older patch-style Telegram integration. The active
+# runtime surface is `core.agents.communication.telegram_agent`.
 # Ajouter les commandes suivantes dans la méthode _register_handlers()
 # (ou équivalent selon votre version).
 #

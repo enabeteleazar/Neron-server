@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 import time
 from contextlib import contextmanager
@@ -12,12 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from core.config import settings
-
 logger = logging.getLogger("world_model.store")
 
 # Chemins
-_WM_DIR      = settings.LOGS_DIR.parent / "data" / "world_model"
+_WM_DIR      = Path(os.getenv("NERON_WORLD_MODEL_DIR", "/etc/neron/data/world_model"))
 _SNAPSHOT_PATH = _WM_DIR / "current.json"
 _DB_PATH       = _WM_DIR / "history.db"
 

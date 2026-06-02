@@ -1,6 +1,7 @@
-# core/world_model/api.py
-# World Model API — Routes FastAPI /world-model
-# A intégrer dans app.py via : app.include_router(world_model_router)
+# Legacy-compatible World Model API.
+#
+# Not included by `core.app` in the current runtime. The official runtime
+# surface is `core.api.world_model_routes`, backed by `core.world_model`.
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.security.api_key import APIKeyHeader
 
-from config import settings
+from core.config import settings
 from .builder import build_world_model
 from .store   import WorldModelStore
 
