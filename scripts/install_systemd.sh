@@ -7,14 +7,29 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 BASE_DIR="/etc/neron"
+SYSTEMD_DIR="$BASE_DIR/deploy"
+UNITS=(
+  "neron-core.service"
+  "neron-self-model-loop.service"
+  "neron-world-model-loop.service"
+  "neron-cognitive-loop.service"
+  "neron-llm.service"
+  "neron-doctor.service"
+)
 
 echo "Installing systemd unit files..."
 mkdir -p /etc/systemd/system
-cp "$BASE_DIR/deploy/neron.service" /etc/systemd/system/neron.service
-cp "$BASE_DIR/deploy/neron-llm.service" /etc/systemd/system/neron-llm.service
+for unit in "${UNITS[@]}"; do
+  if [ ! -f "$SYSTEMD_DIR/$unit" ]; then
+    echo "Missing unit file: $SYSTEMD_DIR/$unit" >&2
+    exit 1
+  fi
+  cp "$SYSTEMD_DIR/$unit" "/etc/systemd/system/$unit"
+done
 
 systemctl daemon-reload
-systemctl enable --now neron.service
-systemctl enable --now neron-llm.service
+for unit in "${UNITS[@]}"; do
+  systemctl enable --now "$unit"
+done
 
-echo "Services enabled and started. Check status with: systemctl status neron.service neron-llm.service"
+echo "Services enabled and started. Check status with: systemctl status ${UNITS[*]}"
