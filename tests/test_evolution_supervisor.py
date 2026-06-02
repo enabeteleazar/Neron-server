@@ -10,6 +10,7 @@ from core.evolution import codex_runner as codex_runner_module
 from core.evolution.codex_runner import (
     CODEX_MISSING_ERROR,
     CodexRunner,
+    build_codex_exec_command,
     redact_secrets,
     resolve_codex_bin,
 )
@@ -73,8 +74,8 @@ def make_supervisor(tmp_path: Path, runner: FakeCodexRunner | None = None) -> Ev
     )
 
 
-def make_executable(path: Path) -> Path:
-    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+def make_executable(path: Path, content: str = "#!/bin/sh\nexit 0\n") -> Path:
+    path.write_text(content, encoding="utf-8")
     path.chmod(0o755)
     return path
 
@@ -266,6 +267,48 @@ def test_codex_bin_resolves_from_known_paths(tmp_path: Path, monkeypatch: pytest
     assert error is None
 
 
+def test_codex_exec_command_uses_old_supported_syntax():
+    command = build_codex_exec_command(
+        "/usr/bin/codex",
+        "Options:\n  --ask-for-approval <POLICY>\n  --sandbox <SANDBOX_MODE>\n",
+        "mission",
+    )
+
+    assert command == [
+        "/usr/bin/codex",
+        "exec",
+        "--ask-for-approval",
+        "never",
+        "--sandbox",
+        "workspace-write",
+        "mission",
+    ]
+
+
+def test_codex_exec_command_uses_new_supported_syntax():
+    command = build_codex_exec_command(
+        "/usr/bin/codex",
+        "Options:\n  --approval-mode <MODE>\n  --sandbox-mode <SANDBOX_MODE>\n",
+        "mission",
+    )
+
+    assert command == [
+        "/usr/bin/codex",
+        "exec",
+        "--approval-mode",
+        "never",
+        "--sandbox-mode",
+        "workspace-write",
+        "mission",
+    ]
+
+
+def test_codex_exec_command_omits_unsupported_options():
+    command = build_codex_exec_command("/usr/bin/codex", "Options:\n  --json\n", "mission")
+
+    assert command == ["/usr/bin/codex", "exec", "mission"]
+
+
 def test_codex_bin_returns_clear_error_when_missing(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("NERON_CODEX_BIN", raising=False)
     monkeypatch.setenv("PATH", "")
@@ -301,8 +344,47 @@ def test_codex_runner_does_not_launch_subprocess_when_codex_is_missing(
     assert result.stderr == CODEX_MISSING_ERROR
 
 
-def test_evolution_status_exposes_codex_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_codex_runner_runs_exec_help_preflight_before_real_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
     codex = make_executable(tmp_path / "codex")
+    calls: list[tuple[str, list[str]]] = []
+
+    async def fake_run_command(name: str, command: list[str], *, timeout: int | None = None):
+        calls.append((name, command))
+        if name == "codex_exec_help":
+            return CommandResult(name, command, 0, stdout="Options:\n  --sandbox <SANDBOX_MODE>\n")
+        return CommandResult(name, command, 0, stdout="done")
+
+    monkeypatch.setenv("NERON_CODEX_BIN", str(codex))
+    runner = CodexRunner(workspace=tmp_path)
+    monkeypatch.setattr(runner, "run_command", fake_run_command)
+
+    result = asyncio.run(runner.run_codex("mission", "run-1"))
+
+    assert result.ok
+    assert calls[0] == ("codex_exec_help", [str(codex), "exec", "--help"])
+    assert calls[1] == ("codex", [str(codex), "exec", "--sandbox", "workspace-write", "mission"])
+
+
+def test_evolution_status_exposes_codex_diagnostics(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    codex = make_executable(
+        tmp_path / "codex",
+        """#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo "codex-cli 1.2.3"
+  exit 0
+fi
+if [ "$1" = "exec" ] && [ "$2" = "--help" ]; then
+  echo "Options:"
+  echo "  --approval-mode <MODE>"
+  echo "  --sandbox-mode <SANDBOX_MODE>"
+  exit 0
+fi
+exit 0
+""",
+    )
     monkeypatch.setenv("NERON_CODEX_BIN", str(codex))
     supervisor = EvolutionSupervisor(
         storage=EvolutionStorage(tmp_path / "evolution_state.json"),
@@ -317,3 +399,5 @@ def test_evolution_status_exposes_codex_diagnostics(tmp_path: Path, monkeypatch:
     assert status["codex_available"] is True
     assert status["codex_bin"] == str(codex)
     assert status["codex_error"] is None
+    assert status["codex_version"] == "codex-cli 1.2.3"
+    assert status["codex_exec_supported_options"] == ["--approval-mode", "--sandbox-mode"]

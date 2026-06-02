@@ -3,19 +3,23 @@ from __future__ import annotations
 import asyncio
 import os
 import re
-import shlex
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from core.evolution.models import CommandResult
 
 CODEX_MISSING_ERROR = "Codex CLI introuvable. Configure NERON_CODEX_BIN ou PATH systemd."
+CODEX_PREFLIGHT_ERROR = "Pré-vol Codex échoué: codex exec --help a échoué."
+CODEX_PROBE_TIMEOUT_SECONDS = 10
 KNOWN_CODEX_PATHS = (
     Path("/home/neron/.local/bin/codex"),
     Path("/usr/local/bin/codex"),
     Path("/usr/bin/codex"),
 )
+APPROVAL_OPTION_CANDIDATES = ("--ask-for-approval", "--approval-mode", "--approval-policy")
+SANDBOX_OPTION_CANDIDATES = ("--sandbox", "--sandbox-mode")
 
 
 SECRET_PATTERNS = [
@@ -60,6 +64,65 @@ def resolve_codex_bin() -> tuple[str | None, str | None]:
     return None, CODEX_MISSING_ERROR
 
 
+def extract_codex_exec_options(help_text: str) -> list[str]:
+    options = set()
+    for line in help_text.splitlines():
+        match = re.match(r"^\s*(?:-[A-Za-z0-9],\s*)?(--[a-z0-9][a-z0-9-]*)\b", line)
+        if match:
+            options.add(match.group(1))
+    return sorted(options)
+
+
+def build_codex_exec_command(codex_bin: str, help_text: str, prompt: str) -> list[str]:
+    supported_options = set(extract_codex_exec_options(help_text))
+    command = [codex_bin, "exec"]
+
+    approval_option = _first_supported_option(supported_options, APPROVAL_OPTION_CANDIDATES)
+    if approval_option:
+        command.extend([approval_option, "never"])
+
+    sandbox_option = _first_supported_option(supported_options, SANDBOX_OPTION_CANDIDATES)
+    if sandbox_option:
+        command.extend([sandbox_option, "workspace-write"])
+
+    command.append(prompt)
+    return command
+
+
+def probe_codex_cli(codex_bin: str) -> dict[str, str | list[str] | None]:
+    version = _run_probe([codex_bin, "--version"])
+    help_result = _run_probe([codex_bin, "exec", "--help"])
+    help_text = help_result["output"] if help_result["ok"] else ""
+    error = None if help_result["ok"] else CODEX_PREFLIGHT_ERROR
+    return {
+        "codex_version": version["output"] if version["ok"] else None,
+        "codex_exec_supported_options": extract_codex_exec_options(help_text),
+        "codex_error": error,
+    }
+
+
+def _first_supported_option(supported_options: set[str], candidates: tuple[str, ...]) -> str | None:
+    for option in candidates:
+        if option in supported_options:
+            return option
+    return None
+
+
+def _run_probe(command: list[str]) -> dict[str, str | bool]:
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=CODEX_PROBE_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except Exception as exc:
+        return {"ok": False, "output": redact_secrets(str(exc))}
+    output = redact_secrets((completed.stdout or completed.stderr or "").strip())
+    return {"ok": completed.returncode == 0, "output": output}
+
+
 class CodexRunner:
     def __init__(
         self,
@@ -73,12 +136,20 @@ class CodexRunner:
         self.dry_run = bool(dry_run) if dry_run is not None else os.getenv("NERON_CODEX_DRY_RUN") == "1"
         self._process: asyncio.subprocess.Process | None = None
 
-    def codex_status(self) -> dict[str, str | bool | None]:
+    def codex_status(self) -> dict[str, str | bool | list[str] | None]:
         codex_bin, error = resolve_codex_bin()
+        probe = (
+            probe_codex_cli(codex_bin)
+            if codex_bin
+            else {"codex_version": None, "codex_exec_supported_options": [], "codex_error": error}
+        )
+        probe_error = probe.get("codex_error")
         return {
-            "codex_available": codex_bin is not None,
+            "codex_available": codex_bin is not None and probe_error is None,
             "codex_bin": codex_bin,
-            "codex_error": error,
+            "codex_error": error or probe_error,
+            "codex_version": probe.get("codex_version"),
+            "codex_exec_supported_options": probe.get("codex_exec_supported_options") or [],
         }
 
     async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
@@ -90,22 +161,30 @@ class CodexRunner:
                 stdout=f"Dry-run Codex execution for {run_id}. Prompt length: {len(prompt)}",
             )
 
-        command = shlex.split(
-            os.getenv(
-                "NERON_CODEX_COMMAND",
-                "codex exec --ask-for-approval never --sandbox workspace-write",
-            )
-        )
         codex_bin, error = resolve_codex_bin()
         if not codex_bin:
             return CommandResult(
                 name="codex",
-                command=command,
+                command=["codex", "exec"],
                 returncode=1,
                 stderr=error or CODEX_MISSING_ERROR,
             )
-        command[0] = codex_bin
-        return await self.run_command("codex", command + [prompt], timeout=self.timeout_seconds)
+
+        preflight = await self.run_command(
+            "codex_exec_help",
+            [codex_bin, "exec", "--help"],
+            timeout=CODEX_PROBE_TIMEOUT_SECONDS,
+        )
+        if not preflight.ok:
+            return CommandResult(
+                name="codex",
+                command=[codex_bin, "exec"],
+                returncode=1,
+                stderr=preflight.stderr or preflight.stdout or CODEX_PREFLIGHT_ERROR,
+            )
+
+        command = build_codex_exec_command(codex_bin, preflight.stdout + preflight.stderr, prompt)
+        return await self.run_command("codex", command, timeout=self.timeout_seconds)
 
     async def run_tests(self) -> list[CommandResult]:
         commands = [

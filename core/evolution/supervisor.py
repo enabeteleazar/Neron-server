@@ -149,16 +149,17 @@ class EvolutionSupervisor:
 
         codex_status = self._codex_status()
         if not codex_status["codex_available"]:
+            codex_error = str(codex_status.get("codex_error") or CODEX_MISSING_ERROR)
             failed = self._fail_run(
                 run,
-                CODEX_MISSING_ERROR,
+                codex_error,
                 codex={
                     "ok": False,
                     "name": "codex",
                     "command": [],
                     "returncode": 1,
                     "stdout": "",
-                    "stderr": codex_status.get("codex_error") or CODEX_MISSING_ERROR,
+                    "stderr": codex_error,
                     "timed_out": False,
                 },
             )
@@ -310,7 +311,13 @@ class EvolutionSupervisor:
         status_getter = getattr(self.codex_runner, "codex_status", None)
         if callable(status_getter):
             return dict(status_getter())
-        return {"codex_available": True, "codex_bin": None, "codex_error": None}
+        return {
+            "codex_available": True,
+            "codex_bin": None,
+            "codex_error": None,
+            "codex_version": None,
+            "codex_exec_supported_options": [],
+        }
 
     async def _notify_telegram(self, message: str) -> None:
         try:

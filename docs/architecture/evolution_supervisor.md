@@ -63,7 +63,8 @@ dans le dernier cycle (`1`, `2`, `3`).
 - Aucune proposition n'est exécutée sans acceptation.
 - Aucun second run ne démarre si un run est déjà `pending` ou `running`.
 - Codex réel n'est appelé que par `CodexRunner` au runtime.
-- `/evolution/status` expose `codex_available`, `codex_bin` et `codex_error`.
+- `/evolution/status` expose `codex_available`, `codex_bin`,
+  `codex_error`, `codex_version` et `codex_exec_supported_options`.
 - Les tests unitaires injectent un runner factice.
 - Les logs sont filtrés par `redact_secrets`.
 - Aucun commit n'est tenté si Codex ou les tests échouent.
@@ -86,6 +87,10 @@ Si aucun binaire exécutable n'est trouvé, le run échoue avec :
 ```text
 Codex CLI introuvable. Configure NERON_CODEX_BIN ou PATH systemd.
 ```
+
+Avant toute exécution réelle, `CodexRunner` lance `codex exec --help`, détecte
+les options disponibles, puis construit une commande ne contenant que les options
+supportées par la version installée.
 
 ## Stockage
 
