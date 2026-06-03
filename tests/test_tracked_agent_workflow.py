@@ -1124,6 +1124,34 @@ async def test_agent_creation_dispatch_uses_build_orchestrator(monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("query", ["liste agents", "affiche les agents"])
+async def test_agent_list_variants_use_same_registry_action(monkeypatch, query):
+    class FakeModel:
+        def set_last_intent(self, *_args):
+            return None
+
+        def add_recent_activity(self, *_args):
+            return None
+
+    calls: list[str] = []
+
+    def fake_list_dynamic_agents() -> str:
+        calls.append("list")
+        return "Agents dynamiques disponibles :\n- demo_agent"
+
+    monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
+    monkeypatch.setattr(agent_router, "_list_dynamic_agents", fake_list_dynamic_agents)
+
+    response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        query,
+    )
+
+    assert response == "Agents dynamiques disponibles :\n- demo_agent"
+    assert calls == ["list"]
+
+
+@pytest.mark.asyncio
 async def test_legacy_agent_factory_delegates_to_build_orchestrator(monkeypatch):
     from core.agent_factory import factory_agent
 

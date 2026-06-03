@@ -22,6 +22,17 @@ _todo: Optional[object] = None
 _wiki: Optional[object] = None
 _agent_factory: Optional[object] = None
 
+AGENT_LIST_QUERIES = {
+    "quels agents sont disponibles",
+    "agents disponibles",
+    "liste les agents",
+    "liste agents",
+    "affiche les agents",
+    "affiche moi les agents",
+    "montre les agents",
+    "montre moi les agents",
+}
+
 
 def _normalize(text: str) -> str:
     text = text.lower().strip()
@@ -153,6 +164,10 @@ def _list_dynamic_agents() -> str:
     lines.extend(f"- {name}" for name in agents)
 
     return "\n".join(lines)
+
+
+def _is_agent_list_query(query: str) -> bool:
+    return _normalize(query).strip(" ?!.:,;") in AGENT_LIST_QUERIES
 
 
 def _project_status_text(query: str) -> str:
@@ -341,7 +356,7 @@ class AgentRouter:
         )
         model.add_recent_activity(f"Intent détecté : {intent_name}")
 
-        intent = intent_result.intent
+        intent = Intent.AGENT_LIST if _is_agent_list_query(query) else intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
 
         if _is_promote_request(query):

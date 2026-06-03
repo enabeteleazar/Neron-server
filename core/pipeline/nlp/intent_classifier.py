@@ -37,9 +37,13 @@ KEYWORDS: dict[str, list[str]] = {
     ],
     "agent_list": [
         "liste les agents",
+        "liste agents",
+        "affiche les agents",
+        "affiche moi les agents",
         "agents disponibles",
         "quels agents",
         "montre les agents",
+        "montre moi les agents",
     ],
     "agent_run": [
         "lance l agent",

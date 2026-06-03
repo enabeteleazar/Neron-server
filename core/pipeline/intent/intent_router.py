@@ -199,9 +199,13 @@ def _fallback_intent(query: str) -> Intent | None:
 
     agent_list_keywords = [
         "liste les agents",
+        "liste agents",
+        "affiche les agents",
+        "affiche moi les agents",
         "agents disponibles",
         "quels agents",
         "montre les agents",
+        "montre moi les agents",
     ]
 
     agent_run_keywords = [

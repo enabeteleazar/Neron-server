@@ -141,6 +141,24 @@ class TestIntentPersonality:
         assert result.confidence in ["medium", "high"]
 
 
+class TestIntentAgentList:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("query", [
+        "liste les agents",
+        "liste agents",
+        "affiche les agents",
+        "affiche moi les agents",
+        "agents disponibles",
+        "quels agents sont disponibles ?",
+        "montre les agents",
+        "montre moi les agents",
+    ])
+    async def test_agent_list_variants(self, router, query):
+        result = await router.route(query)
+        assert result.intent == Intent.AGENT_LIST
+        assert result.confidence in ["medium", "high"]
+
+
 class TestIntentConversation:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("query", [
