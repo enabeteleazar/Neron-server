@@ -361,6 +361,33 @@ def test_agent_creator_respects_explicit_agent_name(tmp_path: Path):
     ]
 
 
+@pytest.mark.parametrize(
+    ("goal", "expected_agent_name"),
+    [
+        ("Créer un brouillon d’agent de test nommé audit_agent_test", "audit_agent_test"),
+        ("Créer un agent appelé maison_agent", "maison_agent"),
+        ("Create an agent named demo_agent", "demo_agent"),
+        ("Créer un agent météo", "weather_agent"),
+    ],
+)
+def test_agent_creator_name_inference_prioritizes_explicit_names(
+    tmp_path: Path,
+    goal: str,
+    expected_agent_name: str,
+):
+    creator = AgentCreator(
+        proposals_path=tmp_path / "agent_creator_proposals.jsonl",
+        project_root=tmp_path,
+    )
+
+    proposal = creator.request_agent_creation(
+        goal=goal,
+        plan={"id": f"plan-{expected_agent_name}", "goal_id": "goal-name"},
+    )
+
+    assert proposal["agent_name"] == expected_agent_name
+
+
 @pytest.mark.asyncio
 async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monkeypatch, tmp_path: Path):
     from core.projects import routes

@@ -218,26 +218,31 @@ class AgentCreator:
     def _explicit_agent_name(self, goal: str) -> str | None:
         normalized = self._normalize(goal)
         patterns = (
-            r"\bnomme\s+([a-z0-9_][a-z0-9_-]*)",
-            r"\bappele\s+([a-z0-9_][a-z0-9_-]*)",
-            r"\bappelle\s+([a-z0-9_][a-z0-9_-]*)",
-            r"\bs\s+appelle\s+([a-z0-9_][a-z0-9_-]*)",
-            r"\bnamed\s+([a-z0-9_][a-z0-9_-]*)",
-            r"\bname\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bnomme\s+(\S+)",
+            r"\bappele\s+(\S+)",
+            r"\bappelle\s+(\S+)",
+            r"\bs\s+appelle\s+(\S+)",
+            r"\bnamed\s+(\S+)",
+            r"\bname\s+(\S+)",
         )
 
         for pattern in patterns:
             match = re.search(pattern, normalized)
             if not match:
                 continue
-            candidate = re.sub(r"[^a-z0-9_]+", "_", match.group(1).lower()).strip("_")
-            if not candidate:
-                continue
-            if candidate[0].isdigit():
-                candidate = f"agent_{candidate}"
-            return candidate
+            candidate = self._clean_agent_name(match.group(1))
+            if candidate:
+                return candidate
 
         return None
+
+    def _clean_agent_name(self, value: str) -> str | None:
+        candidate = re.sub(r"[^a-z0-9_]+", "_", value.lower()).strip("_")
+        if not candidate:
+            return None
+        if candidate[0].isdigit():
+            candidate = f"agent_{candidate}"
+        return candidate
 
     def _purpose_from_goal(self, goal: str, agent_name: str) -> str:
         if agent_name == "weather_agent":
