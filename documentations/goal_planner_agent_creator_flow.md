@@ -1,9 +1,9 @@
 # Flux Goal -> Planner -> Agent Creator
 
-## Flux reel
+## Flux /goal
 
 1. `core/goals/routes.py`
-   - `POST /goals/run` et `POST /goal` reçoivent un objectif.
+   - `POST /goals/run` et `POST /goal` recoivent un objectif.
    - Ils appellent `GoalOrchestrator.run_goal`.
    - `POST /goals` conserve son comportement historique : creation simple d'objectif.
 
@@ -21,53 +21,68 @@
    - Les etapes `define_agent` et `create_skeleton` ciblent `agent_creator`.
 
 4. `core/task_system/task_executor.py`
-   - Route les actions `agent_creator` vers la facade `AgentCreator`.
-   - Ne genere pas de code.
-   - Ne lance pas Codex.
-   - Marque la proposition comme `pending_human_validation`.
+   - Route les actions `agent_creator` vers le `PlanExecutor`.
+   - Produit un brouillon `draft_only` et une proposition.
+   - Ne promeut pas automatiquement dans `core/agents/generated`.
 
 5. `core/agent_factory/agent_creator.py`
-   - Prepare un cahier des charges JSON.
+   - Prepare une proposition JSON.
    - Ecrit une trace dans `/etc/neron/data/agent_creator_proposals.jsonl`.
-   - Propose des fichiers sous `workspace/agents` et `tests`, jamais une ecriture directe dans `core/agents`.
+   - Respecte les noms explicites, par exemple `nomme audit_agent_test`.
+   - Laisse la proposition en `pending_human_validation`.
 
-## Limites actuelles
+## Flux d'approbation humaine
 
-- Agent Creator ne produit pas encore de code.
-- Codex CLI n'est pas appele automatiquement.
-- La promotion vers `core/agents/generated` doit rester une etape separee avec validation humaine.
-- `POST /goals` ne declenche pas le planner pour conserver le format public existant.
+1. Un humain approuve avec :
 
-## Tests
+   ```bash
+   curl -X POST http://localhost:8010/agents/proposals/{agent_request_id}/approve \
+     -H "X-API-Key: $NERON_API_KEY"
+   ```
 
-Commandes utiles :
+2. `core/projects/routes.py`
+   - Retrouve la proposition via `AgentCreator`.
+   - Refuse toute proposition qui n'est pas `pending_human_validation`.
+   - Marque la proposition `human_approved`.
+   - Appelle `AgentBuildOrchestrator.build_from_request`.
+
+3. `core/agent_factory/build_orchestrator.py`
+   - Genere l'agent dans `workspace/agents`.
+   - Genere le test dans `workspace/agent_tests`.
+   - Valide l'agent.
+   - Lance `py_compile`.
+   - Lance `pytest` sur le test genere.
+   - Enregistre l'agent dans `core/agents/generated`.
+
+4. `core/runtime/agents/agent_runtime_manager.py`
+   - La route appelle `get_agent_runtime_manager().reload()`.
+   - Le runtime recharge le registry existant et liste l'agent.
+
+## Garanties
+
+- Aucun nouveau registry n'est cree.
+- Aucun nouveau runtime n'est cree.
+- Aucun nouveau CodexRunner n'est cree.
+- La promotion vers `core/agents/generated` ne se fait qu'apres approbation humaine.
+- Une proposition deja approuvee ne peut pas etre reapprouvee.
+
+## Reponse API
+
+`POST /agents/proposals/{agent_request_id}/approve` retourne :
+
+- `agent_request_id`
+- `proposal_status`
+- `build_status`
+- `created_files`
+- `registered_agent`
+- `runtime_reload`
+- `errors`
+- `project`
+- `build`
+
+## Tests utiles
 
 ```bash
-venv/bin/python -m pytest tests/test_goal_agent_creation_flow.py -q
-venv/bin/python -m pytest -q
+venv/bin/python -m pytest -q tests/test_tracked_agent_workflow.py tests/test_goal_agent_creation_flow.py
+venv/bin/python -m pytest -q tests
 ```
-
-## Validation runtime
-
-```bash
-curl -s http://localhost:8010/health | jq
-curl -s http://localhost:8010/self-model/context | jq
-curl -s http://localhost:8010/goals/active | jq
-curl -s -X POST http://localhost:8010/goals/run \
-  -H "Content-Type: application/json" \
-  -d '{"objective":"Créer un agent météo capable de répondre à une demande météo simple.","source":"api"}' | jq
-```
-
-## Logs et traces
-
-```bash
-journalctl -u neron-core -n 200 --no-pager
-tail -n 20 /etc/neron/data/plans.jsonl
-tail -n 20 /etc/neron/data/agent_creator_proposals.jsonl
-```
-
-## Prochaine integration Codex
-
-La future delegation a Codex doit partir d'une proposition `pending_human_validation`.
-Codex pourra generer le code uniquement apres validation explicite, puis deposer le resultat
-dans un espace de staging avant toute promotion vers les agents charges par le runtime.
