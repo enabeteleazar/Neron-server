@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from core.agent_factory import build_orchestrator
+from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.factory_agent import AgentFactoryAgent
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.agent_factory.registry import DynamicAgentRegistry
@@ -18,6 +19,7 @@ from core.pipeline.routing import agent_router
 from core.pipeline.intent.intent_router import Intent, IntentRouter
 from core.pipeline.intent.intent_router import IntentResult
 from core.projects.manager import ProjectManager
+from core.runtime.agents.agent_runtime_manager import AgentRuntimeManager
 
 
 @pytest.mark.asyncio
@@ -338,6 +340,79 @@ def test_dynamic_agent_registry_finds_registered_agent_by_spec(tmp_path: Path):
     assert match is not None
     assert match["agent_name"] == "event_countdown_agent"
     assert match["path"] == str(registered_agent)
+
+
+def test_agent_creator_respects_explicit_agent_name(tmp_path: Path):
+    creator = AgentCreator(
+        proposals_path=tmp_path / "agent_creator_proposals.jsonl",
+        project_root=tmp_path,
+    )
+
+    proposal = creator.request_agent_creation(
+        goal="Créer un brouillon d’agent nommé audit_agent_test pour auditer les plans.",
+        plan={"id": "plan-1", "goal_id": "goal-1"},
+    )
+
+    assert proposal["agent_name"] == "audit_agent_test"
+    assert proposal["goal"] == "Créer un brouillon d’agent nommé audit_agent_test pour auditer les plans."
+    assert proposal["proposed_files"] == [
+        "workspace/agents/audit_agent_test.py",
+        "tests/test_audit_agent_test.py",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monkeypatch, tmp_path: Path):
+    from core.projects import routes
+
+    data_dir = tmp_path / "data"
+    project_root = tmp_path / "project"
+    generated_agents = project_root / "core" / "agents" / "generated"
+
+    creator = AgentCreator(
+        proposals_path=data_dir / "agent_creator_proposals.jsonl",
+        project_root=project_root,
+    )
+    proposal = creator.request_agent_creation(
+        goal="Créer un brouillon d’agent nommé audit_agent_test pour auditer les plans.",
+        plan={"id": "plan-approval", "goal_id": "goal-approval"},
+    )
+    manager = ProjectManager(data_dir / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=project_root,
+        workspace_agents=project_root / "workspace" / "agents",
+        workspace_tests=project_root / "workspace" / "agent_tests",
+        generated_agents=generated_agents,
+        runtime_check=False,
+    )
+    runtime = AgentRuntimeManager()
+    runtime.registry = DynamicAgentRegistry(generated_agents)
+
+    monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
+    monkeypatch.setattr(routes, "AgentBuildOrchestrator", lambda: orchestrator)
+    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+
+    result = await routes.approve_agent_proposal(proposal["agent_request_id"])
+
+    assert result["agent_request_id"] == proposal["agent_request_id"]
+    assert result["proposal_status"] == "human_approved"
+    assert result["build_status"] == "completed"
+    assert result["registered_agent"] == "audit_agent_test"
+    assert result["errors"] == []
+    assert "audit_agent_test" in result["runtime_reload"]["agents"]
+    assert any(path.endswith("workspace/agents/audit_agent_test.py") for path in result["created_files"])
+    assert any(path.endswith("workspace/agent_tests/test_audit_agent_test.py") for path in result["created_files"])
+    assert any(path.endswith("core/agents/generated/audit_agent_test.py") for path in result["created_files"])
+    assert (generated_agents / "audit_agent_test.py").exists()
+    assert "audit_agent_test" in runtime.list_agents()
+
+    updated = creator.get_proposal(proposal["agent_request_id"])
+    assert updated is not None
+    assert updated["status"] == "human_approved"
+    assert updated["build_status"] == "completed"
+    assert updated["registered_agent"] == "audit_agent_test"
+    assert updated["applied_to_core"] is True
 
 
 @pytest.mark.asyncio

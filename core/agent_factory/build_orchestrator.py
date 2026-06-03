@@ -202,6 +202,19 @@ class AgentBuildOrchestrator:
 
     def plan_spec(self, query: str) -> AgentSpec:
         normalized = self._normalize(query)
+        explicit_name = self._explicit_agent_name(normalized)
+        if explicit_name:
+            return AgentSpec(
+                kind="agent",
+                name=explicit_name,
+                title=f"Agent {explicit_name}",
+                goal=query,
+                inputs=["text"],
+                outputs=["response"],
+                capabilities=["deterministic_response"],
+                safety={"filesystem": "limited", "network": "none_required"},
+            )
+
         if "wwdc" in normalized or "apple" in normalized:
             return AgentSpec(
                 kind="agent",
@@ -618,6 +631,29 @@ class AgentBuildOrchestrator:
         useful = [word for word in words if word and word not in ignored]
         base = "_".join(useful[:3]) or "custom"
         return base if base.endswith("_agent") else f"{base}_agent"
+
+    def _explicit_agent_name(self, normalized: str) -> str | None:
+        patterns = (
+            r"\bnomme\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bappele\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bappelle\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bs\s+appelle\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bnamed\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bname\s+([a-z0-9_][a-z0-9_-]*)",
+        )
+
+        for pattern in patterns:
+            match = re.search(pattern, normalized)
+            if not match:
+                continue
+            candidate = re.sub(r"[^a-z0-9_]+", "_", match.group(1).lower()).strip("_")
+            if not candidate:
+                continue
+            if candidate[0].isdigit():
+                candidate = f"agent_{candidate}"
+            return candidate
+
+        return None
 
     def _wwdc_agent_code(self) -> str:
         return '''from __future__ import annotations

@@ -47,6 +47,7 @@ class AgentCreator:
         proposal = {
             "agent_request_id": str(uuid4()),
             "agent_name": agent_name,
+            "goal": goal,
             "purpose": purpose,
             "required_capabilities": self._required_capabilities(agent_name, missing_capability),
             "proposed_files": [
@@ -126,12 +127,66 @@ class AgentCreator:
                 return proposal
         return None
 
+    def list_proposals(self) -> list[dict[str, Any]]:
+        if not self.proposals_path.exists():
+            return []
+
+        proposals: list[dict[str, Any]] = []
+        for line in self.proposals_path.read_text(encoding="utf-8").splitlines():
+            try:
+                proposal = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(proposal, dict):
+                proposals.append(proposal)
+        return proposals
+
+    def get_proposal(self, agent_request_id: str) -> dict[str, Any] | None:
+        for proposal in reversed(self.list_proposals()):
+            if str(proposal.get("agent_request_id") or "") == agent_request_id:
+                return proposal
+        return None
+
+    def update_proposal(
+        self,
+        agent_request_id: str,
+        updates: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        proposals = self.list_proposals()
+        updated: dict[str, Any] | None = None
+
+        for index, proposal in enumerate(proposals):
+            if str(proposal.get("agent_request_id") or "") != agent_request_id:
+                continue
+
+            merged = {
+                **proposal,
+                **updates,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            proposals[index] = merged
+            updated = merged
+
+        if updated is None:
+            return None
+
+        self.proposals_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.proposals_path.open("w", encoding="utf-8") as handle:
+            for proposal in proposals:
+                handle.write(json.dumps(proposal, ensure_ascii=False) + "\n")
+
+        return updated
+
     def _append(self, proposal: dict[str, Any]) -> None:
         self.proposals_path.parent.mkdir(parents=True, exist_ok=True)
         with self.proposals_path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(proposal, ensure_ascii=False) + "\n")
 
     def _agent_name_from_goal(self, goal: str, missing_capability: str | None) -> str:
+        explicit_name = self._explicit_agent_name(goal)
+        if explicit_name:
+            return explicit_name
+
         normalized = self._normalize(" ".join(part for part in (goal, missing_capability or "") if part))
         if any(word in normalized for word in ("meteo", "weather")):
             return "weather_agent"
@@ -159,6 +214,30 @@ class AgentCreator:
         words = [word for word in re.findall(r"[a-z0-9]+", normalized) if word not in ignored]
         base = "_".join(words[:3]) or "custom"
         return base if base.endswith("_agent") else f"{base}_agent"
+
+    def _explicit_agent_name(self, goal: str) -> str | None:
+        normalized = self._normalize(goal)
+        patterns = (
+            r"\bnomme\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bappele\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bappelle\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bs\s+appelle\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bnamed\s+([a-z0-9_][a-z0-9_-]*)",
+            r"\bname\s+([a-z0-9_][a-z0-9_-]*)",
+        )
+
+        for pattern in patterns:
+            match = re.search(pattern, normalized)
+            if not match:
+                continue
+            candidate = re.sub(r"[^a-z0-9_]+", "_", match.group(1).lower()).strip("_")
+            if not candidate:
+                continue
+            if candidate[0].isdigit():
+                candidate = f"agent_{candidate}"
+            return candidate
+
+        return None
 
     def _purpose_from_goal(self, goal: str, agent_name: str) -> str:
         if agent_name == "weather_agent":
