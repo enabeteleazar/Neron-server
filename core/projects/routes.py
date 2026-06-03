@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from core.api.auth import verify_api_key
 from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+from core.evolution.codex_runner import CodexRunner
 from core.projects.manager import get_project_manager
 from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
@@ -17,6 +20,10 @@ class AgentBuildRequest(BaseModel):
     query: str
     requested_by: str = "api"
     source_channel: str = "api"
+
+
+class AgentProposalApprovalRequest(BaseModel):
+    mode: Literal["deterministic", "codex"] = "deterministic"
 
 
 @router.get("/projects")
@@ -59,7 +66,11 @@ async def build_agent(payload: AgentBuildRequest) -> dict:
 
 
 @router.post("/agents/proposals/{agent_request_id}/approve")
-async def approve_agent_proposal(agent_request_id: str) -> dict:
+async def approve_agent_proposal(
+    agent_request_id: str,
+    payload: AgentProposalApprovalRequest | None = None,
+) -> dict:
+    mode = (payload or AgentProposalApprovalRequest()).mode
     creator = AgentCreator()
     proposal = creator.get_proposal(agent_request_id)
 
@@ -71,6 +82,8 @@ async def approve_agent_proposal(agent_request_id: str) -> dict:
             status_code=409,
             detail=f"Agent proposal is not pending_human_validation: {proposal.get('status')}",
         )
+    if mode == "codex" and proposal.get("codex_ready") is not True:
+        raise HTTPException(status_code=409, detail="Agent proposal is not codex_ready")
 
     approved = creator.update_proposal(
         agent_request_id,
@@ -84,6 +97,17 @@ async def approve_agent_proposal(agent_request_id: str) -> dict:
     if not approved:
         raise HTTPException(status_code=404, detail="Agent proposal not found")
 
+    if mode == "codex":
+        return await _approve_agent_proposal_with_codex(creator, agent_request_id, approved)
+
+    return await _approve_agent_proposal_deterministic(creator, agent_request_id, approved)
+
+
+async def _approve_agent_proposal_deterministic(
+    creator: AgentCreator,
+    agent_request_id: str,
+    approved: dict,
+) -> dict:
     build_query = _build_query_from_proposal(approved)
     orchestrator = AgentBuildOrchestrator()
     build_result = await orchestrator.build_from_request(
@@ -117,6 +141,7 @@ async def approve_agent_proposal(agent_request_id: str) -> dict:
 
     return {
         "agent_request_id": agent_request_id,
+        "mode": "deterministic",
         "proposal_status": final_proposal.get("status"),
         "build_status": build_result.get("status"),
         "created_files": created_files,
@@ -125,6 +150,52 @@ async def approve_agent_proposal(agent_request_id: str) -> dict:
         "errors": errors,
         "project": project or None,
         "build": build_result,
+    }
+
+
+async def _approve_agent_proposal_with_codex(
+    creator: AgentCreator,
+    agent_request_id: str,
+    approved: dict,
+) -> dict:
+    prompt = _codex_prompt_from_proposal(approved)
+    runner = CodexRunner()
+    codex_result = await runner.run_codex(prompt, f"agent_creator_{agent_request_id}")
+    codex_payload = codex_result.to_dict()
+    test_results = []
+    errors: list[str] = []
+    runtime_reload = None
+
+    if not codex_result.ok:
+        errors.append(codex_result.stderr or codex_result.stdout or "codex_failed")
+    else:
+        test_results = [result.to_dict() for result in await runner.run_tests()]
+        failed_tests = [result for result in test_results if not result.get("ok")]
+        if failed_tests:
+            errors.append(str(failed_tests[0].get("stderr") or failed_tests[0].get("stdout") or "tests_failed"))
+        else:
+            runtime_reload = get_agent_runtime_manager().reload()
+
+    final_proposal = creator.update_proposal(
+        agent_request_id,
+        {
+            "codex_mode": "manual",
+            "codex_auto_run": False,
+            "codex_result": codex_payload,
+            "test_results": test_results,
+            "runtime_reload": runtime_reload,
+            "errors": errors,
+        },
+    ) or approved
+
+    return {
+        "agent_request_id": agent_request_id,
+        "mode": "codex",
+        "proposal_status": final_proposal.get("status"),
+        "codex_result": codex_payload,
+        "test_results": test_results,
+        "runtime_reload": runtime_reload,
+        "errors": errors,
     }
 
 
@@ -148,6 +219,45 @@ def _build_query_from_proposal(proposal: dict) -> str:
     if purpose and purpose != goal:
         parts.append(purpose)
     return " ".join(parts).strip() or f"Créer un agent nommé {agent_name}"
+
+
+def _codex_prompt_from_proposal(proposal: dict) -> str:
+    agent_name = str(proposal.get("agent_name") or "").strip()
+    goal = str(proposal.get("goal") or proposal.get("purpose") or "").strip()
+    purpose = str(proposal.get("purpose") or "").strip()
+    capabilities = ", ".join(str(item) for item in proposal.get("required_capabilities") or [])
+    proposed_files = "\n".join(f"- {path}" for path in proposal.get("proposed_files") or [])
+    tests_to_create = "\n".join(f"- {path}" for path in proposal.get("tests_to_create") or [])
+
+    return "\n".join(
+        [
+            "Mission Agent Creator Codex, mode expérimental opt-in.",
+            "",
+            "Contraintes strictes :",
+            "- Ne fais aucun commit.",
+            "- Ne fais aucun push.",
+            "- Ne crée pas de nouveau Registry, Runtime ou CodexRunner.",
+            "- Ne modifie pas Evolution.",
+            "- Conserve l'approbation humaine comme prérequis.",
+            "- Respecte les chemins proposés ou explique dans les tests pourquoi un chemin diffère.",
+            "",
+            f"Agent demandé : {agent_name}",
+            f"Objectif : {goal}",
+            f"Purpose : {purpose}",
+            f"Capabilities : {capabilities or 'custom_agent_capability'}",
+            "",
+            "Fichiers proposés :",
+            proposed_files or "- workspace/agents/<agent>.py",
+            "",
+            "Tests à créer :",
+            tests_to_create or "- tests/test_<agent>.py",
+            "",
+            "Critères de réussite :",
+            "- L'agent est implémenté de façon déterministe et testable.",
+            "- Les tests pytest passent.",
+            "- Le runtime existant pourra être rechargé après validation.",
+        ]
+    )
 
 
 def _build_errors(build_result: dict) -> list[str]:

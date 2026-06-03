@@ -44,7 +44,8 @@
    - Retrouve la proposition via `AgentCreator`.
    - Refuse toute proposition qui n'est pas `pending_human_validation`.
    - Marque la proposition `human_approved`.
-   - Appelle `AgentBuildOrchestrator.build_from_request`.
+   - Utilise par defaut le mode `deterministic`.
+   - Appelle `AgentBuildOrchestrator.build_from_request` en mode `deterministic`.
 
 3. `core/agent_factory/build_orchestrator.py`
    - Genere l'agent dans `workspace/agents`.
@@ -57,6 +58,50 @@
 4. `core/runtime/agents/agent_runtime_manager.py`
    - La route appelle `get_agent_runtime_manager().reload()`.
    - Le runtime recharge le registry existant et liste l'agent.
+
+## Modes d'approbation
+
+### Mode deterministic
+
+Le mode `deterministic` est le mode stable et le comportement par defaut.
+
+```bash
+curl -X POST http://localhost:8010/agents/proposals/{agent_request_id}/approve \
+  -H "X-API-Key: $NERON_API_KEY"
+```
+
+Il peut aussi etre demande explicitement :
+
+```bash
+curl -X POST http://localhost:8010/agents/proposals/{agent_request_id}/approve \
+  -H "X-API-Key: $NERON_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"deterministic"}'
+```
+
+Ce mode utilise uniquement `AgentBuildOrchestrator` et conserve le pipeline valide :
+generation, validation, tests, registry, reload runtime.
+
+### Mode codex
+
+Le mode `codex` est experimental, opt-in et jamais automatique.
+
+```bash
+curl -X POST http://localhost:8010/agents/proposals/{agent_request_id}/approve \
+  -H "X-API-Key: $NERON_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"mode":"codex"}'
+```
+
+Regles :
+
+- `codex_ready` doit etre `true`.
+- `codex_auto_run` reste `false`.
+- `/goal` ne declenche jamais Codex automatiquement.
+- La route appelle le `CodexRunner` existant.
+- La route lance les tests apres Codex.
+- La route recharge le runtime uniquement si les tests passent.
+- La route ne fait jamais `commit` ni `push` automatiquement.
 
 ## Garanties
 
@@ -71,6 +116,7 @@
 `POST /agents/proposals/{agent_request_id}/approve` retourne :
 
 - `agent_request_id`
+- `mode`
 - `proposal_status`
 - `build_status`
 - `created_files`
@@ -79,6 +125,16 @@
 - `errors`
 - `project`
 - `build`
+
+En mode `codex`, la reponse retourne :
+
+- `agent_request_id`
+- `mode`
+- `proposal_status`
+- `codex_result`
+- `test_results`
+- `runtime_reload`
+- `errors`
 
 ## Tests utiles
 

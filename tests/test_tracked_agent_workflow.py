@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from core.agent_factory import build_orchestrator
 from core.agent_factory.agent_creator import AgentCreator
@@ -15,11 +16,33 @@ from core.agent_factory.registry import DynamicAgentRegistry
 from core.agents.conversation.conversation_agent import ConversationAgent
 from core.events import event_types
 from core.events.event_bus import event_bus
+from core.evolution.models import CommandResult
 from core.pipeline.routing import agent_router
 from core.pipeline.intent.intent_router import Intent, IntentRouter
 from core.pipeline.intent.intent_router import IntentResult
 from core.projects.manager import ProjectManager
 from core.runtime.agents.agent_runtime_manager import AgentRuntimeManager
+
+
+class FakeCodexRunner:
+    def __init__(self) -> None:
+        self.prompts: list[str] = []
+        self.run_ids: list[str] = []
+        self.tests_calls = 0
+        self.commit_calls = 0
+
+    async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
+        self.prompts.append(prompt)
+        self.run_ids.append(run_id)
+        return CommandResult("codex", ["codex", "exec"], 0, stdout="codex ok")
+
+    async def run_tests(self) -> list[CommandResult]:
+        self.tests_calls += 1
+        return [CommandResult("pytest", ["pytest"], 0, stdout="tests ok")]
+
+    async def commit_and_push(self, message: str) -> dict:
+        self.commit_calls += 1
+        return {"ok": True, "message": message}
 
 
 @pytest.mark.asyncio
@@ -423,6 +446,7 @@ async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monk
     result = await routes.approve_agent_proposal(proposal["agent_request_id"])
 
     assert result["agent_request_id"] == proposal["agent_request_id"]
+    assert result["mode"] == "deterministic"
     assert result["proposal_status"] == "human_approved"
     assert result["build_status"] == "completed"
     assert result["registered_agent"] == "audit_agent_test"
@@ -440,6 +464,125 @@ async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monk
     assert updated["build_status"] == "completed"
     assert updated["registered_agent"] == "audit_agent_test"
     assert updated["applied_to_core"] is True
+
+
+@pytest.mark.asyncio
+async def test_agent_proposal_approval_accepts_explicit_deterministic_mode(monkeypatch, tmp_path: Path):
+    from core.projects import routes
+
+    data_dir = tmp_path / "data"
+    project_root = tmp_path / "project"
+    generated_agents = project_root / "core" / "agents" / "generated"
+    creator = AgentCreator(
+        proposals_path=data_dir / "agent_creator_proposals.jsonl",
+        project_root=project_root,
+    )
+    proposal = creator.request_agent_creation(
+        goal="Créer un agent appelé maison_agent",
+        plan={"id": "plan-deterministic-mode", "goal_id": "goal-deterministic-mode"},
+    )
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=ProjectManager(data_dir / "projects.json"),
+        project_root=project_root,
+        workspace_agents=project_root / "workspace" / "agents",
+        workspace_tests=project_root / "workspace" / "agent_tests",
+        generated_agents=generated_agents,
+        runtime_check=False,
+    )
+    runtime = AgentRuntimeManager()
+    runtime.registry = DynamicAgentRegistry(generated_agents)
+
+    monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
+    monkeypatch.setattr(routes, "AgentBuildOrchestrator", lambda: orchestrator)
+    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+
+    result = await routes.approve_agent_proposal(
+        proposal["agent_request_id"],
+        routes.AgentProposalApprovalRequest(mode="deterministic"),
+    )
+
+    assert result["mode"] == "deterministic"
+    assert result["build_status"] == "completed"
+    assert result["registered_agent"] == "maison_agent"
+    assert "maison_agent" in result["runtime_reload"]["agents"]
+
+
+@pytest.mark.asyncio
+async def test_agent_proposal_approval_codex_mode_calls_codex_runner(monkeypatch, tmp_path: Path):
+    from core.projects import routes
+
+    data_dir = tmp_path / "data"
+    creator = AgentCreator(
+        proposals_path=data_dir / "agent_creator_proposals.jsonl",
+        project_root=tmp_path / "project",
+    )
+    proposal = creator.request_agent_creation(
+        goal="Create an agent named demo_agent",
+        plan={"id": "plan-codex-mode", "goal_id": "goal-codex-mode"},
+    )
+    runner = FakeCodexRunner()
+    runtime = AgentRuntimeManager()
+    runtime.registry = DynamicAgentRegistry(tmp_path / "generated")
+
+    monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
+    monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
+    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+
+    result = await routes.approve_agent_proposal(
+        proposal["agent_request_id"],
+        routes.AgentProposalApprovalRequest(mode="codex"),
+    )
+
+    assert result["mode"] == "codex"
+    assert result["proposal_status"] == "human_approved"
+    assert result["codex_result"]["ok"] is True
+    assert result["test_results"][0]["ok"] is True
+    assert result["runtime_reload"]["agents"] == []
+    assert result["errors"] == []
+    assert runner.run_ids == [f"agent_creator_{proposal['agent_request_id']}"]
+    assert "demo_agent" in runner.prompts[0]
+    assert "Ne fais aucun commit" in runner.prompts[0]
+    assert runner.tests_calls == 1
+    assert runner.commit_calls == 0
+
+
+def test_agent_proposal_approval_rejects_unknown_mode():
+    from core.projects import routes
+
+    with pytest.raises(ValidationError):
+        routes.AgentProposalApprovalRequest(mode="unknown")
+
+
+@pytest.mark.asyncio
+async def test_agent_proposal_approval_codex_mode_refuses_when_not_codex_ready(monkeypatch, tmp_path: Path):
+    from fastapi import HTTPException
+    from core.projects import routes
+
+    data_dir = tmp_path / "data"
+    creator = AgentCreator(
+        proposals_path=data_dir / "agent_creator_proposals.jsonl",
+        project_root=tmp_path / "project",
+    )
+    proposal = creator.request_agent_creation(
+        goal="Create an agent named demo_agent",
+        plan={"id": "plan-codex-not-ready", "goal_id": "goal-codex-not-ready"},
+    )
+    creator.update_proposal(proposal["agent_request_id"], {"codex_ready": False})
+    runner = FakeCodexRunner()
+
+    monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
+    monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await routes.approve_agent_proposal(
+            proposal["agent_request_id"],
+            routes.AgentProposalApprovalRequest(mode="codex"),
+        )
+
+    assert exc_info.value.status_code == 409
+    assert "codex_ready" in str(exc_info.value.detail)
+    assert creator.get_proposal(proposal["agent_request_id"])["status"] == "pending_human_validation"
+    assert runner.prompts == []
 
 
 @pytest.mark.asyncio
