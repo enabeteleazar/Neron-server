@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -8,6 +9,8 @@ from pydantic import BaseModel
 from core.api.auth import verify_api_key
 from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+from core.agent_factory.promoter import promote_agent
+from core.agent_factory.validator import validate_agent
 from core.evolution.codex_runner import CodexRunner
 from core.projects.manager import get_project_manager
 from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
@@ -164,6 +167,8 @@ async def _approve_agent_proposal_with_codex(
     codex_payload = codex_result.to_dict()
     test_results = []
     errors: list[str] = []
+    created_files: list[str] = []
+    registered_agent = None
     runtime_reload = None
 
     if not codex_result.ok:
@@ -172,9 +177,34 @@ async def _approve_agent_proposal_with_codex(
         test_results = [result.to_dict() for result in await runner.run_tests()]
         failed_tests = [result for result in test_results if not result.get("ok")]
         if failed_tests:
-            errors.append(str(failed_tests[0].get("stderr") or failed_tests[0].get("stdout") or "tests_failed"))
+            errors.append(
+                str(failed_tests[0].get("stderr") or failed_tests[0].get("stdout") or "tests_failed")
+            )
         else:
-            runtime_reload = get_agent_runtime_manager().reload()
+            agent_file = _codex_workspace_agent_path(creator, approved)
+            if not agent_file.exists():
+                errors.append(f"agent_file_missing: {agent_file}")
+            else:
+                created_files = _existing_codex_created_files(approved, creator.project_root)
+                validation = validate_agent(str(agent_file))
+                if not validation.get("ok"):
+                    errors.append(str(validation.get("error") or "validation_failed"))
+                else:
+                    runtime = get_agent_runtime_manager()
+                    promotion = promote_agent(
+                        str(agent_file),
+                        generated_dir=_runtime_generated_dir(runtime),
+                    )
+                    if not promotion.get("ok"):
+                        errors.append(str(promotion.get("error") or "promotion_failed"))
+                    else:
+                        destination = Path(str(promotion["destination"]))
+                        created_files = _append_unique(
+                            created_files,
+                            _relative_to_root(destination, creator.project_root),
+                        )
+                        registered_agent = str(approved.get("agent_name") or agent_file.stem)
+                        runtime_reload = runtime.reload()
 
     final_proposal = creator.update_proposal(
         agent_request_id,
@@ -183,7 +213,11 @@ async def _approve_agent_proposal_with_codex(
             "codex_auto_run": False,
             "codex_result": codex_payload,
             "test_results": test_results,
+            "build_status": "completed" if registered_agent else "failed",
+            "created_files": created_files,
+            "registered_agent": registered_agent,
             "runtime_reload": runtime_reload,
+            "applied_to_core": bool(registered_agent),
             "errors": errors,
         },
     ) or approved
@@ -194,6 +228,8 @@ async def _approve_agent_proposal_with_codex(
         "proposal_status": final_proposal.get("status"),
         "codex_result": codex_payload,
         "test_results": test_results,
+        "created_files": created_files,
+        "registered_agent": registered_agent,
         "runtime_reload": runtime_reload,
         "errors": errors,
     }
@@ -258,6 +294,46 @@ def _codex_prompt_from_proposal(proposal: dict) -> str:
             "- Le runtime existant pourra être rechargé après validation.",
         ]
     )
+
+
+def _codex_workspace_agent_path(creator: AgentCreator, proposal: dict) -> Path:
+    agent_name = str(proposal.get("agent_name") or "").strip()
+    return creator.project_root / "workspace" / "agents" / f"{agent_name}.py"
+
+
+def _existing_codex_created_files(proposal: dict, project_root: Path) -> list[str]:
+    candidates = []
+    agent_name = str(proposal.get("agent_name") or "").strip()
+    if agent_name:
+        candidates.append(f"workspace/agents/{agent_name}.py")
+    candidates.extend(str(path) for path in proposal.get("proposed_files") or [])
+    candidates.extend(str(path) for path in proposal.get("tests_to_create") or [])
+
+    created_files: list[str] = []
+    for candidate in candidates:
+        path = project_root / candidate
+        if path.exists():
+            created_files = _append_unique(created_files, _relative_to_root(path, project_root))
+    return created_files
+
+
+def _runtime_generated_dir(runtime) -> Path | None:
+    registry = getattr(runtime, "registry", None)
+    generated_dir = getattr(registry, "generated_dir", None)
+    return Path(generated_dir) if generated_dir is not None else None
+
+
+def _relative_to_root(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
+def _append_unique(items: list[str], item: str) -> list[str]:
+    if item not in items:
+        return [*items, item]
+    return items
 
 
 def _build_errors(build_result: dict) -> list[str]:

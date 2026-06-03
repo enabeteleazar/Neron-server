@@ -25,24 +25,74 @@ from core.runtime.agents.agent_runtime_manager import AgentRuntimeManager
 
 
 class FakeCodexRunner:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        agent_file: Path | None = None,
+        agent_name: str = "demo_agent",
+        agent_code: str | None = None,
+        codex_returncode: int = 0,
+        tests_returncode: int = 0,
+    ) -> None:
         self.prompts: list[str] = []
         self.run_ids: list[str] = []
         self.tests_calls = 0
         self.commit_calls = 0
+        self.agent_file = agent_file
+        self.agent_name = agent_name
+        self.agent_code = agent_code
+        self.codex_returncode = codex_returncode
+        self.tests_returncode = tests_returncode
 
     async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
         self.prompts.append(prompt)
         self.run_ids.append(run_id)
-        return CommandResult("codex", ["codex", "exec"], 0, stdout="codex ok")
+        if self.codex_returncode == 0 and self.agent_file is not None:
+            self.agent_file.parent.mkdir(parents=True, exist_ok=True)
+            self.agent_file.write_text(
+                self.agent_code
+                if self.agent_code is not None
+                else _valid_agent_code(self.agent_name),
+                encoding="utf-8",
+            )
+        return CommandResult(
+            "codex",
+            ["codex", "exec"],
+            self.codex_returncode,
+            stdout="codex ok" if self.codex_returncode == 0 else "",
+            stderr="" if self.codex_returncode == 0 else "codex failed",
+        )
 
     async def run_tests(self) -> list[CommandResult]:
         self.tests_calls += 1
-        return [CommandResult("pytest", ["pytest"], 0, stdout="tests ok")]
+        return [
+            CommandResult(
+                "pytest",
+                ["pytest"],
+                self.tests_returncode,
+                stdout="tests ok" if self.tests_returncode == 0 else "",
+                stderr="" if self.tests_returncode == 0 else "tests failed",
+            )
+        ]
 
     async def commit_and_push(self, message: str) -> dict:
         self.commit_calls += 1
         return {"ok": True, "message": message}
+
+
+def _valid_agent_code(agent_name: str) -> str:
+    return "\n".join(
+        [
+            "from __future__ import annotations",
+            "",
+            "class Agent:",
+            f"    name = {agent_name!r}",
+            "",
+            "    async def execute(self, text: str = '') -> dict:",
+            "        return {'status': 'ok', 'response': f'response for {text}'}",
+            "",
+        ]
+    )
 
 
 @pytest.mark.asyncio
@@ -512,17 +562,22 @@ async def test_agent_proposal_approval_codex_mode_calls_codex_runner(monkeypatch
     from core.projects import routes
 
     data_dir = tmp_path / "data"
+    project_root = tmp_path / "project"
+    generated_agents = project_root / "core" / "agents" / "generated"
     creator = AgentCreator(
         proposals_path=data_dir / "agent_creator_proposals.jsonl",
-        project_root=tmp_path / "project",
+        project_root=project_root,
     )
     proposal = creator.request_agent_creation(
         goal="Create an agent named demo_agent",
         plan={"id": "plan-codex-mode", "goal_id": "goal-codex-mode"},
     )
-    runner = FakeCodexRunner()
+    runner = FakeCodexRunner(
+        agent_file=project_root / "workspace" / "agents" / "demo_agent.py",
+        agent_name="demo_agent",
+    )
     runtime = AgentRuntimeManager()
-    runtime.registry = DynamicAgentRegistry(tmp_path / "generated")
+    runtime.registry = DynamicAgentRegistry(generated_agents)
 
     monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
     monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
@@ -537,13 +592,133 @@ async def test_agent_proposal_approval_codex_mode_calls_codex_runner(monkeypatch
     assert result["proposal_status"] == "human_approved"
     assert result["codex_result"]["ok"] is True
     assert result["test_results"][0]["ok"] is True
-    assert result["runtime_reload"]["agents"] == []
+    assert result["registered_agent"] == "demo_agent"
+    assert "demo_agent" in result["runtime_reload"]["agents"]
+    assert any(path.endswith("workspace/agents/demo_agent.py") for path in result["created_files"])
+    assert any(path.endswith("core/agents/generated/demo_agent.py") for path in result["created_files"])
+    assert (generated_agents / "demo_agent.py").exists()
     assert result["errors"] == []
     assert runner.run_ids == [f"agent_creator_{proposal['agent_request_id']}"]
     assert "demo_agent" in runner.prompts[0]
     assert "Ne fais aucun commit" in runner.prompts[0]
     assert runner.tests_calls == 1
     assert runner.commit_calls == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("codex_returncode", "tests_returncode", "expected_error", "expected_tests_calls"),
+    [
+        (1, 0, "codex failed", 0),
+        (0, 1, "tests failed", 1),
+    ],
+)
+async def test_agent_proposal_approval_codex_mode_does_not_promote_on_codex_or_test_failure(
+    monkeypatch,
+    tmp_path: Path,
+    codex_returncode: int,
+    tests_returncode: int,
+    expected_error: str,
+    expected_tests_calls: int,
+):
+    from core.projects import routes
+
+    data_dir = tmp_path / "data"
+    project_root = tmp_path / "project"
+    generated_agents = project_root / "core" / "agents" / "generated"
+    creator = AgentCreator(
+        proposals_path=data_dir / "agent_creator_proposals.jsonl",
+        project_root=project_root,
+    )
+    proposal = creator.request_agent_creation(
+        goal="Create an agent named demo_agent",
+        plan={
+            "id": f"plan-codex-failure-{codex_returncode}-{tests_returncode}",
+            "goal_id": "goal-codex-failure",
+        },
+    )
+    runner = FakeCodexRunner(
+        agent_file=project_root / "workspace" / "agents" / "demo_agent.py",
+        agent_name="demo_agent",
+        codex_returncode=codex_returncode,
+        tests_returncode=tests_returncode,
+    )
+    runtime = AgentRuntimeManager()
+    runtime.registry = DynamicAgentRegistry(generated_agents)
+
+    monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
+    monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
+    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+
+    result = await routes.approve_agent_proposal(
+        proposal["agent_request_id"],
+        routes.AgentProposalApprovalRequest(mode="codex"),
+    )
+
+    assert result["mode"] == "codex"
+    assert result["registered_agent"] is None
+    assert result["runtime_reload"] is None
+    assert expected_error in result["errors"][0]
+    assert not (generated_agents / "demo_agent.py").exists()
+    assert runner.tests_calls == expected_tests_calls
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("agent_file_enabled", "agent_code", "expected_error"),
+    [
+        (False, None, "agent_file_missing"),
+        (True, "class Agent:\n    pass\n", "méthode execute manquante"),
+    ],
+)
+async def test_agent_proposal_approval_codex_mode_does_not_promote_missing_or_invalid_agent(
+    monkeypatch,
+    tmp_path: Path,
+    agent_file_enabled: bool,
+    agent_code: str | None,
+    expected_error: str,
+):
+    from core.projects import routes
+
+    data_dir = tmp_path / "data"
+    project_root = tmp_path / "project"
+    generated_agents = project_root / "core" / "agents" / "generated"
+    creator = AgentCreator(
+        proposals_path=data_dir / "agent_creator_proposals.jsonl",
+        project_root=project_root,
+    )
+    proposal = creator.request_agent_creation(
+        goal="Create an agent named demo_agent",
+        plan={
+            "id": f"plan-codex-invalid-{agent_file_enabled}",
+            "goal_id": "goal-codex-invalid",
+        },
+    )
+    runner = FakeCodexRunner(
+        agent_file=(
+            project_root / "workspace" / "agents" / "demo_agent.py"
+            if agent_file_enabled
+            else None
+        ),
+        agent_name="demo_agent",
+        agent_code=agent_code,
+    )
+    runtime = AgentRuntimeManager()
+    runtime.registry = DynamicAgentRegistry(generated_agents)
+
+    monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
+    monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
+    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+
+    result = await routes.approve_agent_proposal(
+        proposal["agent_request_id"],
+        routes.AgentProposalApprovalRequest(mode="codex"),
+    )
+
+    assert result["registered_agent"] is None
+    assert result["runtime_reload"] is None
+    assert expected_error in result["errors"][0]
+    assert not (generated_agents / "demo_agent.py").exists()
 
 
 def test_agent_proposal_approval_rejects_unknown_mode():

@@ -7,7 +7,7 @@ from pathlib import Path
 GENERATED_DIR = Path("/etc/neron/core/agents/generated")
 
 
-def promote_agent(path: str) -> dict:
+def promote_agent(path: str, generated_dir: str | Path | None = None) -> dict:
     src = Path(path)
 
     if not src.exists():
@@ -16,9 +16,10 @@ def promote_agent(path: str) -> dict:
             "error": "agent introuvable",
         }
 
-    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    target_dir = Path(generated_dir) if generated_dir is not None else GENERATED_DIR
+    target_dir.mkdir(parents=True, exist_ok=True)
 
-    dst = GENERATED_DIR / src.name
+    dst = target_dir / src.name
 
     shutil.copy2(src, dst)
 
