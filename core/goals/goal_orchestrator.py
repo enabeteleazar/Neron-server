@@ -349,7 +349,7 @@ class GoalOrchestrator:
         creation_skipped = creation_goal and all(
             task_id in skipped_ids for task_id in creation_task_ids
         )
-        missing_draft = creation_goal and create_skeleton_tasks and not plan.get("agent_creation_proposal")
+        missing_draft = creation_goal and create_skeleton_tasks and not plan.get("agent_path")
 
         if failed_ids or creation_skipped or missing_draft or (total and not completed_ids and skipped_ids):
             plan["tasks_completed"] = False
@@ -366,9 +366,9 @@ class GoalOrchestrator:
         self._attach_execution_summary(plan, related_tasks, completed_ids, skipped_ids, failed_ids)
         self.storage.update(plan)
 
-        if self._requires_agent_draft(plan) and not plan.get("agent_creation_proposal"):
+        if self._requires_agent_draft(plan) and not plan.get("agent_path"):
             plan["status"] = "failed"
-            plan["error"] = "Proposition agent non créée."
+            plan["error"] = "Brouillon agent non créé."
             self.storage.update(plan)
             await self._notify_execution_failed(plan)
             return {"status": "failed", "plan": plan, "error": plan["error"]}
@@ -402,7 +402,7 @@ class GoalOrchestrator:
         if creation_skipped:
             return "Objectif de création d'agent non exécuté : toutes les tâches importantes ont été ignorées."
         if missing_draft:
-            return "Objectif de création d'agent incomplet : aucune proposition n'a été créée."
+            return "Objectif de création d'agent incomplet : aucun brouillon n'a été créé."
         return "Aucune tâche exécutable n'a été terminée."
 
     def find_plan(self, plan_id_or_prefix: str) -> dict[str, Any] | None:

@@ -11,13 +11,17 @@ from core.agent_factory.agent_creator import AgentCreator
 
 
 class PlanExecutor:
-    def __init__(self, project_root: Path | None = None):
+    def __init__(
+        self,
+        project_root: Path | None = None,
+        agent_creator: AgentCreator | None = None,
+    ):
         if project_root is None:
             project_root = Path(os.getenv("NERON_PROJECT_ROOT", Path.cwd()))
         self.project_root = project_root
         self.draft_dir = self.project_root / "workspace" / "agent_drafts"
         self.draft_dir.mkdir(parents=True, exist_ok=True)
-        self.agent_creator = AgentCreator(project_root=self.project_root)
+        self.agent_creator = agent_creator or AgentCreator(project_root=self.project_root)
 
     def execute(self, plan: dict[str, Any]) -> dict[str, Any]:
         if not plan.get("approved"):
@@ -112,15 +116,31 @@ class PlanExecutor:
             plan=plan,
             missing_capability=self.agent_creator.infer_missing_capability(goal),
         )
+        agent_name = str(proposal.get("agent_name") or self._safe_agent_name(goal))
+        safe_name = self._safe_agent_name(agent_name)
+        class_name = self._class_name_from_safe_name(safe_name)
+        draft_path = self.draft_dir / f"{safe_name}.py"
+        draft_path.write_text(
+            self._render_agent_draft(
+                class_name=class_name,
+                agent_name=safe_name,
+                goal=goal,
+                proposal=proposal,
+            ),
+            encoding="utf-8",
+        )
+        relative_path = str(draft_path.relative_to(self.project_root))
 
         return {
+            "status": "success",
             "proposal_created": True,
             "agent_creation_proposal": proposal,
             "proposal": proposal,
             "agent_request_id": proposal.get("agent_request_id"),
-            "draft_created": False,
-            "draft_only": False,
-            "state": proposal.get("status"),
+            "agent_path": relative_path,
+            "draft_created": True,
+            "draft_only": True,
+            "state": "draft_only",
             "applied_to_core": False,
             "code_executed": False,
         }
@@ -159,6 +179,34 @@ class PlanExecutor:
 
     def _class_name_from_safe_name(self, safe_name: str) -> str:
         return "".join(part.capitalize() for part in safe_name.split("_") if part)
+
+    def _render_agent_draft(
+        self,
+        *,
+        class_name: str,
+        agent_name: str,
+        goal: str,
+        proposal: dict[str, Any],
+    ) -> str:
+        capabilities = proposal.get("required_capabilities") or []
+        return (
+            "from __future__ import annotations\n\n\n"
+            f"class {class_name}:\n"
+            f"    name = {agent_name!r}\n"
+            "    state = 'draft_only'\n\n"
+            "    def __init__(self):\n"
+            f"        self.goal = {goal!r}\n"
+            f"        self.required_capabilities = {capabilities!r}\n\n"
+            "    async def run(self, action: str | None = None, params: dict | None = None) -> dict:\n"
+            "        return {\n"
+            "            'agent': self.name,\n"
+            "            'action': action,\n"
+            "            'params': params or {},\n"
+            "            'status': self.state,\n"
+            "            'goal': self.goal,\n"
+            "            'required_capabilities': self.required_capabilities,\n"
+            "        }\n"
+        )
 
     def _run_tests(self) -> dict[str, Any]:
         result = subprocess.run(

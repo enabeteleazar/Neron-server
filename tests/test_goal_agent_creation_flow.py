@@ -66,6 +66,22 @@ def test_goal_triggers_planner_and_agent_creator_proposal(monkeypatch):
         assert result["plan"]["steps"]
         assert result["agent_creator_called"] is True
         assert result["agent_request_id"]
+        assert result["plan"]["agent_path"] == "workspace/agent_drafts/weather_agent.py"
+        assert result["plan"]["agent_state"] == "draft_only"
+        assert result["plan"]["execution_summary"] == {
+            "completed": 4,
+            "skipped": 0,
+            "failed": 0,
+            "total": 4,
+        }
+
+        create_skeleton = next(
+            step for step in result["plan"]["steps"] if step["action"] == "create_skeleton"
+        )
+        assert create_skeleton["status"] == "completed"
+        assert create_skeleton["result"]["agent_path"] == "workspace/agent_drafts/weather_agent.py"
+        assert create_skeleton["result"]["draft_created"] is True
+        assert create_skeleton["result"]["draft_only"] is True
 
         proposal = result["proposal"]
         assert proposal["agent_name"] == "weather_agent"
@@ -88,10 +104,22 @@ def test_goal_triggers_planner_and_agent_creator_proposal(monkeypatch):
 
         assert not (tmp_path / "project" / "workspace" / "agents" / "weather_agent.py").exists()
         assert not (tmp_path / "project" / "core" / "agents" / "weather_agent.py").exists()
+        draft_path = tmp_path / "project" / "workspace" / "agent_drafts" / "weather_agent.py"
+        assert draft_path.exists()
+        draft = draft_path.read_text(encoding="utf-8")
+        assert "class WeatherAgent" in draft
+        assert "draft_only" in draft
 
         proposals_path = tmp_path / "data" / "agent_creator_proposals.jsonl"
         assert proposals_path.exists()
         assert "weather_agent" in proposals_path.read_text(encoding="utf-8")
+
+        final_report = notifications[-1][0]
+        assert "🏁 Objectif terminé" in final_report
+        assert "completed : 4" in final_report
+        assert "skipped : 0" in final_report
+        assert "failed : 0" in final_report
+        assert "workspace/agent_drafts/weather_agent.py" in final_report
 
 
 def test_unknown_actions_do_not_finish_functionally(monkeypatch):
