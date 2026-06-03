@@ -133,7 +133,7 @@ from core.api.planner_routes import router as planner_router
 
 logger = get_logger("neron.core")
 
-VERSION = "3.5.0"
+VERSION = "3.6.0"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
