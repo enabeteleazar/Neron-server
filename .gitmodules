@@ -7,3 +7,10 @@
 [submodule "ui_vocal"]
 	path = ui_vocal
 	url = git@github.com:enabeteleazar/neronOS_vocal.git
+[submodule "doctor"]
+	path = doctor
+	url = git@github.com:enabeteleazar/neronOS_doctor.git
+
+[submodule "llm"]
+	path = llm
+	url = git@github.com:enabeteleazar/neronOS_llm.git
