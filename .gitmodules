@@ -1,6 +1,3 @@
-[submodule "llama"]
-	path = llama
-	url = https://github.com/ggml-org/llama.cpp.git
 [submodule "ui_client"]
 	path = ui_client
 	url = git@github.com:enabeteleazar/neronOS_client.git
