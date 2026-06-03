@@ -237,6 +237,16 @@ class NeronCommandDispatcher:
 
         if status == "plan_finished":
             proposal = plan.get("agent_creation_proposal") or {}
+            if plan.get("registered_agent"):
+                tests = "OK" if plan.get("tests_ok") else "non vérifiés"
+                runtime = "OK" if (plan.get("runtime_reload") or {}).get("ok") else "non rechargé"
+                return (
+                    "Projet terminé.\n"
+                    f"Agent créé : {plan.get('registered_agent')}.\n"
+                    f"Tests : {tests}.\n"
+                    "Agent enregistré : oui.\n"
+                    f"Runtime rechargé : {runtime}."
+                )
             lines = [
                 "✅ Objectif reçu",
                 "🧠 Plan généré",

@@ -440,6 +440,7 @@ def test_agent_creator_respects_explicit_agent_name(tmp_path: Path):
         ("Créer un brouillon d’agent de test nommé audit_agent_test", "audit_agent_test"),
         ("Créer un agent appelé maison_agent", "maison_agent"),
         ("Create an agent named demo_agent", "demo_agent"),
+        ("Créer un agent météo spécialisé agriculture", "agriculture_weather_agent"),
         ("Créer un agent météo", "weather_agent"),
     ],
 )
@@ -954,6 +955,111 @@ async def test_agent_build_does_not_require_obsidian(tmp_path: Path):
     created_files = result["project"]["created_files"]
     assert result["status"] == "completed"
     assert not any("obsidian" in path.lower() for path in created_files)
+
+
+@pytest.mark.asyncio
+async def test_build_orchestrator_preserves_agriculture_weather_specialization(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+
+    spec = orchestrator.plan_spec("Créer un agent météo spécialisé agriculture")
+    assert spec.name == "agriculture_weather_agent"
+    assert spec.goal == "Surveiller et repondre aux demandes meteo agricoles"
+    assert spec.capabilities == [
+        "parse_agriculture_weather_request",
+        "static_agriculture_weather_fallback",
+        "format_agriculture_weather_response",
+    ]
+
+    result = await orchestrator.build_from_request("Créer un agent météo spécialisé agriculture")
+
+    project = result["project"]
+    assert result["status"] == "completed"
+    assert result["spec"]["name"] == "agriculture_weather_agent"
+    assert project["registered_agent"] == "agriculture_weather_agent"
+    assert project["registry_status"] == "registered"
+    assert project["result"]["runtime_reload"]["ok"] is True
+    assert "agriculture_weather_agent" in project["result"]["runtime_reload"]["agents"]
+    generated = tmp_path / "core" / "agents" / "generated" / "agriculture_weather_agent.py"
+    assert generated.exists()
+    content = generated.read_text(encoding="utf-8")
+    assert "parse_agriculture_weather_request" in content
+    assert "Spécialisation agriculture" in content
+
+
+@pytest.mark.asyncio
+async def test_agent_build_refuses_sensitive_system_request(tmp_path: Path):
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+
+    result = await orchestrator.build_from_request(
+        "Créer un agent qui modifie les services système et lit les secrets"
+    )
+
+    assert result["status"] == "refused"
+    assert result["build_executed"] is False
+    assert result["safety"]["auto_apply_allowed"] is False
+    assert not (tmp_path / "workspace" / "agents").exists()
+    assert not (tmp_path / "core" / "agents" / "generated").exists()
+
+
+@pytest.mark.asyncio
+async def test_simple_weather_agent_still_builds_and_registers(tmp_path: Path):
+    result = await AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    ).build_from_request("Créer un agent météo")
+
+    assert result["status"] == "completed"
+    assert result["spec"]["name"] == "weather_watch_agent"
+    assert result["project"]["registered_agent"] == "weather_watch_agent"
+    assert result["project"]["registry_status"] == "registered"
+    assert (tmp_path / "core" / "agents" / "generated" / "weather_watch_agent.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_telegram_route_equivalent_builds_agriculture_agent_without_approval(monkeypatch, tmp_path: Path):
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+
+    monkeypatch.setattr(build_orchestrator, "AgentBuildOrchestrator", lambda: orchestrator)
+
+    response = await agent_router._build_tracked_agent(
+        "Créer un agent météo spécialisé agriculture",
+        source_channel="telegram",
+    )
+
+    assert "Projet terminé" in response
+    assert "Agent créé : agriculture_weather_agent" in response
+    assert "Tests : OK" in response
+    assert "Agent enregistré : oui" in response
+    assert "Runtime rechargé : OK" in response
+    project = ProjectManager(tmp_path / "projects.json").list_projects(limit=1)[0]
+    assert project["source_channel"] == "telegram"
+    assert project["registered_agent"] == "agriculture_weather_agent"
 
 
 def test_build_orchestrator_has_no_obsidian_dependency():

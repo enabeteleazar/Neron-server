@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from core.cognitive.critic_engine import get_critic_engine
+from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.events.event import Event
 from core.events.event_bus import event_bus
 from core.goals.goal_manager import get_goal_manager
@@ -86,6 +87,7 @@ class GoalOrchestrator:
         planner: AutonomousPlanner | None = None,
         storage: PlanStorage | None = None,
         notifier: Notifier | None = None,
+        agent_build_orchestrator: AgentBuildOrchestrator | None = None,
     ) -> None:
         self.goal_manager = get_goal_manager()
         self.planner = planner or AutonomousPlanner()
@@ -94,6 +96,7 @@ class GoalOrchestrator:
         self.task_executor = get_task_executor()
         self.critic = get_critic_engine()
         self.notifier = notifier
+        self.agent_build_orchestrator = agent_build_orchestrator or AgentBuildOrchestrator()
 
     async def run_goal(self, objective: str, source: str = "system") -> dict[str, Any]:
         title = objective.strip()
@@ -170,8 +173,113 @@ class GoalOrchestrator:
         plan["status"] = "approved"
         self.storage.save(plan)
 
+        if self._is_agent_creation_plan(plan):
+            execution = await self.execute_agent_build_plan(plan, approved_by="risk_policy")
+            return self._goal_response(execution["status"], goal, execution["plan"], created_tasks)
+
         execution = await self.execute_plan(plan, approved_by="risk_policy")
         return self._goal_response(execution["status"], goal, execution["plan"], created_tasks)
+
+    async def execute_agent_build_plan(
+        self,
+        plan: dict[str, Any],
+        approved_by: str = "system",
+    ) -> dict[str, Any]:
+        plan_id = str(plan.get("id") or "")
+        if not plan_id:
+            return {"status": "failed", "plan": plan, "error": "Plan sans identifiant."}
+
+        if plan.get("approved") is not True:
+            plan["status"] = "approval_required"
+            plan["approval_required"] = True
+            self.storage.update(plan)
+            return {"status": "approval_required", "plan": plan}
+
+        related_tasks = self._tasks_for_plan(plan_id)
+        if not related_tasks:
+            related_tasks = self.task_manager.create_tasks_from_plan(plan)
+            plan["tasks_generated"] = True
+            plan["generated_task_ids"] = [task.get("id") for task in related_tasks]
+
+        plan["status"] = "running"
+        plan["execution_started_at"] = self._now()
+        plan["executed_by"] = approved_by
+        plan["agent_build_orchestrator_called"] = True
+        self.storage.update(plan)
+        await self._notify_execution_started(plan)
+
+        source_channel = str(plan.get("source") or "api_goal").removesuffix("_goal")
+        build_result = await self.agent_build_orchestrator.build_from_request(
+            str(plan.get("goal") or ""),
+            requested_by=approved_by,
+            source_channel=source_channel or "api",
+        )
+        plan["agent_build_result"] = build_result
+        plan["agent_build_status"] = build_result.get("status")
+        plan["agent_creator_called"] = True
+        self._attach_build_result(plan, build_result)
+
+        if build_result.get("status") != "completed":
+            for task in related_tasks:
+                self.task_manager.update_task(
+                    str(task.get("id")),
+                    {
+                        "status": "failed",
+                        "progress": 100,
+                        "result": build_result,
+                        "error": build_result.get("response") or "agent_build_failed",
+                    },
+                )
+            plan["status"] = "refused" if build_result.get("status") == "refused" else "failed"
+            plan["tasks_completed"] = False
+            plan["tasks_completed_at"] = self._now()
+            plan["error"] = build_result.get("response") or "Création d'agent échouée."
+            plan["execution_summary"] = {
+                "completed": 0,
+                "skipped": 0,
+                "failed": len(related_tasks),
+                "total": len(related_tasks),
+            }
+            self.storage.update(plan)
+            if plan["status"] == "refused" and plan.get("goal_id"):
+                self.goal_manager.update_status(str(plan.get("goal_id")), "failed")
+            await self._notify_execution_failed(plan)
+            return {"status": plan["status"], "plan": plan, "error": plan.get("error")}
+
+        completed_ids: list[str] = []
+        for task in related_tasks:
+            updated = self.task_manager.update_task(
+                str(task.get("id")),
+                {
+                    "status": "completed",
+                    "progress": 100,
+                    "completed_at": self.task_manager._now(),
+                    "result": build_result,
+                    "error": None,
+                },
+            )
+            completed_ids.append(str(task.get("id")))
+            self._update_plan_step_from_task(plan, updated or task)
+
+        plan["completed_task_ids"] = completed_ids
+        plan["skipped_task_ids"] = []
+        plan["failed_task_ids"] = []
+        plan["tasks_completed"] = True
+        plan["tasks_completed_at"] = self._now()
+        plan["execution_summary"] = {
+            "completed": len(completed_ids),
+            "skipped": 0,
+            "failed": 0,
+            "total": len(related_tasks),
+        }
+        plan["task_counts"] = dict(plan["execution_summary"])
+        plan["status"] = "plan_finished"
+        plan["finished_at"] = self._now()
+        plan["error"] = None
+        self.storage.update(plan)
+        self._complete_goal(plan)
+        await self._notify_execution_finished(plan)
+        return {"status": "plan_finished", "plan": plan}
 
     async def execute_approved_plan(self, plan_id: str, approved_by: str = "telegram") -> dict[str, Any]:
         plan = self.find_plan(plan_id)
@@ -546,6 +654,56 @@ class GoalOrchestrator:
         plan["agent_proposal_status"] = proposal.get("status")
         plan["applied_to_core"] = False
 
+    def _attach_build_result(self, plan: dict[str, Any], build_result: dict[str, Any]) -> None:
+        project = build_result.get("project") or {}
+        spec = build_result.get("spec") or {}
+        result = project.get("result") or {}
+        created_files = list(project.get("created_files") or [])
+        agent_name = (
+            project.get("registered_agent")
+            or result.get("agent")
+            or spec.get("name")
+        )
+        runtime_reload = (
+            build_result.get("runtime_reload")
+            or result.get("runtime_reload")
+            or ((result.get("verification") or {}).get("runtime_reload") if isinstance(result.get("verification"), dict) else None)
+        )
+        test_results = project.get("test_results") or []
+        tests_ok = bool(test_results) and all(item.get("returncode") == 0 for item in test_results)
+        agent_path = next(
+            (path for path in created_files if str(path).endswith(f"{agent_name}.py") and "core/agents/generated/" in str(path)),
+            None,
+        )
+
+        if agent_name:
+            plan["agent_name"] = agent_name
+            plan["registered_agent"] = agent_name
+            plan["agent_request_id"] = str(project.get("project_id") or agent_name)
+        if agent_path:
+            plan["agent_path"] = agent_path
+            plan["agent_state"] = "registered"
+        plan["created_files"] = created_files
+        plan["build_project_id"] = project.get("project_id")
+        plan["registry_status"] = project.get("registry_status")
+        plan["runtime_reload"] = runtime_reload
+        plan["tests_ok"] = tests_ok
+        plan["applied_to_core"] = build_result.get("status") == "completed" and bool(agent_name)
+        plan["human_validation_required"] = False
+        plan["agent_creation_proposal"] = {
+            "agent_request_id": plan.get("agent_request_id"),
+            "agent_name": agent_name,
+            "goal": spec.get("goal") or plan.get("goal"),
+            "required_capabilities": spec.get("capabilities") or [],
+            "status": "auto_applied" if build_result.get("status") == "completed" else build_result.get("status"),
+            "human_validation_required": False,
+            "code_execution_allowed": True,
+            "applied_to_core": plan["applied_to_core"],
+            "created_from_goal_id": plan.get("goal_id"),
+            "created_from_plan_id": plan.get("id"),
+        }
+        plan["agent_proposal_status"] = plan["agent_creation_proposal"]["status"]
+
     def _extract_agent_proposal(self, result: dict[str, Any]) -> dict[str, Any] | None:
         if not isinstance(result, dict):
             return None
@@ -571,6 +729,13 @@ class GoalOrchestrator:
     def _requires_agent_draft(self, plan: dict[str, Any]) -> bool:
         return any(
             step.get("agent") == "agent_creator" or step.get("action") == "create_skeleton"
+            for step in plan.get("steps", [])
+        )
+
+    def _is_agent_creation_plan(self, plan: dict[str, Any]) -> bool:
+        return any(
+            step.get("agent") == "agent_creator"
+            or step.get("action") in {"define_agent", "create_skeleton"}
             for step in plan.get("steps", [])
         )
 
@@ -623,9 +788,9 @@ class GoalOrchestrator:
     def _decide(self, risk: dict[str, Any], sensitive_detected: bool) -> str:
         score = int(risk.get("risk_score") or 0)
 
-        if score > 95:
+        if sensitive_detected or score > 95:
             return "blocked"
-        if sensitive_detected or score > 80:
+        if score > 80:
             return "approval_required"
         if risk.get("execution_allowed") is True and score <= 50:
             return "auto_execute"
@@ -760,9 +925,16 @@ class GoalOrchestrator:
         ]
 
         if agent_path:
-            result_lines.append("✓ Brouillon créé")
+            if plan.get("agent_state") == "registered":
+                result_lines.append("✓ Agent enregistré")
+            else:
+                result_lines.append("✓ Brouillon créé")
         if proposal:
             result_lines.append("✓ Proposition d'agent créée")
+        if plan.get("tests_ok") is True:
+            result_lines.append("✓ Tests OK")
+        if (plan.get("runtime_reload") or {}).get("ok") is True:
+            result_lines.append("✓ Runtime rechargé")
 
         if plan.get("status") == "partial":
             result_lines.append("⚠ Certaines tâches ignorées")
@@ -797,6 +969,15 @@ class GoalOrchestrator:
                     "",
                     "État :",
                     str(plan.get("agent_state") or "draft_only"),
+                ]
+            )
+
+        if plan.get("registered_agent"):
+            lines.extend(
+                [
+                    "",
+                    "Agent enregistré :",
+                    str(plan.get("registered_agent")),
                 ]
             )
 

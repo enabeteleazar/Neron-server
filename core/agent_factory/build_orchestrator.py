@@ -22,6 +22,31 @@ DEFAULT_WORKSPACE_AGENTS = DEFAULT_PROJECT_ROOT / "workspace" / "agents"
 DEFAULT_WORKSPACE_TESTS = DEFAULT_PROJECT_ROOT / "workspace" / "agent_tests"
 DEFAULT_GENERATED_AGENTS = DEFAULT_PROJECT_ROOT / "core" / "agents" / "generated"
 
+SENSITIVE_BUILD_KEYWORDS = {
+    "systemd",
+    "service systeme",
+    "services systeme",
+    "secret",
+    "secrets",
+    "token",
+    "tokens",
+    "api key",
+    "cle ssh",
+    "ssh key",
+    "securite",
+    "security",
+    "suppression",
+    "supprimer",
+    "delete",
+    "remove",
+    "rm -rf",
+    "rm rf",
+    "chmod",
+    "sudo",
+    "fichier sensible",
+    "fichiers sensibles",
+}
+
 
 @dataclass(slots=True)
 class AgentSpec:
@@ -74,6 +99,18 @@ class AgentBuildOrchestrator:
         requested_by: str = "user",
         source_channel: str = "api",
     ) -> dict[str, Any]:
+        safety = self.assess_request_safety(query)
+        if not safety["auto_apply_allowed"]:
+            return {
+                "status": "refused",
+                "project": None,
+                "spec": None,
+                "build_executed": False,
+                "reused_existing_project": False,
+                "safety": safety,
+                "response": self._format_refusal_response(safety),
+            }
+
         spec = self.plan_spec(query)
         metadata = self._project_metadata(spec, query)
         existing = self.project_manager.find_existing_agent_project(
@@ -173,6 +210,7 @@ class AgentBuildOrchestrator:
                     "result": {
                         "agent": spec.name,
                         "verification": verification,
+                        "runtime_reload": verification.get("runtime_reload"),
                         "available": True,
                     },
                     "error": None,
@@ -187,6 +225,7 @@ class AgentBuildOrchestrator:
                 "spec": spec.to_dict(),
                 "build_executed": True,
                 "reused_existing_project": False,
+                "runtime_reload": verification.get("runtime_reload"),
                 "response": self.format_project_response(completed),
             }
         except Exception as exc:
@@ -227,6 +266,22 @@ class AgentBuildOrchestrator:
                 safety={"filesystem": "limited", "network": "none_required"},
             )
         if "meteo" in normalized or "weather" in normalized:
+            agriculture_domain = self._agriculture_domain(normalized)
+            if agriculture_domain:
+                return AgentSpec(
+                    kind="agent",
+                    name=f"{agriculture_domain}_weather_agent",
+                    title="Agent meteo agricole",
+                    goal="Surveiller et repondre aux demandes meteo agricoles",
+                    inputs=["location", "crop", "weather_question"],
+                    outputs=["agriculture_weather_summary", "risk_flags", "source"],
+                    capabilities=[
+                        "parse_agriculture_weather_request",
+                        "static_agriculture_weather_fallback",
+                        "format_agriculture_weather_response",
+                    ],
+                    safety={"filesystem": "limited", "network": "read_only_if_available"},
+                )
             return AgentSpec(
                 kind="agent",
                 name="weather_watch_agent",
@@ -279,12 +334,14 @@ class AgentBuildOrchestrator:
                 if reused_registered and not tests_ok
                 else "Tests : OK."
             )
+            runtime_reload = result.get("runtime_reload") or (result.get("verification") or {}).get("runtime_reload") or {}
+            runtime_line = "Runtime rechargé : OK." if runtime_reload.get("ok") else "Runtime rechargé : non vérifié."
             return (
-                f"Projet terminé : {project.get('project_id')}.\n"
+                "Projet terminé.\n"
                 f"Agent créé : {result.get('agent')}.\n"
                 f"{tests_line}\n"
                 "Agent enregistré : oui.\n"
-                "Appel de vérification : OK."
+                f"{runtime_line}"
             )
 
         if project.get("status") == "failed":
@@ -328,6 +385,8 @@ class AgentBuildOrchestrator:
             content = self._wwdc_agent_code()
         elif spec.name == "weather_watch_agent":
             content = self._weather_agent_code()
+        elif "parse_agriculture_weather_request" in spec.capabilities:
+            content = self._agriculture_weather_agent_code(spec)
         else:
             content = self._generic_agent_code(spec)
         content = self._attach_agent_spec(content, spec)
@@ -503,19 +562,23 @@ class AgentBuildOrchestrator:
 
     async def _verify_agent(self, spec: AgentSpec) -> dict[str, Any]:
         if not self.runtime_check:
-            return {"ok": True, "skipped": True}
+            return {"ok": True, "skipped": True, "runtime_reload": {"ok": True, "skipped": True, "agents": [spec.name]}}
         from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
         manager = get_agent_runtime_manager()
-        manager.reload()
+        registry = getattr(manager, "registry", None)
+        if registry is not None and hasattr(registry, "generated_dir"):
+            registry.generated_dir = self.generated_agents
+        runtime_reload = manager.reload()
         result = await manager.run(spec.name, "combien de temps avant la WWDC ?")
         if not result.get("ok"):
-            return {"ok": False, "error": result.get("error"), "raw": result}
+            return {"ok": False, "error": result.get("error"), "raw": result, "runtime_reload": runtime_reload}
         response = str(result.get("response") or "")
         return {
             "ok": bool(response),
             "response": response,
             "raw": result,
+            "runtime_reload": runtime_reload,
         }
 
     def _run_command(self, command: list[str], name: str) -> dict[str, Any]:
@@ -592,6 +655,50 @@ class AgentBuildOrchestrator:
         for char in text:
             cleaned.append(char if char.isalnum() else " ")
         return " ".join("".join(cleaned).split())
+
+    def assess_request_safety(self, query: str) -> dict[str, Any]:
+        normalized = self._normalize_for_key(query)
+        reasons = [
+            keyword
+            for keyword in sorted(SENSITIVE_BUILD_KEYWORDS)
+            if keyword in normalized
+        ]
+        return {
+            "auto_apply_allowed": not reasons,
+            "risk_level": "low" if not reasons else "critical",
+            "reasons": reasons,
+        }
+
+    def _format_refusal_response(self, safety: dict[str, Any]) -> str:
+        reasons = ", ".join(str(item) for item in safety.get("reasons") or [])
+        return (
+            "Création d’agent refusée en mode automatique.\n"
+            "Risque : critical.\n"
+            f"Raison : {reasons or 'demande sensible'}.\n"
+            "Aucun agent n’a été généré ni enregistré."
+        )
+
+    def _agriculture_domain(self, normalized: str) -> str | None:
+        agriculture_terms = {
+            "agriculture",
+            "agricole",
+            "agricoles",
+            "agri",
+            "culture",
+            "cultures",
+            "champ",
+            "champs",
+            "irrigation",
+            "recolte",
+            "recoltes",
+            "crop",
+            "crops",
+            "farm",
+            "farming",
+        }
+        if any(term in normalized.split() for term in agriculture_terms):
+            return "agriculture"
+        return None
 
     def _intent_key(self, spec: AgentSpec) -> str:
         return self._normalize_for_key(
@@ -703,6 +810,50 @@ class Agent:
             "source": "static_fallback",
             "response": "Agent météo disponible. Connecteur météo externe non configuré; réponse fallback active.",
         }
+'''
+
+    def _agriculture_weather_agent_code(self, spec: AgentSpec) -> str:
+        return f'''from __future__ import annotations
+
+
+class Agent:
+    name = {spec.name!r}
+    goal = {spec.goal!r}
+    capabilities = {spec.capabilities!r}
+
+    async def execute(self, text: str = "") -> dict:
+        request = self.parse_agriculture_weather_request(text)
+        fallback = self.static_agriculture_weather_fallback(request)
+        response = self.format_agriculture_weather_response(fallback)
+        return {{
+            "status": "ok",
+            "agent": self.name,
+            "goal": self.goal,
+            "capabilities": self.capabilities,
+            "request": request,
+            "source": "static_agriculture_weather_fallback",
+            "response": response,
+        }}
+
+    def parse_agriculture_weather_request(self, text: str) -> dict:
+        return {{
+            "raw": text,
+            "domain": "agriculture",
+            "needs": ["meteo_agricole", "risque_cultures", "fenetre_intervention"],
+        }}
+
+    def static_agriculture_weather_fallback(self, request: dict) -> dict:
+        return {{
+            "summary": "Agent météo agricole disponible. Connecteur météo externe non configuré; fallback agricole actif.",
+            "risk_flags": ["surveiller gel", "surveiller pluie forte", "adapter irrigation"],
+            "request": request,
+        }}
+
+    def format_agriculture_weather_response(self, data: dict) -> str:
+        return (
+            data["summary"]
+            + " Spécialisation agriculture : aide aux décisions météo pour cultures, irrigation et fenêtres de travaux."
+        )
 '''
 
     def _generic_agent_code(self, spec: AgentSpec) -> str:

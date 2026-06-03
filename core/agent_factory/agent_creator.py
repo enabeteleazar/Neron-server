@@ -189,6 +189,8 @@ class AgentCreator:
 
         normalized = self._normalize(" ".join(part for part in (goal, missing_capability or "") if part))
         if any(word in normalized for word in ("meteo", "weather")):
+            if self._is_agriculture_weather_goal(normalized):
+                return "agriculture_weather_agent"
             return "weather_agent"
         if "wwdc" in normalized or "apple" in normalized:
             return "wwdc_agent"
@@ -245,6 +247,8 @@ class AgentCreator:
         return candidate
 
     def _purpose_from_goal(self, goal: str, agent_name: str) -> str:
+        if agent_name == "agriculture_weather_agent":
+            return "Surveiller et repondre aux demandes meteo agricoles"
         if agent_name == "weather_agent":
             return "Repondre aux demandes meteo simples"
         return f"Traiter l'objectif : {goal}"
@@ -254,6 +258,13 @@ class AgentCreator:
         agent_name: str,
         missing_capability: str | None,
     ) -> list[str]:
+        if agent_name == "agriculture_weather_agent":
+            return [
+                "parse_agriculture_weather_request",
+                "static_agriculture_weather_fallback",
+                "format_agriculture_weather_response",
+            ]
+
         if agent_name == "weather_agent":
             return [
                 "parse_weather_request",
@@ -274,4 +285,27 @@ class AgentCreator:
             char
             for char in normalized
             if unicodedata.category(char) != "Mn"
+        )
+
+    def _is_agriculture_weather_goal(self, normalized: str) -> bool:
+        words = set(re.findall(r"[a-z0-9]+", normalized))
+        return bool(
+            words
+            & {
+                "agriculture",
+                "agricole",
+                "agricoles",
+                "agri",
+                "culture",
+                "cultures",
+                "champ",
+                "champs",
+                "irrigation",
+                "recolte",
+                "recoltes",
+                "crop",
+                "crops",
+                "farm",
+                "farming",
+            }
         )

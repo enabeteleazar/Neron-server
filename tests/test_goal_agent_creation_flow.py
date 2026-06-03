@@ -5,11 +5,13 @@ import tempfile
 from pathlib import Path
 
 from core.agent_factory.agent_creator import AgentCreator
+from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.cognitive import critic_engine
 from core.goals import goal_manager, persistence, routes as goal_routes
 from core.goals.goal_orchestrator import GoalOrchestrator
 from core.planning.executor import PlanExecutor
 from core.planning.storage import PlanStorage
+from core.projects.manager import ProjectManager
 from core.task_system import task_manager
 from core.task_system.task_executor import TaskExecutor
 from core.task_system.task_manager import TaskManager
@@ -38,6 +40,14 @@ def _build_orchestrator(tmp_path: Path, monkeypatch, notifications: list[tuple[s
     orchestrator = GoalOrchestrator(storage=storage, notifier=notifier)
     orchestrator.storage = storage
     orchestrator.task_manager = TaskManager()
+    orchestrator.agent_build_orchestrator = AgentBuildOrchestrator(
+        project_manager=ProjectManager(data_dir / "projects.json"),
+        project_root=project_root,
+        workspace_agents=project_root / "workspace" / "agents",
+        workspace_tests=project_root / "workspace" / "agent_tests",
+        generated_agents=project_root / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
     orchestrator.task_executor = TaskExecutor(
         plan_executor=executor,
         storage=storage,
@@ -46,7 +56,7 @@ def _build_orchestrator(tmp_path: Path, monkeypatch, notifications: list[tuple[s
     return orchestrator
 
 
-def test_goal_triggers_planner_and_agent_creator_proposal(monkeypatch):
+def test_goal_creates_specialized_agent_without_human_approval(monkeypatch):
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp_path = Path(tmpdir)
         notifications: list[tuple[str, str]] = []
@@ -54,7 +64,7 @@ def test_goal_triggers_planner_and_agent_creator_proposal(monkeypatch):
 
         result = asyncio.run(
             orchestrator.run_goal(
-                "Créer un agent météo capable de répondre à une demande météo simple.",
+                "Créer un agent météo spécialisé agriculture",
                 source="api",
             )
         )
@@ -65,9 +75,16 @@ def test_goal_triggers_planner_and_agent_creator_proposal(monkeypatch):
         assert result["plan_id"]
         assert result["plan"]["steps"]
         assert result["agent_creator_called"] is True
-        assert result["agent_request_id"]
-        assert result["plan"]["agent_path"] == "workspace/agent_drafts/weather_agent.py"
-        assert result["plan"]["agent_state"] == "draft_only"
+        assert result["plan"]["approval_required"] is False
+        assert result["plan"]["human_validation_required"] is False
+        assert result["plan"]["agent_name"] == "agriculture_weather_agent"
+        assert result["plan"]["registered_agent"] == "agriculture_weather_agent"
+        assert result["plan"]["agent_path"] == "core/agents/generated/agriculture_weather_agent.py"
+        assert result["plan"]["agent_state"] == "registered"
+        assert result["plan"]["registry_status"] == "registered"
+        assert result["plan"]["tests_ok"] is True
+        assert result["plan"]["runtime_reload"]["ok"] is True
+        assert "agriculture_weather_agent" in result["plan"]["runtime_reload"]["agents"]
         assert result["plan"]["execution_summary"] == {
             "completed": 4,
             "skipped": 0,
@@ -75,51 +92,56 @@ def test_goal_triggers_planner_and_agent_creator_proposal(monkeypatch):
             "total": 4,
         }
 
-        create_skeleton = next(
-            step for step in result["plan"]["steps"] if step["action"] == "create_skeleton"
-        )
-        assert create_skeleton["status"] == "completed"
-        assert create_skeleton["result"]["agent_path"] == "workspace/agent_drafts/weather_agent.py"
-        assert create_skeleton["result"]["draft_created"] is True
-        assert create_skeleton["result"]["draft_only"] is True
-
         proposal = result["proposal"]
-        assert proposal["agent_name"] == "weather_agent"
+        assert proposal["agent_name"] == "agriculture_weather_agent"
         assert proposal["required_capabilities"] == [
-            "parse_weather_request",
-            "fetch_weather_data",
-            "format_weather_response",
+            "parse_agriculture_weather_request",
+            "static_agriculture_weather_fallback",
+            "format_agriculture_weather_response",
         ]
-        assert proposal["proposed_files"] == [
-            "workspace/agents/weather_agent.py",
-            "tests/test_weather_agent.py",
-        ]
-        assert proposal["risk_level"] == "low"
-        assert proposal["status"] == "pending_human_validation"
+        assert proposal["status"] == "auto_applied"
         assert proposal["created_from_goal_id"] == result["goal_id"]
         assert proposal["created_from_plan_id"] == result["plan_id"]
-        assert proposal["human_validation_required"] is True
-        assert proposal["code_execution_allowed"] is False
-        assert proposal["applied_to_core"] is False
+        assert proposal["human_validation_required"] is False
+        assert proposal["code_execution_allowed"] is True
+        assert proposal["applied_to_core"] is True
 
-        assert not (tmp_path / "project" / "workspace" / "agents" / "weather_agent.py").exists()
-        assert not (tmp_path / "project" / "core" / "agents" / "weather_agent.py").exists()
-        draft_path = tmp_path / "project" / "workspace" / "agent_drafts" / "weather_agent.py"
-        assert draft_path.exists()
-        draft = draft_path.read_text(encoding="utf-8")
-        assert "class WeatherAgent" in draft
-        assert "draft_only" in draft
-
-        proposals_path = tmp_path / "data" / "agent_creator_proposals.jsonl"
-        assert proposals_path.exists()
-        assert "weather_agent" in proposals_path.read_text(encoding="utf-8")
+        agent_path = tmp_path / "project" / "core" / "agents" / "generated" / "agriculture_weather_agent.py"
+        workspace_path = tmp_path / "project" / "workspace" / "agents" / "agriculture_weather_agent.py"
+        assert agent_path.exists()
+        assert workspace_path.exists()
+        generated = agent_path.read_text(encoding="utf-8")
+        assert "parse_agriculture_weather_request" in generated
+        assert "Spécialisation agriculture" in generated
+        assert not (tmp_path / "project" / "workspace" / "agent_drafts" / "agriculture_weather_agent.py").exists()
 
         final_report = notifications[-1][0]
         assert "🏁 Objectif terminé" in final_report
         assert "completed : 4" in final_report
         assert "skipped : 0" in final_report
         assert "failed : 0" in final_report
-        assert "workspace/agent_drafts/weather_agent.py" in final_report
+        assert "core/agents/generated/agriculture_weather_agent.py" in final_report
+
+
+def test_sensitive_agent_creation_goal_is_blocked_before_build(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        notifications: list[tuple[str, str]] = []
+        orchestrator = _build_orchestrator(tmp_path, monkeypatch, notifications)
+
+        result = asyncio.run(
+            orchestrator.run_goal(
+                "Créer un agent pour modifier systemd et lire les secrets",
+                source="api",
+            )
+        )
+
+        assert result["status"] == "blocked"
+        assert result["plan"]["status"] == "blocked_by_risk"
+        assert result["plan"]["risk"]["sensitive_action_detected"] is True
+        assert result["plan"]["approval_required"] is False
+        assert not (tmp_path / "project" / "workspace" / "agents").exists()
+        assert not (tmp_path / "project" / "core" / "agents" / "generated").exists()
 
 
 def test_unknown_actions_do_not_finish_functionally(monkeypatch):
