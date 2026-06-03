@@ -181,6 +181,21 @@ class AgentBuildOrchestrator:
             self._step(project_id, "tests", "done", 70)
 
             destination = self._register_agent(agent_file)
+
+            registry = DynamicAgentRegistry(self.generated_agents)
+            registry.load_generated_agents()
+            registered_record = registry.find_registered_agent_for_spec(
+                spec.to_dict(),
+                self._spec_signature(spec),
+            )
+
+            if not destination.exists() or not registered_record:
+                return self._fail(
+                    project_id,
+                    "registry",
+                    f"Agent copié mais non visible dans le registry runtime : {spec.name}",
+                )
+
             self.project_manager.update_project(
                 project_id,
                 {
