@@ -1,0 +1,9 @@
+# Neron default runtime dependencies.
+#
+# This file installs the Neron services only. Heavy optional stacks such as
+# Home Assistant and semantic embedding are split into dedicated files.
+
+-r core.txt
+-r llm.txt
+-r doctor.txt
+-r scripts.txt

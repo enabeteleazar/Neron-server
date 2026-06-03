@@ -1,62 +1,134 @@
-
-""""/
 # =========================
-# Autres fichiers système
-# Docker et conteneurs
-# Données générés par les services
-# Environnements et secrets
-# Fichiers temporaires et logs
-# Modèles et données LLM
-# Node / Frontend
-# Ollama / SSH
-# Python
-# Python virtual environment
-*.DS_Store
-*.bak
-*.egg
-*.egg-info/
-*.log
-*.old
-*.pid
+# SUBMODULE
+# =========================
+llm/
+doctor/
+llama/
+client*/
+
+# =========================
+# PYTHON
+# =========================
+pycache/
+*.py[cod]
+*.pyo
 *.pyc
 *.pyd
-*.pyo
-*.pytest_cache/
-*.secret
-*.sock
-*.swp
-*.tmp
-*.wav
-.env
-.env.global
-.env.local
-Data/
-Neron/*/data
-Neron/*/model
-Services/*/data/
-Services/*/model/
-Services/*/n8n/.n8n
-Services/*/node-red/data/
-Services/homeassistant/config/.storage/
-Thumbs.db
-__pycache__/
-build/
-config/searxng/settings.yml
-config/searxng/settings.yml.new
-config_backup_local/
-data/
-data/ollama/*
-data/ollama/id_ed25519
-data/ollama/id_ed25519.pub
-desktop.ini
-dist/
-docker-compose.override.yml
-labo/
-localai/models/
-modules/neron-*
-node_modules/
-npm-debug.log
-pip-wheel-metadata/
-test.wav
+*.so
+
+# Environnements virtuels
 venv/
-yarn-error.log
+.env/
+.venv/
+ENV/
+
+# =========================
+# LOGS
+# =========================
+*.log
+logs/
+*.out
+*.err
+
+# =========================
+# CONFIG SENSIBLE
+# =========================
+*.env
+.env.
+.env.local
+neron.yaml
+neron.yaml.dev
+
+homebox.tail7f8e60.ts.net.*
+
+# =========================
+# TEST / COVERAGE
+# =========================
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# =========================
+# BUILD / DIST
+# =========================
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# =========================
+# IDE / EDITORS
+# =========================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# =========================
+# OS
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# NERON SPECIFIC
+# =========================
+
+# runtime / cache
+data/
+cache/
+tmp/
+
+# runtime temporary/generated data
+runtime_data/
+tmp/runtime/
+
+# modèles LLM locaux (très lourd)
+models/
+ollama/
+*.gguf
+*.bin
+
+# fichiers temporaires scripts
+*.bak
+*.save
+
+# =========================
+# GIT (sécurité)
+# =========================
+.gitmodules
+.git
+.github
+venv/
+.venv/
+
+# =========================
+# DIVERS
+# =========================
+homeassistant/*
+workspace/*
+.claude
+.copilot
+core_old/
+core_history_clean/
+core_history_fixed/
+
+# databases
+*.db
+*.sqlite
+*.sqlite3
+
+# semantic index
+.semantic_index.json
+
+# backups
+backups/
+
+# python
+__pycache__/
+*.pyc
+*.bak*
+
+__pycache__/
+*.pyc

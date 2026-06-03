@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SERVER="neron-core.service"
+LLM="neron-llm.service"
+OLLAMA="ollama.service"
+VOCAL="neron-vocal.service"
+DOCTOR="neron-doctor.service"
+
+REPO="/etc/neron"
+VENV="/etc/neron/venv"
+PIP="$VENV/bin/pip"
+
+SERVER_URL="http://localhost:8010"
+LLM_URL="http://localhost:8765/llm"
+DOCTOR_URL="http://localhost:8020"
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# UTILS
+# ━━━━━━━━━━━━━━━━━━━━━━━
+ok()   { echo "✔ $1"; }
+warn() { echo "⚠ $1"; }
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# SYSTEM CONTROL
+# ━━━━━━━━━━━━━━━━━━━━━━━
+start()   { sudo systemctl start   $SERVER $LLM $OLLAMA $VOCAL $DOCTOR; ok "started"; }
+stop()    { sudo systemctl stop    $SERVER $LLM $OLLAMA $VOCAL $DOCTOR; ok "stopped"; }
+restart() { sudo systemctl restart $SERVER $LLM $OLLAMA $VOCAL $DOCTOR; ok "restarted"; }
+
+status() {
+  sudo systemctl status $SERVER --no-pager
+  sudo systemctl status $LLM --no-pager
+  sudo systemctl status $DOCTOR --no-pager
+  sudo systemctl status $VOCAL --no-pager
+}
+
+logs() {
+  sudo journalctl -u $SERVER -u $LLM -u $DOCTOR -u ollama -f --no-pager
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# INSTALL / UPDATE
+# ━━━━━━━━━━━━━━━━━━━━━━━
+install()
+{
+  echo "━━ INSTALL NERON ━━"
+
+  bash $REPO/scripts/install-core.sh
+  bash $REPO/scripts/install-systemd.sh
+
+  ok "installation terminée"
+}
+
+update()
+{
+  echo "━━ UPDATE NERON ━━"
+
+  git -C $REPO pull
+
+  $PIP install -r $REPO/requirements.txt -q
+
+  sudo systemctl restart $SERVER $LLM
+
+  ok "updated"
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# BACKUP / RESTORE
+# ━━━━━━━━━━━━━━━━━━━━━━━
+backup()
+{
+  bash $REPO/scripts/backup.sh backup
+  ok "backup done"
+}
+
+restore()
+{
+  bash $REPO/scripts/backup.sh restore
+  ok "restore done"
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# CONFIG
+# ━━━━━━━━━━━━━━━━━━━━━━━
+config()
+{
+  bash $REPO/scripts/neron.sh
+}
+
+telegram()
+{
+  bash $REPO/scripts/telegram.sh
+}
+
+ollama()
+{
+  bash $REPO/scripts/ollama.sh
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# CLIENT
+# ━━━━━━━━━━━━━━━━━━━━━━━
+client_install()
+{
+  bash $REPO/client/install.sh
+}
+
+client_start()
+{
+  bash $REPO/client/start.sh
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━
+# ROUTER
+# ━━━━━━━━━━━━━━━━━━━━━━━
+case "${1:-}" in
+  start) start ;;
+  stop) stop ;;
+  restart) restart ;;
+  status) status ;;
+  logs) logs ;;
+
+  install) install ;;
+  update) update ;;
+  backup) backup ;;
+  restore) restore ;;
+
+  config) config ;;
+  telegram) telegram ;;
+  ollama) ollama ;;
+
+  client-install) client_install ;;
+  client-start) client_start ;;
+
+  *)
+    echo "Usage: neron {start|stop|restart|status|logs|install|update|backup|restore|config|telegram|ollama|client-install|client-start}"
+    ;;
+esac

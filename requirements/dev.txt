@@ -1,0 +1,5 @@
+# Neron development/test dependencies.
+-r requirements.txt
+
+pytest
+pytest-asyncio

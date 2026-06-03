@@ -1,0 +1,110 @@
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
+from core.goals.goal_manager import get_goal_manager
+from core.goals.goal_orchestrator import get_goal_orchestrator
+
+
+router = APIRouter(tags=["goals"])
+
+
+class GoalCreateRequest(BaseModel):
+    title: str
+    description: str = ""
+    priority: str = "medium"
+    source: str = "api"
+    metadata: dict[str, Any] = {}
+
+
+class GoalProgressRequest(BaseModel):
+    progress: float
+
+
+class GoalRunRequest(BaseModel):
+    objective: str
+    source: str = "api"
+
+
+class GoalAliasRequest(BaseModel):
+    goal: str | None = None
+    objective: str | None = None
+    source: str = "api"
+
+
+@router.post("/goals/run")
+async def run_goal(payload: GoalRunRequest) -> dict[str, Any]:
+    orchestrator = get_goal_orchestrator()
+    result = await orchestrator.run_goal(payload.objective, source=payload.source)
+    return result
+
+
+@router.post("/goal")
+async def run_goal_alias(payload: GoalAliasRequest) -> dict[str, Any]:
+    objective = (payload.goal or payload.objective or "").strip()
+    if not objective:
+        raise HTTPException(status_code=422, detail="goal or objective is required")
+
+    orchestrator = get_goal_orchestrator()
+    return await orchestrator.run_goal(objective, source=payload.source)
+
+
+@router.get("/goals")
+async def list_goals() -> dict[str, Any]:
+    manager = get_goal_manager()
+    return {"goals": manager.list_goals()}
+
+
+@router.get("/goals/active")
+async def active_goal() -> dict[str, Any]:
+    manager = get_goal_manager()
+    return {"active_goal": manager.get_active_goal()}
+
+
+@router.post("/goals")
+async def create_goal(payload: GoalCreateRequest) -> dict[str, Any]:
+    manager = get_goal_manager()
+    goal = manager.create_goal(
+        title=payload.title,
+        description=payload.description,
+        priority=payload.priority,
+        source=payload.source,
+        metadata=payload.metadata,
+    )
+    return {"goal": goal}
+
+
+@router.post("/goals/{goal_id}/complete")
+async def complete_goal(goal_id: str) -> dict[str, Any]:
+    manager = get_goal_manager()
+    goal = manager.update_status(goal_id, "completed")
+
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    return {"goal": goal}
+
+
+@router.post("/goals/{goal_id}/fail")
+async def fail_goal(goal_id: str) -> dict[str, Any]:
+    manager = get_goal_manager()
+    goal = manager.update_status(goal_id, "failed")
+
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    return {"goal": goal}
+
+
+@router.post("/goals/{goal_id}/progress")
+async def update_progress(goal_id: str, payload: GoalProgressRequest) -> dict[str, Any]:
+    manager = get_goal_manager()
+    goal = manager.update_progress(goal_id, payload.progress)
+
+    if not goal:
+        raise HTTPException(status_code=404, detail="Goal not found")
+
+    return {"goal": goal}

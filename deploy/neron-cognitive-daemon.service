@@ -1,0 +1,14 @@
+[Unit]
+Description=Néron Continuous Cognitive Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=neron
+WorkingDirectory=/etc/neron
+ExecStart=/etc/neron/venv/bin/python /etc/neron/core/autonomous/run_cognitive_loop.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

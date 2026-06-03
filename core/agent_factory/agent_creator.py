@@ -1,0 +1,193 @@
+from __future__ import annotations
+
+import json
+import re
+import unicodedata
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from uuid import uuid4
+
+
+DEFAULT_PROPOSALS_PATH = Path("/etc/neron/data/agent_creator_proposals.jsonl")
+
+
+class AgentCreator:
+    """
+    Facade sure de creation d'agent.
+
+    Elle ne genere pas, ne modifie pas et n'execute pas de code. Elle prepare
+    uniquement une proposition traçable en attente de validation humaine.
+    """
+
+    def __init__(
+        self,
+        proposals_path: Path = DEFAULT_PROPOSALS_PATH,
+        project_root: Path | None = None,
+    ) -> None:
+        self.proposals_path = proposals_path
+        self.project_root = project_root or Path("/etc/neron")
+
+    def request_agent_creation(
+        self,
+        *,
+        goal: str,
+        plan: dict[str, Any],
+        missing_capability: str | None = None,
+    ) -> dict[str, Any]:
+        existing = self._find_existing_proposal(plan)
+        if existing:
+            return existing
+
+        plan_id = str(plan.get("id") or "")
+        goal_id = str(plan.get("goal_id") or "")
+        agent_name = self._agent_name_from_goal(goal, missing_capability)
+        purpose = self._purpose_from_goal(goal, agent_name)
+
+        proposal = {
+            "agent_request_id": str(uuid4()),
+            "agent_name": agent_name,
+            "purpose": purpose,
+            "required_capabilities": self._required_capabilities(agent_name, missing_capability),
+            "proposed_files": [
+                f"workspace/agents/{agent_name}.py",
+                f"tests/test_{agent_name}.py",
+            ],
+            "endpoints_or_hooks": [
+                "core.runtime.agents.agent_runtime_manager",
+                "core.agent_factory.promoter",
+            ],
+            "tests_to_create": [
+                f"tests/test_{agent_name}.py",
+            ],
+            "risk_level": "low",
+            "status": "pending_human_validation",
+            "human_validation_required": True,
+            "code_execution_allowed": False,
+            "applied_to_core": False,
+            "created_from_goal_id": goal_id,
+            "created_from_plan_id": plan_id,
+            "missing_capability": missing_capability or self.infer_missing_capability(goal),
+            "codex_ready": True,
+            "codex_auto_run": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        self._append(proposal)
+        return proposal
+
+    def scan_existing_agents(self) -> dict[str, Any]:
+        candidates: list[str] = []
+        for relative in (
+            "core/agents",
+            "core/agents/generated",
+            "workspace/agents",
+            "workspace/agent_drafts",
+        ):
+            root = self.project_root / relative
+            if not root.exists():
+                continue
+            for path in sorted(root.rglob("*.py")):
+                if path.name.startswith("_"):
+                    continue
+                try:
+                    candidates.append(str(path.relative_to(self.project_root)))
+                except ValueError:
+                    candidates.append(str(path))
+
+        return {
+            "status": "success",
+            "agents_scanned": len(candidates),
+            "files": candidates[:200],
+            "code_execution_allowed": False,
+        }
+
+    def infer_missing_capability(self, goal: str) -> str:
+        normalized = self._normalize(goal)
+        if any(word in normalized for word in ("meteo", "weather")):
+            return "weather_request_handling"
+        if "wwdc" in normalized or "apple" in normalized:
+            return "apple_event_watch"
+        if "test" in normalized:
+            return "test_agent_execution"
+        return "custom_agent_capability"
+
+    def _find_existing_proposal(self, plan: dict[str, Any]) -> dict[str, Any] | None:
+        plan_id = str(plan.get("id") or "")
+        if not plan_id or not self.proposals_path.exists():
+            return None
+
+        for line in reversed(self.proposals_path.read_text(encoding="utf-8").splitlines()):
+            try:
+                proposal = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if proposal.get("created_from_plan_id") == plan_id:
+                return proposal
+        return None
+
+    def _append(self, proposal: dict[str, Any]) -> None:
+        self.proposals_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.proposals_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(proposal, ensure_ascii=False) + "\n")
+
+    def _agent_name_from_goal(self, goal: str, missing_capability: str | None) -> str:
+        normalized = self._normalize(" ".join(part for part in (goal, missing_capability or "") if part))
+        if any(word in normalized for word in ("meteo", "weather")):
+            return "weather_agent"
+        if "wwdc" in normalized or "apple" in normalized:
+            return "wwdc_agent"
+        if "test" in normalized:
+            return "test_agent"
+
+        ignored = {
+            "creer",
+            "create",
+            "agent",
+            "un",
+            "une",
+            "de",
+            "du",
+            "des",
+            "pour",
+            "qui",
+            "capable",
+            "repondre",
+            "demande",
+            "simple",
+        }
+        words = [word for word in re.findall(r"[a-z0-9]+", normalized) if word not in ignored]
+        base = "_".join(words[:3]) or "custom"
+        return base if base.endswith("_agent") else f"{base}_agent"
+
+    def _purpose_from_goal(self, goal: str, agent_name: str) -> str:
+        if agent_name == "weather_agent":
+            return "Repondre aux demandes meteo simples"
+        return f"Traiter l'objectif : {goal}"
+
+    def _required_capabilities(
+        self,
+        agent_name: str,
+        missing_capability: str | None,
+    ) -> list[str]:
+        if agent_name == "weather_agent":
+            return [
+                "parse_weather_request",
+                "fetch_weather_data",
+                "format_weather_response",
+            ]
+
+        capability = missing_capability or "handle_custom_request"
+        return [
+            "parse_user_request",
+            capability,
+            "format_agent_response",
+        ]
+
+    def _normalize(self, value: str) -> str:
+        normalized = unicodedata.normalize("NFD", value.lower())
+        return "".join(
+            char
+            for char in normalized
+            if unicodedata.category(char) != "Mn"
+        )

@@ -1,0 +1,14 @@
+# /etc/neron/core/context/neron_context.py
+
+from pathlib import Path
+
+NERON_MD_PATH = "/etc/neron/NERON.md"
+
+
+def load_neron_context() -> str:
+    path = Path(NERON_MD_PATH)
+
+    if not path.exists():
+        return ""
+
+    return path.read_text(encoding="utf-8")

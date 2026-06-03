@@ -1,0 +1,4 @@
+# Optional semantic memory / Obsidian vector search dependencies.
+
+numpy==2.2.0
+sentence-transformers
