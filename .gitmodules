@@ -11,3 +11,6 @@
 [submodule "llm"]
 	path = llm
 	url = git@github.com:enabeteleazar/neronOS_llm.git
+[submodule "neronHUB"]
+	path = neronHUB
+	url = git@github.com:enabeteleazar/neronHUB.git
