@@ -1,35 +1,34 @@
 # ============================================
-# NÉRON AI — MAKEFILE (WRAPPER NERONCTL)
+# NÉRON AI — MAKEFILE DEV
 # ============================================
 
-.PHONY: help install update backup restore telegram ollama client-install client-start neron
+.PHONY: help test status submodules clean install-dev
 
 help:
-	@neron
+	@echo "NÉRON DEV"
+	@echo ""
+	@echo "Commandes disponibles :"
+	@echo "  make test         Lance les tests"
+	@echo "  make status       Affiche l'état Git et des submodules"
+	@echo "  make submodules   Initialise/met à jour les submodules"
+	@echo "  make clean        Nettoie les caches Python/Pytest"
+	@echo "  make install-dev  Installe les dépendances"
 
-install:
-	@neron install
+test:
+	pytest
 
-update:
-	@neron update
+status:
+	git status
+	@echo ""
+	git submodule status
 
-backup:
-	@neron backup
+submodules:
+	git submodule update --init --recursive
 
-restore:
-	@neron restore
+clean:
+	find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	find . -type d -name ".pytest_cache" -prune -exec rm -rf {} +
+	find . -type d -name ".mypy_cache" -prune -exec rm -rf {} +
 
-neron:
-	@neron config
-
-telegram:
-	@neron telegram
-
-ollama:
-	@neron ollama
-
-client-install:
-	@neron client-install
-
-client-start:
-	@neron client-start
+install-dev:
+	pip install -r requirements/dev.txt 

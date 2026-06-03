@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
@@ -15,6 +16,17 @@ from core.autonomous.execution_logger import ExecutionLogger
 manager = ServiceManager()
 
 
+def run(cmd: list[str], cwd: Path = REPO) -> str:
+    result = subprocess.run(
+        cmd,
+        cwd=cwd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return result.stdout.strip()
+
+
 def print_task(task: dict) -> None:
     print(f"#{task['id']} [{task['status']}] priority={task['priority']}")
     print(f"Title     : {task['title']}")
@@ -25,8 +37,29 @@ def print_task(task: dict) -> None:
     print(f"Payload   : {task.get('payload')}")
 
 
+def cmd_service(args) -> None:
+    if args.action == "status-all":
+        print(manager.status_all())
+    elif args.action == "start-all":
+        print(manager.start_all())
+    elif args.action == "stop-all":
+        print(manager.stop_all())
+    elif args.action == "restart-all":
+        print(manager.restart_all())
+    elif args.action == "status":
+        print(manager.status(args.service))
+    elif args.action == "start":
+        print(manager.start(args.service))
+    elif args.action == "stop":
+        print(manager.stop(args.service))
+    elif args.action == "restart":
+        print(manager.restart(args.service))
+    elif args.action == "logs":
+        print(manager.logs(args.service))
+
+
 def cmd_task_list(args) -> None:
-    tasks = AutonomousScheduler().list_tasks()[:args.limit]
+    tasks = AutonomousScheduler().list_tasks()[: args.limit]
     if not tasks:
         print("Aucune tâche trouvée.")
         return
@@ -81,21 +114,36 @@ def cmd_task_cancel(args) -> None:
     print("Commande indisponible : AutonomousScheduler ne fournit pas encore set_status().")
 
 
+def cmd_version(args) -> None:
+    print("NÉRON VERSION")
+    print("============")
+    print(f"Core branch : {run(['git', 'branch', '--show-current'])}")
+    print(f"Core version: {run(['git', 'describe', '--tags', '--always'])}")
+    print(f"Core commit : {run(['git', 'rev-parse', '--short', 'HEAD'])}")
+    print("")
+    print("Submodules:")
+    output = run(["git", "submodule", "foreach", "--quiet", "echo  v3.6.1-submodules-1-gee0673e ee0673e"])
+    print(output if output else "Aucun submodule.")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="neronctl")
     sub = parser.add_subparsers(dest="module", required=True)
 
+    version = sub.add_parser("version", help="Affiche les versions de Néron et des submodules")
+    version.set_defaults(func=cmd_version)
+
     svc = sub.add_parser("service", help="Gestion des services Néron")
     svc_sub = svc.add_subparsers(dest="action", required=True)
 
-    svc_sub.add_parser("status-all")
-    svc_sub.add_parser("start-all")
-    svc_sub.add_parser("stop-all")
-    svc_sub.add_parser("restart-all")
+    for action in ["status-all", "start-all", "stop-all", "restart-all"]:
+        p = svc_sub.add_parser(action)
+        p.set_defaults(func=cmd_service)
 
     for action in ["status", "start", "stop", "restart", "logs"]:
         p = svc_sub.add_parser(action)
         p.add_argument("service", choices=SERVICES.keys())
+        p.set_defaults(func=cmd_service)
 
     task = sub.add_parser("task", help="Gestion des tâches autonomes")
     task_sub = task.add_subparsers(dest="action", required=True)
@@ -130,33 +178,8 @@ def main() -> int:
     p.set_defaults(func=cmd_task_cancel)
 
     args = parser.parse_args()
-
-    if args.module == "service":
-        if args.action == "status-all":
-            print(manager.status_all())
-        elif args.action == "start-all":
-            print(manager.start_all())
-        elif args.action == "stop-all":
-            print(manager.stop_all())
-        elif args.action == "restart-all":
-            print(manager.restart_all())
-        elif args.action == "status":
-            print(manager.status(args.service))
-        elif args.action == "start":
-            print(manager.start(args.service))
-        elif args.action == "stop":
-            print(manager.stop(args.service))
-        elif args.action == "restart":
-            print(manager.restart(args.service))
-        elif args.action == "logs":
-            print(manager.logs(args.service))
-        return 0
-
-    if args.module == "task":
-        args.func(args)
-        return 0
-
-    return 1
+    args.func(args)
+    return 0
 
 
 if __name__ == "__main__":
