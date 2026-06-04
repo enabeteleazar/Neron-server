@@ -87,7 +87,7 @@ def _normalize(text: str) -> str:
 async def _post_text(client: httpx.AsyncClient, text: str) -> dict:
     resp = await client.post(
         f"{NERON_CORE_URL}/input/text",
-        json={"text": text},
+        json={"text": text, "source_channel": "telegram"},
         headers={"X-API-Key": NERON_API_KEY},
     )
     resp.raise_for_status()

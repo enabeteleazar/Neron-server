@@ -1277,7 +1277,7 @@ def test_agent_creation_dispatch_has_single_primary_handler():
 
 @pytest.mark.asyncio
 async def test_agent_creation_dispatch_uses_build_orchestrator(monkeypatch):
-    calls: list[tuple[str, str, str]] = []
+    calls: list[tuple[str, str, str, str]] = []
 
     class FakeModel:
         def set_last_intent(self, *_args):
@@ -1287,8 +1287,15 @@ async def test_agent_creation_dispatch_uses_build_orchestrator(monkeypatch):
             return None
 
     class FakeOrchestrator:
-        async def build_from_request(self, query: str, *, requested_by: str, source_channel: str):
-            calls.append((query, requested_by, source_channel))
+        async def build_from_request(
+            self,
+            query: str,
+            *,
+            requested_by: str,
+            source_channel: str,
+            build_mode: str = "deterministic",
+        ):
+            calls.append((query, requested_by, source_channel, build_mode))
             return {"status": "completed", "response": "orchestrated"}
 
         def format_project_response(self, project):
@@ -1307,7 +1314,171 @@ async def test_agent_creation_dispatch_uses_build_orchestrator(monkeypatch):
     )
 
     assert result == "orchestrated"
-    assert calls == [("Créer un agent de test", "user", "api")]
+    assert calls == [("Créer un agent de test", "user", "api", "hybrid")]
+
+
+@pytest.mark.asyncio
+async def test_agent_router_default_creation_path_uses_hybrid_build_mode(monkeypatch):
+    calls: list[tuple[str, str, str, str]] = []
+
+    class FakeModel:
+        def set_last_intent(self, *_args):
+            return None
+
+        def add_recent_activity(self, *_args):
+            return None
+
+    class FakeOrchestrator:
+        async def build_from_request(
+            self,
+            query: str,
+            *,
+            requested_by: str,
+            source_channel: str,
+            build_mode: str = "deterministic",
+        ):
+            calls.append((query, requested_by, source_channel, build_mode))
+            return {"status": "completed", "response": "orchestrated"}
+
+        def format_project_response(self, project):
+            return "formatted"
+
+    monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
+    monkeypatch.setattr(build_orchestrator, "AgentBuildOrchestrator", FakeOrchestrator)
+
+    result = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.AGENT_CREATION, confidence="high"),
+        "Créer un agent nommé eclipse_telegram_codex_agent qui surveille les éclipses",
+    )
+
+    assert result == "orchestrated"
+    assert calls == [
+        (
+            "Créer un agent nommé eclipse_telegram_codex_agent qui surveille les éclipses",
+            "user",
+            "api",
+            "hybrid",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_telegram_goal_agent_creation_uses_hybrid_build_mode():
+    from core.goals.goal_orchestrator import GoalOrchestrator
+
+    calls: list[tuple[str, str, str, str]] = []
+
+    class FakeStorage:
+        def update(self, plan):
+            self.plan = dict(plan)
+
+    class FakeTaskManager:
+        def __init__(self):
+            self.tasks: list[dict] = []
+
+        def create_tasks_from_plan(self, plan):
+            self.tasks = [
+                {
+                    "id": "task-1",
+                    "plan_id": plan["id"],
+                    "title": "Créer agent",
+                    "action": "create_skeleton",
+                    "agent": "agent_creator",
+                    "status": "active",
+                }
+            ]
+            return self.tasks
+
+        def list_tasks(self):
+            return self.tasks
+
+        def update_task(self, task_id, updates):
+            task = next(item for item in self.tasks if item["id"] == task_id)
+            task.update(updates)
+            return task
+
+        def _now(self):
+            return "2026-06-04T00:00:00+00:00"
+
+    class FakeGoalManager:
+        def update_progress(self, *_args):
+            return None
+
+        def update_status(self, *_args):
+            return None
+
+    class FakeBuildOrchestrator:
+        async def build_from_request(
+            self,
+            query: str,
+            *,
+            requested_by: str,
+            source_channel: str,
+            build_mode: str = "deterministic",
+        ):
+            calls.append((query, requested_by, source_channel, build_mode))
+            return {
+                "status": "completed",
+                "build_mode": build_mode,
+                "codex_used": True,
+                "codex_ok": True,
+                "codex_fallback": False,
+                "project": {
+                    "project_id": "agent_eclipse",
+                    "registered_agent": "eclipse_telegram_codex_agent",
+                    "registry_status": "registered",
+                    "created_files": [
+                        "workspace/agents/eclipse_telegram_codex_agent.py",
+                        "workspace/agent_tests/test_eclipse_telegram_codex_agent.py",
+                        "core/agents/generated/eclipse_telegram_codex_agent.py",
+                    ],
+                    "test_results": [{"returncode": 0}],
+                    "result": {
+                        "agent": "eclipse_telegram_codex_agent",
+                        "available": True,
+                        "runtime_reload": {"ok": True, "agents": ["eclipse_telegram_codex_agent"]},
+                    },
+                },
+                "spec": {
+                    "name": "eclipse_telegram_codex_agent",
+                    "goal": "Créer un agent nommé eclipse_telegram_codex_agent",
+                    "capabilities": ["deterministic_response"],
+                },
+            }
+
+    async def notifier(*_args):
+        return None
+
+    orchestrator = GoalOrchestrator.__new__(GoalOrchestrator)
+    orchestrator.storage = FakeStorage()
+    orchestrator.task_manager = FakeTaskManager()
+    orchestrator.goal_manager = FakeGoalManager()
+    orchestrator.agent_build_orchestrator = FakeBuildOrchestrator()
+    orchestrator.notifier = notifier
+
+    plan = {
+        "id": "plan-telegram",
+        "goal_id": "goal-telegram",
+        "goal": "Créer un agent nommé eclipse_telegram_codex_agent",
+        "source": "telegram_goal",
+        "approved": True,
+        "steps": [{"agent": "agent_creator", "action": "create_skeleton"}],
+    }
+
+    result = await orchestrator.execute_agent_build_plan(plan, approved_by="risk_policy")
+
+    assert result["status"] == "plan_finished"
+    assert calls == [
+        (
+            "Créer un agent nommé eclipse_telegram_codex_agent",
+            "risk_policy",
+            "telegram",
+            "hybrid",
+        )
+    ]
+    assert result["plan"]["build_mode"] == "hybrid"
+    assert result["plan"]["codex_used"] is True
+    assert result["plan"]["codex_fallback"] is False
 
 
 @pytest.mark.asyncio
@@ -1386,6 +1557,32 @@ async def test_project_routes_list_get_and_search(monkeypatch, tmp_path: Path):
     assert listed["count"] == 1
     assert fetched["project"]["project_id"] == project["project_id"]
     assert searched["projects"][0]["project_id"] == project["project_id"]
+
+
+@pytest.mark.asyncio
+async def test_agent_build_route_defaults_to_deterministic(monkeypatch):
+    from core.projects import routes
+
+    calls: list[tuple[str, str, str, str]] = []
+
+    class FakeOrchestrator:
+        async def build_from_request(
+            self,
+            query: str,
+            *,
+            requested_by: str,
+            source_channel: str,
+            build_mode: str = "deterministic",
+        ):
+            calls.append((query, requested_by, source_channel, build_mode))
+            return {"status": "completed"}
+
+    monkeypatch.setattr(routes, "AgentBuildOrchestrator", FakeOrchestrator)
+
+    result = await routes.build_agent(routes.AgentBuildRequest(query="Créer un agent nommé api_default_agent"))
+
+    assert result["status"] == "completed"
+    assert calls == [("Créer un agent nommé api_default_agent", "api", "api", "deterministic")]
 
 
 @pytest.mark.asyncio

@@ -240,13 +240,21 @@ class NeronCommandDispatcher:
             if plan.get("registered_agent"):
                 tests = "OK" if plan.get("tests_ok") else "non vérifiés"
                 runtime = "OK" if (plan.get("runtime_reload") or {}).get("ok") else "non rechargé"
-                return (
-                    "Projet terminé.\n"
-                    f"Agent créé : {plan.get('registered_agent')}.\n"
-                    f"Tests : {tests}.\n"
-                    "Agent enregistré : oui.\n"
-                    f"Runtime rechargé : {runtime}."
-                )
+                lines = [
+                    "Projet terminé.",
+                    f"Agent créé : {plan.get('registered_agent')}.",
+                    f"Tests : {tests}.",
+                    "Agent enregistré : oui.",
+                    f"Runtime rechargé : {runtime}.",
+                ]
+                if plan.get("codex_used") is not None:
+                    lines.extend(
+                        [
+                            f"Codex : {'utilisé' if plan.get('codex_used') else 'non utilisé'}.",
+                            f"Fallback : {'oui' if plan.get('codex_fallback') else 'non'}.",
+                        ]
+                    )
+                return "\n".join(lines)
             lines = [
                 "✅ Objectif reçu",
                 "🧠 Plan généré",

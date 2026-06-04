@@ -204,6 +204,7 @@ async def _build_tracked_agent(query: str, source_channel: str = "api") -> str:
         query,
         requested_by="user",
         source_channel=source_channel,
+        build_mode="hybrid",
     )
     return result.get("response") or orchestrator.format_project_response(result.get("project"))
 
@@ -332,7 +333,7 @@ class AgentRouter:
         self.llm_config = llm_config
         self.tools = tools
 
-    async def route(self, intent_result, query: str):
+    async def route(self, intent_result, query: str, source_channel: str = "api"):
         model = _get_self_model()
         raw_intent = getattr(
             intent_result,
@@ -389,7 +390,7 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent in (Intent.AGENT_CREATION, Intent.TOOL_CREATION):
-            return await _build_tracked_agent(query)
+            return await _build_tracked_agent(query, source_channel=source_channel)
 
         if intent == Intent.PROJECT_STATUS:
             return _project_status_text(query)

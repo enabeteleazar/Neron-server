@@ -213,6 +213,7 @@ class GoalOrchestrator:
             str(plan.get("goal") or ""),
             requested_by=approved_by,
             source_channel=source_channel or "api",
+            build_mode=self._agent_build_mode_for_source(source_channel),
         )
         plan["agent_build_result"] = build_result
         plan["agent_build_status"] = build_result.get("status")
@@ -688,6 +689,11 @@ class GoalOrchestrator:
         plan["registry_status"] = project.get("registry_status")
         plan["runtime_reload"] = runtime_reload
         plan["tests_ok"] = tests_ok
+        plan["build_mode"] = build_result.get("build_mode")
+        plan["codex_used"] = build_result.get("codex_used")
+        plan["codex_ok"] = build_result.get("codex_ok")
+        plan["codex_fallback"] = build_result.get("codex_fallback")
+        plan["codex_error"] = build_result.get("codex_error")
         plan["applied_to_core"] = build_result.get("status") == "completed" and bool(agent_name)
         plan["human_validation_required"] = False
         plan["agent_creation_proposal"] = {
@@ -701,8 +707,17 @@ class GoalOrchestrator:
             "applied_to_core": plan["applied_to_core"],
             "created_from_goal_id": plan.get("goal_id"),
             "created_from_plan_id": plan.get("id"),
+            "build_mode": plan.get("build_mode"),
+            "codex_used": plan.get("codex_used"),
+            "codex_ok": plan.get("codex_ok"),
+            "codex_fallback": plan.get("codex_fallback"),
         }
         plan["agent_proposal_status"] = plan["agent_creation_proposal"]["status"]
+
+    def _agent_build_mode_for_source(self, source_channel: str) -> str:
+        if source_channel in {"telegram", "validation", "telegram_validation"}:
+            return "hybrid"
+        return "deterministic"
 
     def _extract_agent_proposal(self, result: dict[str, Any]) -> dict[str, Any] | None:
         if not isinstance(result, dict):

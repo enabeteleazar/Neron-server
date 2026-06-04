@@ -495,6 +495,7 @@ app.add_middleware(
 
 class TextInput(BaseModel):
     text: str
+    source_channel: str = "api"
 
 
 class CoreResponse(BaseModel):
@@ -816,7 +817,11 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
 
             return result
         elif intent_result.intent in (Intent.AGENT_CREATION, Intent.TOOL_CREATION):
-            response_text = await agent_router.route(intent_result, query)
+            response_text = await agent_router.route(
+                intent_result,
+                query,
+                source_channel=input_data.source_channel,
+            )
 
             return CoreResponse(
                 response=response_text,
