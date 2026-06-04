@@ -133,7 +133,8 @@ from core.api.planner_routes import router as planner_router
 
 logger = get_logger("neron.core")
 
-VERSION = "3.6.0"
+VERSION = "3.7.0"
+TAG = "Phase 2.1 - Codex Assisted Agent Builder validated"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
 
