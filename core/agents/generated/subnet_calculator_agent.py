@@ -47,9 +47,11 @@ class Agent:
 
         first_address = network.network_address
         last_address = network.broadcast_address
+        ip_type = f"IPv{network.version}"
 
         lines = [
             f"Réseau: {network.network_address}/{network.prefixlen}",
+            f"Type IPv4/IPv6: {ip_type}",
             f"Préfixe: /{network.prefixlen}",
             f"Première adresse: {first_address}",
             f"Dernière adresse: {last_address}",

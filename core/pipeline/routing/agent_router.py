@@ -355,10 +355,13 @@ def _is_promote_request(query: str) -> bool:
 
 
 def _extract_agent_update_request(query: str) -> tuple[str, str] | None:
+    text = unicodedata.normalize("NFC", query)
     match = re.match(
-        r"^\s*am[eé]liore\s+(?:l\s+|l['’]\s*)?agent\s+([A-Za-z0-9_.-]+)\s+(.+?)\s*$",
-        query,
-        flags=re.IGNORECASE,
+        r"^\s*(?:mets?\s+[aà]\s+jour|am[eé]liore|update)\s+"
+        r"(?:l\s+|l['’]\s*)?(?:agent\s+)?"
+        r"([A-Za-z0-9_.-]+)(?:\s*:\s*|\s+)(.+?)\s*$",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
     )
     if match:
         name = _clean_agent_module_name(match.group(1))

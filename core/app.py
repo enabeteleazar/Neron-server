@@ -95,7 +95,13 @@ from core.agents.io.tts_agent import TTSAgent
 
 
 from core.config import settings
-from core.pipeline.routing.agent_router import AgentRouter, LLMConfig, ToolRegistry
+from core.pipeline.routing.agent_router import (
+    AgentRouter,
+    LLMConfig,
+    ToolRegistry,
+    _extract_agent_update_request,
+    _update_dynamic_agent,
+)
 from core.events.event import Event
 from core.events.event_bus import event_bus
 from core.events.event_types import USER_MESSAGE_RECEIVED
@@ -791,6 +797,26 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     }
 
     try:
+        if _extract_agent_update_request(query):
+            response_text = await _update_dynamic_agent(query)
+
+            return CoreResponse(
+                response=response_text,
+                intent="agent_update",
+                agent="agent_manager",
+                confidence="high",
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=None,
+                transcription=None,
+                metadata={
+                    **metadata,
+                    "source": input_data.source_channel,
+                    "routed_before_llm": True,
+                },
+            )
+
         if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
             return await _handle_personality_feedback(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.TIME_QUERY:

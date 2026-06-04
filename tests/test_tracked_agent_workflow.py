@@ -1925,7 +1925,44 @@ async def test_agent_registry_telegram_commands_use_scanner(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch):
+@pytest.mark.parametrize(
+    ("query", "expected_request"),
+    [
+        (
+            "Met à jour agent subnet_calculator_agent Ajoute une ligne Type IPv4/IPv6",
+            "Ajoute une ligne Type IPv4/IPv6",
+        ),
+        (
+            "Met à jour subnet_calculator_agent : Ajoute une ligne Type IPv4/IPv6",
+            "Ajoute une ligne Type IPv4/IPv6",
+        ),
+        (
+            "mets à jour agent subnet_calculator_agent Ajoute une ligne Type IPv4/IPv6",
+            "Ajoute une ligne Type IPv4/IPv6",
+        ),
+        (
+            "mets à jour subnet_calculator_agent Ajoute une ligne Type IPv4/IPv6",
+            "Ajoute une ligne Type IPv4/IPv6",
+        ),
+        (
+            "améliore agent subnet_calculator_agent ajoute le support IPv6",
+            "ajoute le support IPv6",
+        ),
+        (
+            "améliore subnet_calculator_agent ajoute le support IPv6",
+            "ajoute le support IPv6",
+        ),
+        (
+            "update agent subnet_calculator_agent ajoute le support IPv6",
+            "ajoute le support IPv6",
+        ),
+        (
+            "update subnet_calculator_agent\nAjoute une ligne Type IPv4/IPv6",
+            "Ajoute une ligne Type IPv4/IPv6",
+        ),
+    ],
+)
+async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch, query, expected_request):
     from core.agent_factory import agent_manager
 
     class FakeModel:
@@ -1953,13 +1990,124 @@ async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch):
 
     response = await agent_router.AgentRouter().route(
         IntentResult(intent=Intent.CONVERSATION, confidence="low"),
-        "améliore agent subnet_calculator_agent ajoute le support IPv6",
+        query,
     )
 
     assert "Agent mis à jour : subnet_calculator_agent." in response
     assert "Tests : OK." in response
     assert "Runtime rechargé : OK." in response
-    assert calls == [("subnet_calculator_agent", "ajoute le support IPv6")]
+    assert calls == [("subnet_calculator_agent", expected_request)]
+
+
+@pytest.mark.asyncio
+async def test_direct_agent_invocation_is_not_treated_as_update(monkeypatch):
+    from core.agent_factory import agent_manager
+    from core.agents.conversation import conversation_agent
+
+    class FakeModel:
+        def set_last_intent(self, *_args):
+            return None
+
+        def add_recent_activity(self, *_args):
+            return None
+
+        def set_last_agent(self, *_args):
+            return None
+
+        def set_last_action(self, *_args):
+            return None
+
+        def set_last_decision(self, *_args):
+            return None
+
+        def set_last_reasoning(self, *_args):
+            return None
+
+        def set_last_error(self, *_args):
+            return None
+
+    class ForbiddenManager:
+        async def update_agent(self, *_args, **_kwargs):
+            raise AssertionError("direct agent invocation must not call update_agent")
+
+    class FakeConversationAgent:
+        async def delegate_to_registered_agent(self, query: str):
+            return {
+                "ok": True,
+                "agent": "subnet_calculator_agent",
+                "response": f"executed:{query}",
+            }
+
+    monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
+    monkeypatch.setattr(agent_manager, "AgentManager", ForbiddenManager)
+    monkeypatch.setattr(conversation_agent, "ConversationAgent", FakeConversationAgent)
+
+    response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        "subnet_calculator_agent 2001:db8::/64",
+    )
+
+    assert response == "executed:subnet_calculator_agent 2001:db8::/64"
+
+
+@pytest.mark.asyncio
+async def test_input_text_routes_agent_update_before_llm(monkeypatch):
+    from core import app as core_app
+    from core.agent_factory import agent_manager
+
+    class FakeRouter:
+        async def route(self, query: str):
+            assert query == "Met à jour subnet_calculator_agent : Ajoute une ligne Type IPv4/IPv6"
+            return IntentResult(intent=Intent.CONVERSATION, confidence="low")
+
+    class FakeMetrics:
+        def record_request_start(self):
+            return None
+
+        def record_request_end(self, *_args):
+            return None
+
+        def record_intent(self, *_args):
+            return None
+
+    class FakeManager:
+        async def update_agent(self, agent_name: str, request: str = ""):
+            calls.append((agent_name, request))
+            return {
+                "status": "updated",
+                "agent": agent_name,
+                "backup": {"backup_created": True},
+                "test_result": {"returncode": 0},
+                "runtime_reload": {"ok": True},
+            }
+
+    async def fake_publish(*_args, **_kwargs):
+        return None
+
+    async def forbidden_conversation(*_args, **_kwargs):
+        raise AssertionError("/input/text update command must not reach llm_agent")
+
+    calls: list[tuple[str, str]] = []
+    monkeypatch.setattr(core_app, "router", FakeRouter())
+    monkeypatch.setattr(core_app, "metrics", FakeMetrics())
+    monkeypatch.setattr(core_app.event_bus, "publish", fake_publish)
+    monkeypatch.setattr(core_app, "_handle_conversation", forbidden_conversation)
+    monkeypatch.setattr(agent_manager, "AgentManager", FakeManager)
+
+    result = await core_app.text_input(
+        core_app.TextInput(
+            text="Met à jour subnet_calculator_agent : Ajoute une ligne Type IPv4/IPv6",
+            source_channel="telegram",
+        ),
+        None,
+    )
+
+    assert result.intent == "agent_update"
+    assert result.agent == "agent_manager"
+    assert "Agent mis à jour : subnet_calculator_agent." in result.response
+    assert result.metadata["routed_before_llm"] is True
+    assert result.metadata["source"] == "telegram"
+    assert calls == [("subnet_calculator_agent", "Ajoute une ligne Type IPv4/IPv6")]
 
 
 @pytest.mark.asyncio
