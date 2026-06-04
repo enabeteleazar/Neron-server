@@ -10,9 +10,11 @@ from pydantic import ValidationError
 
 from core.agent_factory import build_orchestrator
 from core.agent_factory.agent_creator import AgentCreator
+from core.agent_factory.agent_manager import AgentManager
 from core.agent_factory.factory_agent import AgentFactoryAgent
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.agent_factory.registry import DynamicAgentRegistry
+from core.agent_factory.registry_scanner import AgentRegistryScanner
 from core.agents.conversation.conversation_agent import ConversationAgent
 from core.events import event_types
 from core.events.event_bus import event_bus
@@ -164,6 +166,20 @@ def _valid_agent_code(agent_name: str) -> str:
             "",
         ]
     )
+
+
+class FakeRuntimeManager:
+    def __init__(self, generated_agents: Path) -> None:
+        self.registry = DynamicAgentRegistry(generated_agents)
+        self.reload_calls = 0
+
+    def reload(self) -> dict:
+        self.reload_calls += 1
+        agents = sorted((self.registry.load_generated_agents() or {}).keys())
+        return {"ok": True, "count": len(agents), "agents": agents}
+
+    def get_state(self, name: str):
+        return {"name": name, "runs": 0}
 
 
 @pytest.mark.asyncio
@@ -472,7 +488,9 @@ def test_dynamic_agent_registry_finds_registered_agent_by_spec(tmp_path: Path):
         f"AGENT_SPEC = {json.dumps(spec.to_dict(), sort_keys=True)}\n"
         f"AGENT_SPEC_SIGNATURE = {orchestrator._spec_signature(spec)!r}\n"
         "class Agent:\n"
-        "    name = 'event_countdown_agent'\n",
+        "    name = 'event_countdown_agent'\n"
+        "    async def execute(self, text=''):\n"
+        "        return {'status': 'ok', 'response': 'available'}\n",
         encoding="utf-8",
     )
 
@@ -484,6 +502,145 @@ def test_dynamic_agent_registry_finds_registered_agent_by_spec(tmp_path: Path):
     assert match is not None
     assert match["agent_name"] == "event_countdown_agent"
     assert match["path"] == str(registered_agent)
+
+
+@pytest.mark.asyncio
+async def test_agent_registry_scanner_registers_valid_agent_and_reloads_runtime(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    agent_file = generated / "scan_valid_agent.py"
+    agent_file.write_text(_valid_agent_code("scan_valid_agent"), encoding="utf-8")
+    runtime = FakeRuntimeManager(generated)
+    scanner = AgentRegistryScanner(
+        generated_agents=generated,
+        index_path=tmp_path / "data" / "agent_registry_index.json",
+        runtime_manager=runtime,
+    )
+
+    result = await scanner.scan()
+    index = scanner.get_index()
+    entry = index["agents"]["scan_valid_agent"]
+
+    assert result["status"] == "ok"
+    assert result["scanned"] == 1
+    assert result["active"] == 1
+    assert result["invalid"] == 0
+    assert result["runtime_reloaded"] is True
+    assert runtime.reload_calls == 1
+    assert result["runtime_reload"]["agents"] == ["scan_valid_agent"]
+    assert entry["agent_name"] == "scan_valid_agent"
+    assert entry["path"] == str(agent_file)
+    assert entry["status"] == "active"
+    assert entry["validation_ok"] is True
+    assert entry["error"] is None
+    assert entry["source"] == "generated_scan"
+    assert entry["checksum"]
+    assert entry["last_scanned_at"]
+
+
+@pytest.mark.asyncio
+async def test_agent_registry_scanner_marks_invalid_agent_without_runtime_reload(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    invalid = generated / "scan_invalid_agent.py"
+    invalid.write_text(
+        "class Agent:\n"
+        "    name = 'scan_invalid_agent'\n"
+        "    def execute(self, text=''):\n"
+        "        return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+    runtime = FakeRuntimeManager(generated)
+    scanner = AgentRegistryScanner(
+        generated_agents=generated,
+        index_path=tmp_path / "data" / "agent_registry_index.json",
+        runtime_manager=runtime,
+    )
+
+    result = await scanner.scan()
+    index = scanner.get_index()
+    entry = index["agents"]["scan_invalid_agent"]
+
+    assert result["status"] == "ok"
+    assert result["active"] == 0
+    assert result["invalid"] == 1
+    assert result["runtime_reloaded"] is False
+    assert result["runtime_reload"] is None
+    assert runtime.reload_calls == 0
+    assert entry["status"] == "invalid"
+    assert entry["validation_ok"] is False
+    assert "execute" in entry["error"]
+    assert "scan_invalid_agent" not in DynamicAgentRegistry(generated).load_generated_agents()
+    assert invalid.exists()
+
+
+def test_agent_manager_status_and_inspect_registered_agent(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    agent_file = generated / "managed_demo_agent.py"
+    agent_file.write_text(_valid_agent_code("managed_demo_agent"), encoding="utf-8")
+    manager = AgentManager(
+        generated_agents=generated,
+        backups_dir=tmp_path / "data" / "agent_backups",
+        runtime_manager=FakeRuntimeManager(generated),
+    )
+
+    listing = manager.list_managed_agents()
+    status = manager.get_agent_status("managed_demo_agent")
+    inspection = manager.inspect_agent("managed_demo_agent")
+
+    assert listing["count"] == 1
+    assert listing["agents"][0]["agent"] == "managed_demo_agent"
+    assert status["status"] == "ok"
+    assert status["validation"]["ok"] is True
+    assert status["protected"] is False
+    assert inspection["contains_agent_class"] is True
+    assert inspection["contains_execute"] is True
+    assert "class Agent" in inspection["source_preview"]
+
+
+def test_agent_manager_delete_requires_backup_and_reloads_runtime(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    agent_file = generated / "managed_delete_agent.py"
+    agent_file.write_text(_valid_agent_code("managed_delete_agent"), encoding="utf-8")
+    runtime = FakeRuntimeManager(generated)
+    manager = AgentManager(
+        generated_agents=generated,
+        backups_dir=tmp_path / "data" / "agent_backups",
+        runtime_manager=runtime,
+    )
+
+    result = manager.delete_agent("managed_delete_agent")
+
+    assert result["status"] == "deleted"
+    assert result["deleted"] is True
+    assert result["backup"]["backup_created"] is True
+    assert Path(result["backup"]["backup_path"]).exists()
+    assert not agent_file.exists()
+    assert result["runtime_reload"]["ok"] is True
+    assert runtime.reload_calls == 1
+
+
+def test_agent_manager_refuses_delete_for_protected_agent(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    protected = generated / "event_countdown_agent.py"
+    protected.write_text(_valid_agent_code("event_countdown_agent"), encoding="utf-8")
+    runtime = FakeRuntimeManager(generated)
+    manager = AgentManager(
+        generated_agents=generated,
+        backups_dir=tmp_path / "data" / "agent_backups",
+        runtime_manager=runtime,
+    )
+
+    result = manager.delete_agent("event_countdown_agent")
+
+    assert result["status"] == "refused"
+    assert result["reason"] == "protected_agent"
+    assert protected.exists()
+    assert not (tmp_path / "data" / "agent_backups" / "event_countdown_agent").exists()
+    assert runtime.reload_calls == 0
 
 
 def test_agent_creator_respects_explicit_agent_name(tmp_path: Path):
@@ -1510,6 +1667,74 @@ async def test_agent_list_variants_use_same_registry_action(monkeypatch, query):
 
 
 @pytest.mark.asyncio
+async def test_agent_registry_telegram_commands_use_scanner(monkeypatch):
+    from core.agent_factory import registry_scanner
+
+    class FakeModel:
+        def set_last_intent(self, *_args):
+            return None
+
+        def add_recent_activity(self, *_args):
+            return None
+
+    calls: list[str] = []
+
+    class FakeScanner:
+        async def scan(self):
+            calls.append("scan")
+            return {
+                "status": "ok",
+                "scanned": 2,
+                "active": 1,
+                "invalid": 1,
+                "runtime_reloaded": True,
+            }
+
+        def get_index(self):
+            calls.append("index")
+            return {
+                "agents": {
+                    "active_scan_agent": {
+                        "agent_name": "active_scan_agent",
+                        "status": "active",
+                        "source": "generated_scan",
+                    },
+                    "invalid_scan_agent": {
+                        "agent_name": "invalid_scan_agent",
+                        "status": "invalid",
+                        "error": "méthode async execute manquante",
+                        "source": "generated_scan",
+                    },
+                }
+            }
+
+    monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
+    monkeypatch.setattr(registry_scanner, "AgentRegistryScanner", FakeScanner)
+
+    scan_response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        "rescanner agents",
+    )
+    invalid_response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        "agents invalides",
+    )
+    index_response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        "index agents",
+    )
+
+    assert "Scan agents terminé." in scan_response
+    assert "Agents scannés : 2." in scan_response
+    assert "Runtime rechargé : OK." in scan_response
+    assert "invalid_scan_agent" in invalid_response
+    assert "méthode async execute manquante" in invalid_response
+    assert "- active_scan_agent | active" in index_response
+    assert "- invalid_scan_agent | invalid" in index_response
+    assert calls == ["scan", "index", "index"]
+
+
+@pytest.mark.asyncio
 async def test_legacy_agent_factory_delegates_to_build_orchestrator(monkeypatch):
     from core.agent_factory import factory_agent
 
@@ -1583,6 +1808,76 @@ async def test_agent_build_route_defaults_to_deterministic(monkeypatch):
 
     assert result["status"] == "completed"
     assert calls == [("Créer un agent nommé api_default_agent", "api", "api", "deterministic")]
+
+
+@pytest.mark.asyncio
+async def test_agent_manager_routes_expose_status_inspect_delete(monkeypatch):
+    from core.projects import routes
+
+    calls: list[tuple[str, str]] = []
+
+    class FakeManager:
+        def get_agent_status(self, agent_name: str):
+            calls.append(("status", agent_name))
+            return {"status": "ok", "agent": agent_name}
+
+        def inspect_agent(self, agent_name: str):
+            calls.append(("inspect", agent_name))
+            return {"status": "ok", "agent": agent_name, "source_preview": "class Agent"}
+
+        def delete_agent(self, agent_name: str):
+            calls.append(("delete", agent_name))
+            return {"status": "deleted", "agent": agent_name, "backup": {"backup_created": True}}
+
+    monkeypatch.setattr(routes, "AgentManager", FakeManager)
+
+    status = await routes.agent_status("managed_route_agent")
+    inspection = await routes.inspect_agent("managed_route_agent")
+    deletion = await routes.delete_agent("managed_route_agent")
+
+    assert status["status"] == "ok"
+    assert inspection["source_preview"] == "class Agent"
+    assert deletion["backup"]["backup_created"] is True
+    assert calls == [
+        ("status", "managed_route_agent"),
+        ("inspect", "managed_route_agent"),
+        ("delete", "managed_route_agent"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_agent_registry_scanner_routes_expose_scan_and_index(monkeypatch):
+    from core.projects import routes
+
+    calls: list[str] = []
+
+    class FakeScanner:
+        async def scan(self):
+            calls.append("scan")
+            return {"status": "ok", "scanned": 1, "runtime_reloaded": True}
+
+        def get_index(self):
+            calls.append("index")
+            return {
+                "agents": {
+                    "route_scan_agent": {
+                        "agent_name": "route_scan_agent",
+                        "status": "active",
+                        "source": "generated_scan",
+                    }
+                }
+            }
+
+    monkeypatch.setattr(routes, "AgentRegistryScanner", FakeScanner)
+
+    scan_get = await routes.scan_agent_registry_get()
+    scan_post = await routes.scan_agent_registry_post()
+    index = await routes.agent_registry_index()
+
+    assert scan_get["status"] == "ok"
+    assert scan_post["runtime_reloaded"] is True
+    assert index["agents"]["route_scan_agent"]["source"] == "generated_scan"
+    assert calls == ["scan", "scan", "index"]
 
 
 @pytest.mark.asyncio

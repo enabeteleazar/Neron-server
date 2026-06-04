@@ -33,6 +33,19 @@ AGENT_LIST_QUERIES = {
     "montre moi les agents",
 }
 
+AGENT_REGISTRY_SCAN_QUERIES = {
+    "scan agents",
+    "rescanner agents",
+}
+
+AGENT_REGISTRY_INDEX_QUERIES = {
+    "index agents",
+}
+
+AGENT_REGISTRY_INVALID_QUERIES = {
+    "agents invalides",
+}
+
 
 def _normalize(text: str) -> str:
     text = text.lower().strip()
@@ -168,6 +181,73 @@ def _list_dynamic_agents() -> str:
 
 def _is_agent_list_query(query: str) -> bool:
     return _normalize(query).strip(" ?!.:,;") in AGENT_LIST_QUERIES
+
+
+def _is_registry_scan_query(query: str) -> bool:
+    return _normalize(query).strip(" ?!.:,;") in AGENT_REGISTRY_SCAN_QUERIES
+
+
+def _is_registry_index_query(query: str) -> bool:
+    return _normalize(query).strip(" ?!.:,;") in AGENT_REGISTRY_INDEX_QUERIES
+
+
+def _is_registry_invalid_query(query: str) -> bool:
+    return _normalize(query).strip(" ?!.:,;") in AGENT_REGISTRY_INVALID_QUERIES
+
+
+async def _scan_agent_registry_text() -> str:
+    from core.agent_factory.registry_scanner import AgentRegistryScanner
+
+    result = await AgentRegistryScanner().scan()
+    runtime = "OK" if result.get("runtime_reloaded") else "non"
+    return "\n".join(
+        [
+            "Scan agents terminé.",
+            f"Agents scannés : {result.get('scanned', 0)}.",
+            f"Actifs : {result.get('active', 0)}.",
+            f"Invalides : {result.get('invalid', 0)}.",
+            f"Runtime rechargé : {runtime}.",
+        ]
+    )
+
+
+def _agent_registry_records() -> list[dict[str, Any]]:
+    from core.agent_factory.registry_scanner import AgentRegistryScanner
+
+    index = AgentRegistryScanner().get_index()
+    agents = index.get("agents") if isinstance(index, dict) else {}
+    if not isinstance(agents, dict):
+        return []
+    return sorted(
+        (record for record in agents.values() if isinstance(record, dict)),
+        key=lambda record: str(record.get("agent_name") or record.get("path") or ""),
+    )
+
+
+def _agent_registry_index_text() -> str:
+    records = _agent_registry_records()
+    if not records:
+        return "Index agents vide."
+
+    lines = ["Index agents :"]
+    lines.extend(
+        f"- {record.get('agent_name') or 'agent_inconnu'} | {record.get('status') or 'unknown'}"
+        for record in records
+    )
+    return "\n".join(lines)
+
+
+def _invalid_agent_registry_text() -> str:
+    invalid = [record for record in _agent_registry_records() if record.get("status") == "invalid"]
+    if not invalid:
+        return "Aucun agent invalide."
+
+    lines = ["Agents invalides :"]
+    lines.extend(
+        f"- {record.get('agent_name') or 'agent_inconnu'} | {record.get('error') or 'erreur inconnue'}"
+        for record in invalid
+    )
+    return "\n".join(lines)
 
 
 def _project_status_text(query: str) -> str:
@@ -359,6 +439,15 @@ class AgentRouter:
 
         intent = Intent.AGENT_LIST if _is_agent_list_query(query) else intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
+
+        if _is_registry_scan_query(query):
+            return await _scan_agent_registry_text()
+
+        if _is_registry_invalid_query(query):
+            return _invalid_agent_registry_text()
+
+        if _is_registry_index_query(query):
+            return _agent_registry_index_text()
 
         if _is_promote_request(query):
             return await _promote_dynamic_agent(query)

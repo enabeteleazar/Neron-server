@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
 import unicodedata
 from pathlib import Path
@@ -39,10 +40,18 @@ class DynamicAgentRegistry:
                 continue
 
             module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                continue
 
             if hasattr(module, "Agent"):
-                agent = module.Agent()
+                try:
+                    agent = module.Agent()
+                except Exception:
+                    continue
+                if not self._is_loadable_agent(agent):
+                    continue
                 AGENT_REGISTRY[module_name] = agent
                 record = self._build_record(module_name, file, module, agent)
                 self._records[module_name] = record
@@ -96,6 +105,11 @@ class DynamicAgentRegistry:
     def list_agent_records(self) -> list[dict[str, Any]]:
         self.load_generated_agents()
         return list(self._records.values())
+
+    def _is_loadable_agent(self, agent: Any) -> bool:
+        name = getattr(agent, "name", None)
+        execute = getattr(agent, "execute", None)
+        return bool(isinstance(name, str) and name.strip() and inspect.iscoroutinefunction(execute))
 
     def spec_signature(self, spec: dict[str, Any] | None) -> str:
         if not spec:

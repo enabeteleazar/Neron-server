@@ -9,6 +9,8 @@ from pydantic import BaseModel
 from core.api.auth import verify_api_key
 from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+from core.agent_factory.agent_manager import AgentManager
+from core.agent_factory.registry_scanner import AgentRegistryScanner
 from core.agent_factory.promoter import promote_agent
 from core.agent_factory.validator import validate_agent
 from core.evolution.codex_runner import CodexRunner
@@ -28,6 +30,18 @@ class AgentBuildRequest(BaseModel):
 
 class AgentProposalApprovalRequest(BaseModel):
     mode: Literal["deterministic", "codex"] = "deterministic"
+
+
+class AgentUpdateRequest(BaseModel):
+    request: str = ""
+
+
+class AgentRenameRequest(BaseModel):
+    new_name: str
+
+
+class AgentRollbackRequest(BaseModel):
+    backup_path: str | None = None
 
 
 @router.get("/projects")
@@ -242,6 +256,56 @@ async def list_agents() -> dict:
     runtime = get_agent_runtime_manager()
     agents = runtime.list_agents()
     return {"count": len(agents), "agents": agents}
+
+
+@router.get("/agents/registry/scan")
+async def scan_agent_registry_get() -> dict:
+    return await AgentRegistryScanner().scan()
+
+
+@router.post("/agents/registry/scan")
+async def scan_agent_registry_post() -> dict:
+    return await AgentRegistryScanner().scan()
+
+
+@router.get("/agents/registry/index")
+async def agent_registry_index() -> dict:
+    return AgentRegistryScanner().get_index()
+
+
+@router.get("/agents/{agent_name}/status")
+async def agent_status(agent_name: str) -> dict:
+    return AgentManager().get_agent_status(agent_name)
+
+
+@router.post("/agents/{agent_name}/inspect")
+async def inspect_agent(agent_name: str) -> dict:
+    return AgentManager().inspect_agent(agent_name)
+
+
+@router.post("/agents/{agent_name}/revise")
+async def revise_agent(agent_name: str) -> dict:
+    return AgentManager().revise_agent(agent_name)
+
+
+@router.post("/agents/{agent_name}/update")
+async def update_agent(agent_name: str, payload: AgentUpdateRequest | None = None) -> dict:
+    return AgentManager().update_agent(agent_name, request=(payload or AgentUpdateRequest()).request)
+
+
+@router.post("/agents/{agent_name}/rename")
+async def rename_agent(agent_name: str, payload: AgentRenameRequest) -> dict:
+    return AgentManager().rename_agent(agent_name, new_name=payload.new_name)
+
+
+@router.post("/agents/{agent_name}/delete")
+async def delete_agent(agent_name: str) -> dict:
+    return AgentManager().delete_agent(agent_name)
+
+
+@router.post("/agents/{agent_name}/rollback")
+async def rollback_agent(agent_name: str, payload: AgentRollbackRequest | None = None) -> dict:
+    return AgentManager().rollback_agent(agent_name, backup_path=(payload or AgentRollbackRequest()).backup_path)
 
 
 def _build_query_from_proposal(proposal: dict) -> str:
