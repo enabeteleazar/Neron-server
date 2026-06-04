@@ -153,6 +153,94 @@ class FakeAgentBuilderCodexRunner:
         )
 
 
+class FakeAgentUpdateCodexRunner:
+    def __init__(
+        self,
+        *,
+        returncode: int = 0,
+        generated_dir: Path | None = None,
+        backup_dir: Path | None = None,
+        response_marker: str = "ipv6",
+    ) -> None:
+        self.returncode = returncode
+        self.generated_dir = generated_dir
+        self.backup_dir = backup_dir
+        self.response_marker = response_marker
+        self.calls: list[tuple[str, str]] = []
+        self.backup_seen = False
+
+    async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
+        self.calls.append((prompt, run_id))
+        self.backup_seen = bool(
+            self.backup_dir is not None
+            and self.backup_dir.exists()
+            and list(self.backup_dir.glob("*.py"))
+        )
+        if self.generated_dir is not None:
+            self.generated_dir.mkdir(parents=True, exist_ok=True)
+            (self.generated_dir / "codex_direct_write_agent.py").write_text(
+                _valid_agent_code("codex_direct_write_agent"),
+                encoding="utf-8",
+            )
+        if self.returncode == 0:
+            agent_file = self._path_from_prompt(prompt, "Write updated agent only at ")
+            test_file = self._path_from_prompt(prompt, "Write updated test only at ")
+            agent_name = agent_file.stem
+            agent_file.write_text(self._updated_agent_code(agent_name), encoding="utf-8")
+            test_file.write_text(self._updated_agent_test(agent_file), encoding="utf-8")
+        return CommandResult(
+            "codex",
+            ["codex", "exec", "prompt"],
+            self.returncode,
+            stdout="codex ok" if self.returncode == 0 else "",
+            stderr="" if self.returncode == 0 else "codex failed",
+        )
+
+    def _path_from_prompt(self, prompt: str, prefix: str) -> Path:
+        for line in prompt.splitlines():
+            if prefix in line:
+                return Path(line.split(prefix, 1)[1].strip())
+        raise AssertionError(f"missing path prefix: {prefix}")
+
+    def _updated_agent_code(self, agent_name: str) -> str:
+        return "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "class Agent:",
+                f"    name = {agent_name!r}",
+                "",
+                "    async def execute(self, text: str = '') -> dict:",
+                f"        return {{'status': 'ok', 'response': 'updated {self.response_marker}: ' + text}}",
+                "",
+            ]
+        )
+
+    def _updated_agent_test(self, agent_file: Path) -> str:
+        return "\n".join(
+            [
+                "from __future__ import annotations",
+                "import importlib.util",
+                "import pytest",
+                f"AGENT_FILE = {str(agent_file)!r}",
+                "",
+                "def load_agent():",
+                "    spec = importlib.util.spec_from_file_location('updated_agent_under_test', AGENT_FILE)",
+                "    module = importlib.util.module_from_spec(spec)",
+                "    assert spec and spec.loader",
+                "    spec.loader.exec_module(module)",
+                "    return module.Agent()",
+                "",
+                "@pytest.mark.asyncio",
+                "async def test_updated_agent_response():",
+                "    result = await load_agent().execute(text='IPv6')",
+                "    assert result['status'] == 'ok'",
+                f"    assert {self.response_marker!r} in result['response']",
+                "",
+            ]
+        )
+
+
 def _valid_agent_code(agent_name: str) -> str:
     return "\n".join(
         [
@@ -640,6 +728,108 @@ def test_agent_manager_refuses_delete_for_protected_agent(tmp_path: Path):
     assert result["reason"] == "protected_agent"
     assert protected.exists()
     assert not (tmp_path / "data" / "agent_backups" / "event_countdown_agent").exists()
+    assert runtime.reload_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_agent_manager_update_agent_promotes_after_codex_tests_and_reloads_runtime(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    agent_file = generated / "subnet_calculator_agent.py"
+    agent_file.write_text(_valid_agent_code("subnet_calculator_agent"), encoding="utf-8")
+    runtime = FakeRuntimeManager(generated)
+    runner = FakeAgentUpdateCodexRunner(
+        backup_dir=tmp_path / "data" / "agent_backups" / "subnet_calculator_agent",
+        response_marker="ipv6",
+    )
+    manager = AgentManager(
+        generated_agents=generated,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        backups_dir=tmp_path / "data" / "agent_backups",
+        project_root=tmp_path,
+        runtime_manager=runtime,
+        codex_runner=runner,
+    )
+
+    result = await manager.update_agent("subnet_calculator_agent", "ajoute le support IPv6")
+
+    assert result["status"] == "updated"
+    assert result["updated"] is True
+    assert result["agent"] == "subnet_calculator_agent"
+    assert result["backup"]["backup_created"] is True
+    assert Path(result["backup"]["backup_path"]).exists()
+    assert runner.backup_seen is True
+    assert runner.calls and "ajoute le support IPv6" in runner.calls[0][0]
+    assert "core/agents/generated" in runner.calls[0][0]
+    assert "Do not write to core/agents/generated" in runner.calls[0][0]
+    assert result["compile_result"]["returncode"] == 0
+    assert result["test_result"]["returncode"] == 0
+    assert result["promotion"]["destination"] == str(agent_file)
+    assert result["runtime_reload"]["ok"] is True
+    assert runtime.reload_calls == 1
+    assert "updated ipv6" in agent_file.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_agent_manager_update_refuses_protected_agent_without_backup(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    protected = generated / "event_countdown_agent.py"
+    protected.write_text(_valid_agent_code("event_countdown_agent"), encoding="utf-8")
+    runtime = FakeRuntimeManager(generated)
+    runner = FakeAgentUpdateCodexRunner()
+    manager = AgentManager(
+        generated_agents=generated,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        backups_dir=tmp_path / "data" / "agent_backups",
+        project_root=tmp_path,
+        runtime_manager=runtime,
+        codex_runner=runner,
+    )
+
+    result = await manager.update_agent("event_countdown_agent", "change le format")
+
+    assert result["status"] == "refused"
+    assert result["reason"] == "protected_agent"
+    assert result["updated"] is False
+    assert protected.exists()
+    assert not (tmp_path / "data" / "agent_backups" / "event_countdown_agent").exists()
+    assert runner.calls == []
+    assert runtime.reload_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_agent_manager_update_blocks_codex_direct_write_to_generated(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    generated.mkdir(parents=True)
+    agent_file = generated / "direct_guard_agent.py"
+    original = _valid_agent_code("direct_guard_agent")
+    agent_file.write_text(original, encoding="utf-8")
+    runtime = FakeRuntimeManager(generated)
+    runner = FakeAgentUpdateCodexRunner(
+        generated_dir=generated,
+        backup_dir=tmp_path / "data" / "agent_backups" / "direct_guard_agent",
+    )
+    manager = AgentManager(
+        generated_agents=generated,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        backups_dir=tmp_path / "data" / "agent_backups",
+        project_root=tmp_path,
+        runtime_manager=runtime,
+        codex_runner=runner,
+    )
+
+    result = await manager.update_agent("direct_guard_agent", "ajoute une logique")
+
+    assert result["status"] == "failed"
+    assert result["reason"] == "codex_generated_dir_write_blocked"
+    assert result["updated"] is False
+    assert result["backup"]["backup_created"] is True
+    assert agent_file.read_text(encoding="utf-8") == original
+    assert not (generated / "codex_direct_write_agent.py").exists()
     assert runtime.reload_calls == 0
 
 
@@ -1735,6 +1925,44 @@ async def test_agent_registry_telegram_commands_use_scanner(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch):
+    from core.agent_factory import agent_manager
+
+    class FakeModel:
+        def set_last_intent(self, *_args):
+            return None
+
+        def add_recent_activity(self, *_args):
+            return None
+
+    calls: list[tuple[str, str]] = []
+
+    class FakeManager:
+        async def update_agent(self, agent_name: str, request: str = ""):
+            calls.append((agent_name, request))
+            return {
+                "status": "updated",
+                "agent": agent_name,
+                "backup": {"backup_created": True},
+                "test_result": {"returncode": 0},
+                "runtime_reload": {"ok": True},
+            }
+
+    monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
+    monkeypatch.setattr(agent_manager, "AgentManager", FakeManager)
+
+    response = await agent_router.AgentRouter().route(
+        IntentResult(intent=Intent.CONVERSATION, confidence="low"),
+        "améliore agent subnet_calculator_agent ajoute le support IPv6",
+    )
+
+    assert "Agent mis à jour : subnet_calculator_agent." in response
+    assert "Tests : OK." in response
+    assert "Runtime rechargé : OK." in response
+    assert calls == [("subnet_calculator_agent", "ajoute le support IPv6")]
+
+
+@pytest.mark.asyncio
 async def test_legacy_agent_factory_delegates_to_build_orchestrator(monkeypatch):
     from core.agent_factory import factory_agent
 
@@ -1829,18 +2057,28 @@ async def test_agent_manager_routes_expose_status_inspect_delete(monkeypatch):
             calls.append(("delete", agent_name))
             return {"status": "deleted", "agent": agent_name, "backup": {"backup_created": True}}
 
+        async def update_agent(self, agent_name: str, request: str = ""):
+            calls.append(("update", f"{agent_name}:{request}"))
+            return {"status": "updated", "agent": agent_name, "request": request}
+
     monkeypatch.setattr(routes, "AgentManager", FakeManager)
 
     status = await routes.agent_status("managed_route_agent")
     inspection = await routes.inspect_agent("managed_route_agent")
+    update = await routes.update_agent(
+        "managed_route_agent",
+        routes.AgentUpdateRequest(request="ajoute IPv6"),
+    )
     deletion = await routes.delete_agent("managed_route_agent")
 
     assert status["status"] == "ok"
     assert inspection["source_preview"] == "class Agent"
+    assert update["status"] == "updated"
     assert deletion["backup"]["backup_created"] is True
     assert calls == [
         ("status", "managed_route_agent"),
         ("inspect", "managed_route_agent"),
+        ("update", "managed_route_agent:ajoute IPv6"),
         ("delete", "managed_route_agent"),
     ]
 

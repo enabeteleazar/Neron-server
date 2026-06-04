@@ -7,7 +7,7 @@ AGENT_SPEC = {
     "capabilities": [
         "deterministic_response"
     ],
-    "goal": "Créer un agent nommé subnet_calculator_agent qui calcule les informations d'un réseau IPv4.",
+    "goal": "Créer un agent nommé subnet_calculator_agent qui calcule les informations d'un réseau IPv4 ou IPv6.",
     "inputs": [
         "text"
     ],
@@ -22,7 +22,7 @@ AGENT_SPEC = {
     },
     "title": "Agent subnet_calculator_agent"
 }
-AGENT_SPEC_SIGNATURE = 'capabilities deterministic response goal creer un agent nomme subnet calculator agent qui calcule les informations d un reseau ipv4 inputs text kind agent name subnet calculator agent outputs response safety filesystem limited network none required title agent subnet calculator agent'
+AGENT_SPEC_SIGNATURE = 'capabilities deterministic response goal creer un agent nomme subnet calculator agent qui calcule les informations d un reseau ipv4 ou ipv6 inputs text kind agent name subnet calculator agent outputs response safety filesystem limited network none required title agent subnet calculator agent'
 
 
 class Agent:
@@ -41,41 +41,50 @@ class Agent:
         network = self._extract_network(text)
         if network is None:
             return (
-                "Fournissez un réseau IPv4 au format CIDR, par exemple "
-                "192.168.1.10/24."
+                "Fournissez un réseau IPv4 ou IPv6 au format CIDR, par exemple "
+                "192.168.1.10/24 ou 2001:db8::/64."
             )
 
-        hosts = list(network.hosts())
-        first_host = str(hosts[0]) if hosts else "n/a"
-        last_host = str(hosts[-1]) if hosts else "n/a"
+        first_address = network.network_address
+        last_address = network.broadcast_address
 
-        return "\n".join(
-            [
-                f"Réseau: {network.network_address}/{network.prefixlen}",
-                f"Adresse réseau: {network.network_address}",
-                f"Masque: {network.netmask}",
-                f"Wildcard: {network.hostmask}",
-                f"Broadcast: {network.broadcast_address}",
-                f"Première adresse utilisable: {first_host}",
-                f"Dernière adresse utilisable: {last_host}",
-                f"Nombre total d'adresses: {network.num_addresses}",
-                f"Nombre d'hôtes utilisables: {len(hosts)}",
-            ]
-        )
-
-    def _extract_network(self, text: str) -> ipaddress.IPv4Network | None:
-        match = re.search(
-            r"\b(?:\d{1,3}\.){3}\d{1,3}/(?:\d|[12]\d|3[0-2])\b",
-            text,
-        )
-        if not match:
-            return None
-
-        try:
-            network = ipaddress.ip_network(match.group(0), strict=False)
-        except ValueError:
-            return None
+        lines = [
+            f"Réseau: {network.network_address}/{network.prefixlen}",
+            f"Préfixe: /{network.prefixlen}",
+            f"Première adresse: {first_address}",
+            f"Dernière adresse: {last_address}",
+            f"Nombre total d'adresses: {network.num_addresses}",
+        ]
 
         if isinstance(network, ipaddress.IPv4Network):
-            return network
+            usable_hosts = max(network.num_addresses - 2, 0)
+            first_host = network.network_address + 1 if usable_hosts else "n/a"
+            last_host = network.broadcast_address - 1 if usable_hosts else "n/a"
+            lines.extend(
+                [
+                    f"Adresse réseau: {network.network_address}",
+                    f"Masque: {network.netmask}",
+                    f"Wildcard: {network.hostmask}",
+                    f"Broadcast: {network.broadcast_address}",
+                    f"Première adresse utilisable: {first_host}",
+                    f"Dernière adresse utilisable: {last_host}",
+                    f"Nombre d'hôtes utilisables: {usable_hosts}",
+                ]
+            )
+
+        return "\n".join(lines)
+
+    def _extract_network(
+        self, text: str
+    ) -> ipaddress.IPv4Network | ipaddress.IPv6Network | None:
+        for candidate in re.findall(r"(?<!\S)\S+/\d{1,3}(?!\S)", text):
+            try:
+                network = ipaddress.ip_network(candidate, strict=False)
+            except ValueError:
+                continue
+
+            if isinstance(
+                network, (ipaddress.IPv4Network, ipaddress.IPv6Network)
+            ):
+                return network
         return None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import unicodedata
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -61,6 +62,13 @@ def _clean_agent_name(name: str) -> str:
     name = "".join(c for c in name if c.isalnum() or c == "_")
     if name.endswith("_agent"):
         name = name[:-6]
+    return name.strip("_")
+
+
+def _clean_agent_module_name(name: str) -> str:
+    name = _normalize(name)
+    name = name.replace("-", "_").replace(" ", "_")
+    name = "".join(c for c in name if c.isalnum() or c == "_")
     return name.strip("_")
 
 
@@ -345,6 +353,47 @@ def _is_promote_request(query: str) -> bool:
         )
     )
 
+
+def _extract_agent_update_request(query: str) -> tuple[str, str] | None:
+    match = re.match(
+        r"^\s*am[eé]liore\s+(?:l\s+|l['’]\s*)?agent\s+([A-Za-z0-9_.-]+)\s+(.+?)\s*$",
+        query,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        name = _clean_agent_module_name(match.group(1))
+        update_request = match.group(2).strip()
+        if name and update_request:
+            return name, update_request
+    return None
+
+
+async def _update_dynamic_agent(query: str) -> str:
+    from core.agent_factory.agent_manager import AgentManager
+
+    parsed = _extract_agent_update_request(query)
+    if not parsed:
+        return "Demande incomplète. Exemple : améliore agent subnet_calculator_agent ajoute le support IPv6"
+
+    name, request = parsed
+    result = await AgentManager().update_agent(name, request=request)
+
+    if result.get("status") == "updated":
+        tests_ok = (result.get("test_result") or {}).get("returncode") == 0
+        runtime_ok = bool((result.get("runtime_reload") or {}).get("ok"))
+        return "\n".join(
+            [
+                f"Agent mis à jour : {result.get('agent') or name}.",
+                "Backup : oui.",
+                f"Tests : {'OK' if tests_ok else 'KO'}.",
+                f"Runtime rechargé : {'OK' if runtime_ok else 'non'}.",
+            ]
+        )
+
+    reason = result.get("reason") or result.get("status") or "update_failed"
+    return f"Mise à jour agent refusée : {result.get('agent') or name}. Raison : {reason}."
+
+
 async def _run_dynamic_agent(query: str) -> str:
     from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
@@ -439,6 +488,9 @@ class AgentRouter:
 
         intent = Intent.AGENT_LIST if _is_agent_list_query(query) else intent_result.intent
         logger.info("[AGENT_ROUTER] dispatching intent=%s", intent)
+
+        if _extract_agent_update_request(query):
+            return await _update_dynamic_agent(query)
 
         if _is_registry_scan_query(query):
             return await _scan_agent_registry_text()

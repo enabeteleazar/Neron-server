@@ -290,7 +290,7 @@ async def revise_agent(agent_name: str) -> dict:
 
 @router.post("/agents/{agent_name}/update")
 async def update_agent(agent_name: str, payload: AgentUpdateRequest | None = None) -> dict:
-    return AgentManager().update_agent(agent_name, request=(payload or AgentUpdateRequest()).request)
+    return await AgentManager().update_agent(agent_name, request=(payload or AgentUpdateRequest()).request)
 
 
 @router.post("/agents/{agent_name}/rename")
