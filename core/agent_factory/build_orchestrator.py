@@ -10,10 +10,11 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from core.agent_factory.registry import DynamicAgentRegistry
 from core.agent_factory.validator import validate_agent
+from core.evolution.codex_runner import CodexRunner, redact_secrets
 from core.projects.manager import ProjectManager, get_project_manager
 
 
@@ -21,6 +22,7 @@ DEFAULT_PROJECT_ROOT = Path("/etc/neron")
 DEFAULT_WORKSPACE_AGENTS = DEFAULT_PROJECT_ROOT / "workspace" / "agents"
 DEFAULT_WORKSPACE_TESTS = DEFAULT_PROJECT_ROOT / "workspace" / "agent_tests"
 DEFAULT_GENERATED_AGENTS = DEFAULT_PROJECT_ROOT / "core" / "agents" / "generated"
+BuildMode = Literal["deterministic", "codex", "hybrid"]
 
 SENSITIVE_BUILD_KEYWORDS = {
     "systemd",
@@ -83,6 +85,7 @@ class AgentBuildOrchestrator:
         generated_agents: Path = DEFAULT_GENERATED_AGENTS,
         python_executable: str | None = None,
         runtime_check: bool = True,
+        codex_runner: Any | None = None,
     ) -> None:
         self.project_manager = project_manager or get_project_manager()
         self.project_root = project_root
@@ -91,6 +94,7 @@ class AgentBuildOrchestrator:
         self.generated_agents = generated_agents
         self.python_executable = python_executable or sys.executable
         self.runtime_check = runtime_check
+        self.codex_runner = codex_runner
 
     async def build_from_request(
         self,
@@ -98,7 +102,10 @@ class AgentBuildOrchestrator:
         *,
         requested_by: str = "user",
         source_channel: str = "api",
+        build_mode: BuildMode = "deterministic",
     ) -> dict[str, Any]:
+        mode = self._normalize_build_mode(build_mode)
+        codex_state = self._codex_state(mode)
         safety = self.assess_request_safety(query)
         if not safety["auto_apply_allowed"]:
             return {
@@ -108,6 +115,7 @@ class AgentBuildOrchestrator:
                 "build_executed": False,
                 "reused_existing_project": False,
                 "safety": safety,
+                **codex_state,
                 "response": self._format_refusal_response(safety),
             }
 
@@ -119,17 +127,25 @@ class AgentBuildOrchestrator:
             spec_signature=metadata["spec_signature"],
         )
         if existing:
-            return self._reuse_existing_project(existing, spec)
+            return self._with_build_status(
+                self._reuse_existing_project(existing, spec),
+                codex_state,
+            )
 
         registered_agent = self._registered_agent_for_spec(spec, metadata)
         if registered_agent:
-            return await self._return_registered_agent(
-                spec,
-                registered_agent,
-                query=query,
-                source_channel=source_channel,
+            return self._with_build_status(
+                await self._return_registered_agent(
+                    spec,
+                    registered_agent,
+                    query=query,
+                    source_channel=source_channel,
+                ),
+                codex_state,
             )
 
+        metadata["build_mode"] = mode
+        metadata["codex_used"] = codex_state["codex_used"]
         project = self.project_manager.create_project(
             title=spec.title,
             project_type=spec.kind,
@@ -143,16 +159,42 @@ class AgentBuildOrchestrator:
         try:
             self._step(project_id, "planning", "done", 10)
 
-            agent_file = self._write_agent(spec)
-            test_file = self._write_agent_test(spec, agent_file)
+            agent_file = self.workspace_agents / f"{spec.name}.py"
+            test_file = self.workspace_tests / f"test_{spec.name}.py"
+
+            if mode in {"deterministic", "hybrid"}:
+                agent_file = self._write_agent(spec)
+                test_file = self._write_agent_test(spec, agent_file)
+
+            if mode in {"codex", "hybrid"}:
+                codex = await self._run_codex_agent_generation(spec, agent_file, test_file)
+                codex_state.update(
+                    {
+                        "codex_ok": codex.get("ok"),
+                        "codex_error": codex.get("error"),
+                        "codex_result": codex.get("result"),
+                    }
+                )
+                if not codex.get("ok"):
+                    if mode == "codex":
+                        failed = self._fail(project_id, "codex", codex.get("error") or "codex_failed")
+                        return self._with_build_status(failed, codex_state)
+                    codex_state["codex_fallback"] = True
+
+            created_files = [
+                self._relative(path)
+                for path in (agent_file, test_file)
+                if path.exists()
+            ]
             self.project_manager.update_project(
                 project_id,
                 {
-                    "created_files": [
-                        self._relative(agent_file),
-                        self._relative(test_file),
-                    ],
+                    "created_files": created_files,
                     "status": "running",
+                    "metadata": {
+                        **metadata,
+                        **self._codex_project_metadata(codex_state),
+                    },
                 },
                 step="code_generation",
                 step_status="done",
@@ -161,7 +203,8 @@ class AgentBuildOrchestrator:
 
             validation = validate_agent(str(agent_file))
             if not validation.get("ok"):
-                return self._fail(project_id, "validation", validation.get("error", "validation_failed"))
+                failed = self._fail(project_id, "validation", validation.get("error", "validation_failed"))
+                return self._with_build_status(failed, codex_state)
             self._step(project_id, "validation", "done", 50)
 
             compile_result = self._run_command(
@@ -169,7 +212,8 @@ class AgentBuildOrchestrator:
                 "compile_agent",
             )
             if compile_result["returncode"] != 0:
-                return self._fail(project_id, "compile", compile_result["stderr_tail"] or "compile_failed", compile_result)
+                failed = self._fail(project_id, "compile", compile_result["stderr_tail"] or "compile_failed", compile_result)
+                return self._with_build_status(failed, codex_state)
 
             test_result = self._run_command(
                 [self.python_executable, "-m", "pytest", "-q", str(test_file)],
@@ -177,7 +221,8 @@ class AgentBuildOrchestrator:
             )
             self._append_test_result(project_id, test_result)
             if test_result["returncode"] != 0:
-                return self._fail(project_id, "tests", test_result["stdout_tail"] or test_result["stderr_tail"])
+                failed = self._fail(project_id, "tests", test_result["stdout_tail"] or test_result["stderr_tail"])
+                return self._with_build_status(failed, codex_state)
             self._step(project_id, "tests", "done", 70)
 
             destination = self._register_agent(agent_file)
@@ -190,11 +235,12 @@ class AgentBuildOrchestrator:
             )
 
             if not destination.exists() or not registered_record:
-                return self._fail(
+                failed = self._fail(
                     project_id,
                     "registry",
                     f"Agent copié mais non visible dans le registry runtime : {spec.name}",
                 )
+                return self._with_build_status(failed, codex_state)
 
             self.project_manager.update_project(
                 project_id,
@@ -214,7 +260,8 @@ class AgentBuildOrchestrator:
 
             verification = await self._verify_agent(spec)
             if not verification.get("ok"):
-                return self._fail(project_id, "verification", verification.get("error", "verification_failed"))
+                failed = self._fail(project_id, "verification", verification.get("error", "verification_failed"))
+                return self._with_build_status(failed, codex_state)
 
             completed = self.project_manager.update_project(
                 project_id,
@@ -227,32 +274,43 @@ class AgentBuildOrchestrator:
                         "verification": verification,
                         "runtime_reload": verification.get("runtime_reload"),
                         "available": True,
+                        **self._codex_project_metadata(codex_state),
                     },
                     "error": None,
+                    "metadata": {
+                        **metadata,
+                        **self._codex_project_metadata(codex_state),
+                    },
                 },
                 step="verification",
                 step_status="done",
                 progress=100,
             )
-            return {
-                "status": "completed",
-                "project": completed,
-                "spec": spec.to_dict(),
-                "build_executed": True,
-                "reused_existing_project": False,
-                "runtime_reload": verification.get("runtime_reload"),
-                "response": self.format_project_response(completed),
-            }
+            return self._with_build_status(
+                {
+                    "status": "completed",
+                    "project": completed,
+                    "spec": spec.to_dict(),
+                    "build_executed": True,
+                    "reused_existing_project": False,
+                    "runtime_reload": verification.get("runtime_reload"),
+                    "response": self.format_project_response(completed),
+                },
+                codex_state,
+            )
         except Exception as exc:
             failed = self._fail(project_id, "exception", str(exc))
-            return {
-                "status": "failed",
-                "project": failed["project"],
-                "spec": spec.to_dict(),
-                "build_executed": True,
-                "reused_existing_project": False,
-                "response": self.format_project_response(failed["project"]),
-            }
+            return self._with_build_status(
+                {
+                    "status": "failed",
+                    "project": failed["project"],
+                    "spec": spec.to_dict(),
+                    "build_executed": True,
+                    "reused_existing_project": False,
+                    "response": self.format_project_response(failed["project"]),
+                },
+                codex_state,
+            )
 
     def plan_spec(self, query: str) -> AgentSpec:
         normalized = self._normalize(query)
@@ -440,6 +498,50 @@ class AgentBuildOrchestrator:
             encoding="utf-8",
         )
         return path
+
+    async def _run_codex_agent_generation(
+        self,
+        spec: AgentSpec,
+        agent_file: Path,
+        test_file: Path,
+    ) -> dict[str, Any]:
+        self.workspace_agents.mkdir(parents=True, exist_ok=True)
+        self.workspace_tests.mkdir(parents=True, exist_ok=True)
+        snapshot = self._snapshot_generated_agents()
+        runner = self.codex_runner or CodexRunner(workspace=self.project_root)
+        prompt = self._codex_agent_prompt(spec, agent_file, test_file)
+        result = await runner.run_codex(prompt, f"agent_builder_{spec.name}")
+        payload = self._safe_codex_result(result)
+
+        generated_changed = self._generated_agents_changed(snapshot)
+        if generated_changed:
+            self._restore_generated_agents(snapshot)
+            return {
+                "ok": False,
+                "error": "codex_generated_dir_write_blocked",
+                "result": payload,
+            }
+
+        if not getattr(result, "ok", False):
+            return {
+                "ok": False,
+                "error": self._codex_error(payload),
+                "result": payload,
+            }
+
+        missing = [
+            self._relative(path)
+            for path in (agent_file, test_file)
+            if not path.exists()
+        ]
+        if missing:
+            return {
+                "ok": False,
+                "error": f"codex_missing_files: {', '.join(missing)}",
+                "result": payload,
+            }
+
+        return {"ok": True, "error": None, "result": payload}
 
     def _register_agent(self, agent_file: Path) -> Path:
         self.generated_agents.mkdir(parents=True, exist_ok=True)
@@ -671,6 +773,104 @@ class AgentBuildOrchestrator:
             cleaned.append(char if char.isalnum() else " ")
         return " ".join("".join(cleaned).split())
 
+    def _normalize_build_mode(self, build_mode: str) -> BuildMode:
+        if build_mode in {"deterministic", "codex", "hybrid"}:
+            return build_mode  # type: ignore[return-value]
+        return "deterministic"
+
+    def _codex_state(self, build_mode: BuildMode) -> dict[str, Any]:
+        return {
+            "build_mode": build_mode,
+            "codex_used": build_mode in {"codex", "hybrid"},
+            "codex_ok": None,
+            "codex_fallback": False,
+            "codex_error": None,
+        }
+
+    def _codex_project_metadata(self, codex_state: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "build_mode": codex_state.get("build_mode"),
+            "codex_used": codex_state.get("codex_used"),
+            "codex_ok": codex_state.get("codex_ok"),
+            "codex_fallback": codex_state.get("codex_fallback"),
+            "codex_error": codex_state.get("codex_error"),
+        }
+
+    def _with_build_status(
+        self,
+        payload: dict[str, Any],
+        codex_state: dict[str, Any],
+    ) -> dict[str, Any]:
+        payload.update(self._codex_project_metadata(codex_state))
+        if "codex_result" in codex_state:
+            payload["codex_result"] = codex_state.get("codex_result")
+        return payload
+
+    def _codex_agent_prompt(self, spec: AgentSpec, agent_file: Path, test_file: Path) -> str:
+        relative_agent = self._relative(agent_file)
+        relative_test = self._relative(test_file)
+        spec_json = json.dumps(spec.to_dict(), indent=2, sort_keys=True, ensure_ascii=False)
+        return "\n".join(
+            [
+                "Mission: generate or improve a deterministic Neron dynamic agent.",
+                "",
+                "Hard filesystem boundary:",
+                f"- Write the agent only at {relative_agent}.",
+                f"- Write the test only at {relative_test}.",
+                "- Do not write, edit, delete, or inspect secrets.",
+                "- Do not write to core/agents/generated.",
+                "- Do not edit systemd, services, security config, deployment files, or data stores.",
+                "- Do not commit or push.",
+                "",
+                "Agent contract:",
+                "- The agent file must define class Agent.",
+                f"- Agent.name must be {spec.name!r}.",
+                "- Agent.execute must be async and return a dict with status='ok' and a non-empty response.",
+                "- Keep behavior deterministic and testable without network access.",
+                "- The pytest file must validate the generated agent through its workspace path.",
+                "",
+                "Agent spec:",
+                spec_json,
+            ]
+        )
+
+    def _safe_codex_result(self, result: Any) -> dict[str, Any]:
+        data = result.to_dict() if hasattr(result, "to_dict") else dict(result or {})
+        command = list(data.get("command") or [])
+        if command and command[-1] and len(str(command[-1])) > 80:
+            command[-1] = "[PROMPT_REDACTED]"
+        data["command"] = command
+        for key in ("stdout", "stderr"):
+            data[key] = redact_secrets(str(data.get(key) or ""))
+        return data
+
+    def _codex_error(self, payload: dict[str, Any]) -> str:
+        error = payload.get("stderr") or payload.get("stdout") or "codex_failed"
+        return redact_secrets(str(error))[:1000]
+
+    def _snapshot_generated_agents(self) -> dict[str, bytes]:
+        if not self.generated_agents.exists():
+            return {}
+        snapshot: dict[str, bytes] = {}
+        for path in self.generated_agents.glob("*.py"):
+            if path.is_file():
+                snapshot[path.name] = path.read_bytes()
+        return snapshot
+
+    def _generated_agents_changed(self, snapshot: dict[str, bytes]) -> bool:
+        current = self._snapshot_generated_agents()
+        return current != snapshot
+
+    def _restore_generated_agents(self, snapshot: dict[str, bytes]) -> None:
+        self.generated_agents.mkdir(parents=True, exist_ok=True)
+        for path in self.generated_agents.glob("*.py"):
+            if path.name not in snapshot:
+                path.unlink()
+        for name, content in snapshot.items():
+            path = self.generated_agents / name
+            if not path.exists() or path.read_bytes() != content:
+                path.write_bytes(content)
+
     def assess_request_safety(self, query: str) -> dict[str, Any]:
         normalized = self._normalize_for_key(query)
         reasons = [
@@ -892,9 +1092,11 @@ async def build_agent_from_request(
     *,
     requested_by: str = "user",
     source_channel: str = "api",
+    build_mode: BuildMode = "deterministic",
 ) -> dict[str, Any]:
     return await AgentBuildOrchestrator().build_from_request(
         query,
         requested_by=requested_by,
         source_channel=source_channel,
+        build_mode=build_mode,
     )

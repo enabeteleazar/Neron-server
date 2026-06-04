@@ -20,16 +20,16 @@
    - Transforme un objectif contenant `agent` en plan structure.
    - Les etapes `define_agent` et `create_skeleton` ciblent `agent_creator`.
 
-4. `core/task_system/task_executor.py`
-   - Route les actions `agent_creator` vers le `PlanExecutor`.
-   - Produit un brouillon `draft_only` et une proposition.
-   - Ne promeut pas automatiquement dans `core/agents/generated`.
+4. `core/goals/goal_orchestrator.py`
+   - Pour un plan de creation d'agent a risque faible, appelle directement `AgentBuildOrchestrator`.
+   - Ne bloque plus les creations normales sur une validation humaine.
+   - Bloque les demandes sensibles : systemd, services systeme, secrets, securite, suppression de donnees.
 
 5. `core/agent_factory/agent_creator.py`
    - Prepare une proposition JSON.
    - Ecrit une trace dans `/etc/neron/data/agent_creator_proposals.jsonl`.
    - Respecte les noms explicites, par exemple `nomme audit_agent_test`.
-   - Laisse la proposition en `pending_human_validation`.
+   - Reste disponible pour compatibilite et pour les flux a risque ou legacy.
 
 ## Flux d'approbation humaine
 
@@ -82,34 +82,50 @@ curl -X POST http://localhost:8010/agents/proposals/{agent_request_id}/approve \
 Ce mode utilise uniquement `AgentBuildOrchestrator` et conserve le pipeline valide :
 generation, validation, tests, registry, reload runtime.
 
+### Mode hybrid
+
+Le mode `hybrid` est le mode Codex-assisted recommande pour experimenter :
+
+- Neron genere d'abord le squelette deterministe dans `workspace/agents` et `workspace/agent_tests`.
+- Codex recoit une mission limitee a ces deux chemins workspace.
+- Codex peut ameliorer l'agent et le test, mais ne doit jamais ecrire dans `core/agents/generated`.
+- Si Codex echoue, Neron continue avec le squelette deterministe et retourne `codex_fallback=true`.
+- Neron garde ensuite toute la chaine de controle : validation, `py_compile`, `pytest`, registry, runtime reload.
+
 ### Mode codex
 
-Le mode `codex` est experimental, opt-in et jamais automatique.
+Le mode `codex` pur demande a Codex de produire l'agent et le test dans le workspace.
 
-```bash
-curl -X POST http://localhost:8010/agents/proposals/{agent_request_id}/approve \
-  -H "X-API-Key: $NERON_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"mode":"codex"}'
-```
+En cas d'echec Codex, le build echoue proprement, aucun agent n'est promu et le runtime n'est pas recharge.
 
 Regles :
 
-- `codex_ready` doit etre `true`.
-- `codex_auto_run` reste `false`.
-- `/goal` ne declenche jamais Codex automatiquement.
-- La route appelle le `CodexRunner` existant.
-- La route lance les tests apres Codex.
-- La route recharge le runtime uniquement si les tests passent.
+- Codex travaille uniquement dans `workspace/agents` et `workspace/agent_tests`.
+- Codex ne doit jamais ecrire directement dans `core/agents/generated`.
+- Neron restaure `core/agents/generated` si une ecriture directe Codex est detectee.
+- Neron lance validation, `py_compile`, `pytest`, promotion et runtime reload uniquement apres generation workspace valide.
+- Les sorties Codex exposees par l'orchestrateur redigent les secrets et masquent le prompt dans la commande.
 - La route ne fait jamais `commit` ni `push` automatiquement.
+
+`POST /agents/build` accepte maintenant :
+
+```json
+{
+  "query": "Créer un agent nommé demo_agent",
+  "build_mode": "deterministic"
+}
+```
+
+`build_mode` peut valoir `deterministic`, `hybrid` ou `codex`.
 
 ## Garanties
 
 - Aucun nouveau registry n'est cree.
 - Aucun nouveau runtime n'est cree.
-- Aucun nouveau CodexRunner n'est cree.
-- La promotion vers `core/agents/generated` ne se fait qu'apres approbation humaine.
-- Une proposition deja approuvee ne peut pas etre reapprouvee.
+- Le mode deterministe existant reste le comportement par defaut.
+- Codex n'est jamais autorise a promouvoir lui-meme dans `core/agents/generated`.
+- La promotion vers `core/agents/generated` reste faite par Neron, apres validation et tests.
+- Une proposition legacy deja approuvee ne peut pas etre reapprouvee.
 
 ## Reponse API
 
@@ -135,6 +151,14 @@ En mode `codex`, la reponse retourne :
 - `test_results`
 - `runtime_reload`
 - `errors`
+
+`AgentBuildOrchestrator.build_from_request` retourne aussi :
+
+- `build_mode`
+- `codex_used`
+- `codex_ok`
+- `codex_fallback`
+- `codex_error`
 
 ## Tests utiles
 

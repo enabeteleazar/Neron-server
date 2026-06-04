@@ -80,6 +80,77 @@ class FakeCodexRunner:
         return {"ok": True, "message": message}
 
 
+class FakeAgentBuilderCodexRunner:
+    def __init__(
+        self,
+        *,
+        returncode: int = 0,
+        write_files: bool = True,
+        generated_dir: Path | None = None,
+        project_root: Path | None = None,
+    ) -> None:
+        self.returncode = returncode
+        self.write_files = write_files
+        self.generated_dir = generated_dir
+        self.project_root = project_root or Path.cwd()
+        self.calls: list[tuple[str, str]] = []
+
+    async def run_codex(self, prompt: str, run_id: str) -> CommandResult:
+        self.calls.append((prompt, run_id))
+        if self.generated_dir is not None:
+            self.generated_dir.mkdir(parents=True, exist_ok=True)
+            (self.generated_dir / "codex_direct_write_agent.py").write_text(
+                _valid_agent_code("codex_direct_write_agent"),
+                encoding="utf-8",
+            )
+        if self.returncode == 0 and self.write_files:
+            agent_file = self._path_from_prompt(prompt, "Write the agent only at ")
+            test_file = self._path_from_prompt(prompt, "Write the test only at ")
+            agent_name = agent_file.stem
+            agent_file.parent.mkdir(parents=True, exist_ok=True)
+            test_file.parent.mkdir(parents=True, exist_ok=True)
+            agent_file.write_text(_valid_agent_code(agent_name), encoding="utf-8")
+            test_file.write_text(self._valid_agent_test(agent_file), encoding="utf-8")
+        return CommandResult(
+            "codex",
+            ["codex", "exec", "prompt"],
+            self.returncode,
+            stdout="codex ok" if self.returncode == 0 else "",
+            stderr="" if self.returncode == 0 else "codex failed",
+        )
+
+    def _path_from_prompt(self, prompt: str, prefix: str) -> Path:
+        for line in prompt.splitlines():
+            if prefix in line:
+                path = Path(line.split(prefix, 1)[1].rstrip("."))
+                return path if path.is_absolute() else self.project_root / path
+        raise AssertionError(f"missing path prefix: {prefix}")
+
+    def _valid_agent_test(self, agent_file: Path) -> str:
+        return "\n".join(
+            [
+                "from __future__ import annotations",
+                "import importlib.util",
+                "import pytest",
+                f"AGENT_FILE = {str(agent_file)!r}",
+                "",
+                "def load_agent():",
+                "    spec = importlib.util.spec_from_file_location('agent_under_test', AGENT_FILE)",
+                "    module = importlib.util.module_from_spec(spec)",
+                "    assert spec and spec.loader",
+                "    spec.loader.exec_module(module)",
+                "    return module.Agent()",
+                "",
+                "@pytest.mark.asyncio",
+                "async def test_agent_execute_returns_response():",
+                "    result = await load_agent().execute(text='hello')",
+                "    assert result['status'] == 'ok'",
+                "    assert result['response']",
+                "",
+            ]
+        )
+
+
 def _valid_agent_code(agent_name: str) -> str:
     return "\n".join(
         [
@@ -1032,6 +1103,122 @@ async def test_simple_weather_agent_still_builds_and_registers(tmp_path: Path):
     assert result["project"]["registered_agent"] == "weather_watch_agent"
     assert result["project"]["registry_status"] == "registered"
     assert (tmp_path / "core" / "agents" / "generated" / "weather_watch_agent.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_agent_build_deterministic_mode_does_not_call_codex(tmp_path: Path):
+    class ForbiddenCodexRunner:
+        async def run_codex(self, *_args, **_kwargs):
+            raise AssertionError("deterministic mode must not call Codex")
+
+    result = await AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+        codex_runner=ForbiddenCodexRunner(),
+    ).build_from_request("Créer un agent nommé deterministic_phase_agent")
+
+    assert result["status"] == "completed"
+    assert result["build_mode"] == "deterministic"
+    assert result["codex_used"] is False
+    assert result["codex_ok"] is None
+    assert result["codex_fallback"] is False
+    assert result["project"]["registered_agent"] == "deterministic_phase_agent"
+
+
+@pytest.mark.asyncio
+async def test_agent_build_hybrid_calls_codex_and_promotes_workspace_output(tmp_path: Path):
+    runner = FakeAgentBuilderCodexRunner(project_root=tmp_path)
+    result = await AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+        codex_runner=runner,
+    ).build_from_request("Créer un agent nommé hybrid_codex_agent", build_mode="hybrid")
+
+    assert result["status"] == "completed"
+    assert result["build_mode"] == "hybrid"
+    assert result["codex_used"] is True
+    assert result["codex_ok"] is True
+    assert result["codex_fallback"] is False
+    assert len(runner.calls) == 1
+    assert "workspace/agents/hybrid_codex_agent.py" in runner.calls[0][0]
+    assert "workspace/agent_tests/test_hybrid_codex_agent.py" in runner.calls[0][0]
+    assert result["project"]["registered_agent"] == "hybrid_codex_agent"
+
+
+@pytest.mark.asyncio
+async def test_agent_build_hybrid_falls_back_to_deterministic_when_codex_fails(tmp_path: Path):
+    runner = FakeAgentBuilderCodexRunner(returncode=1, project_root=tmp_path)
+    result = await AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+        codex_runner=runner,
+    ).build_from_request("Créer un agent nommé hybrid_fallback_agent", build_mode="hybrid")
+
+    assert result["status"] == "completed"
+    assert result["build_mode"] == "hybrid"
+    assert result["codex_used"] is True
+    assert result["codex_ok"] is False
+    assert result["codex_fallback"] is True
+    assert "codex failed" in result["codex_error"]
+    assert result["project"]["registered_agent"] == "hybrid_fallback_agent"
+    assert (tmp_path / "core" / "agents" / "generated" / "hybrid_fallback_agent.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_agent_build_codex_mode_fails_cleanly_when_codex_fails(tmp_path: Path):
+    runner = FakeAgentBuilderCodexRunner(returncode=1, project_root=tmp_path)
+    result = await AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+        codex_runner=runner,
+    ).build_from_request("Créer un agent nommé codex_failure_agent", build_mode="codex")
+
+    assert result["status"] == "failed"
+    assert result["build_mode"] == "codex"
+    assert result["codex_used"] is True
+    assert result["codex_ok"] is False
+    assert result["codex_fallback"] is False
+    assert result["project"]["current_step"] == "codex"
+    assert result["project"]["registry_status"] == "not_registered"
+    assert not (tmp_path / "core" / "agents" / "generated" / "codex_failure_agent.py").exists()
+
+
+@pytest.mark.asyncio
+async def test_agent_build_blocks_direct_codex_write_to_generated_dir(tmp_path: Path):
+    generated = tmp_path / "core" / "agents" / "generated"
+    runner = FakeAgentBuilderCodexRunner(generated_dir=generated, project_root=tmp_path)
+    result = await AgentBuildOrchestrator(
+        project_manager=ProjectManager(tmp_path / "projects.json"),
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=generated,
+        runtime_check=False,
+        codex_runner=runner,
+    ).build_from_request("Créer un agent nommé generated_guard_agent", build_mode="hybrid")
+
+    assert result["status"] == "completed"
+    assert result["codex_ok"] is False
+    assert result["codex_fallback"] is True
+    assert result["codex_error"] == "codex_generated_dir_write_blocked"
+    assert not (generated / "codex_direct_write_agent.py").exists()
+    assert (generated / "generated_guard_agent.py").exists()
 
 
 @pytest.mark.asyncio

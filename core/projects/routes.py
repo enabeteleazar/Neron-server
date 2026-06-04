@@ -23,6 +23,7 @@ class AgentBuildRequest(BaseModel):
     query: str
     requested_by: str = "api"
     source_channel: str = "api"
+    build_mode: Literal["deterministic", "codex", "hybrid"] = "deterministic"
 
 
 class AgentProposalApprovalRequest(BaseModel):
@@ -65,6 +66,7 @@ async def build_agent(payload: AgentBuildRequest) -> dict:
         payload.query,
         requested_by=payload.requested_by,
         source_channel=payload.source_channel,
+        build_mode=payload.build_mode,
     )
 
 
