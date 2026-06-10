@@ -13,6 +13,7 @@ from fastapi import FastAPI
 
 from core.goals import goal_manager, goal_orchestrator, persistence, routes
 from core.goals.background_runner import GoalBackgroundRunner
+from core.goals.execution_engine import GoalExecutionEngine
 from core.goals.goal_orchestrator import GoalOrchestrator
 from core.planning.storage import PlanStorage
 from core.projects.manager import ProjectManager
@@ -53,6 +54,8 @@ def test_sqlite_store_uses_wal_and_idempotent_migrations(tmp_path: Path):
 
     assert {
         "goals",
+        "goal_runs",
+        "goal_events",
         "projects",
         "workflows",
         "workflow_steps",
@@ -65,7 +68,7 @@ async def test_post_goal_returns_202_immediately_and_status_is_queued(
     tmp_path: Path,
     monkeypatch,
 ):
-    _, _, _, orchestrator = build_state(tmp_path, monkeypatch)
+    manager, _, _, orchestrator = build_state(tmp_path, monkeypatch)
 
     class RecordingRunner:
         def __init__(self) -> None:
@@ -113,6 +116,87 @@ async def test_post_goal_returns_202_immediately_and_status_is_queued(
     assert status_response.json()["status"] == "queued"
     assert status_response.json()["current_step"] == "queued"
     assert status_response.json()["progress"] == 0
+    run = manager.sqlite_store.get_goal_run(payload["goal_id"])
+    assert run is not None
+    assert run["status"] == "queued"
+    events = manager.sqlite_store.list_goal_events(payload["goal_id"])
+    assert [(event["step"], event["status"]) for event in events] == [
+        ("queued", "queued")
+    ]
+
+
+def test_execution_engine_records_running_completed_step_and_recovery(
+    tmp_path: Path,
+):
+    engine = GoalExecutionEngine(
+        SQLiteStore(tmp_path / "data" / "neron_state.sqlite3")
+    )
+    engine.enqueue_goal("goal-one", "Premier", "test", {})
+    engine.start_goal("goal-one")
+    engine.mark_step_started("goal-one", "validation")
+    engine.mark_step_completed(
+        "goal-one",
+        "validation",
+        {"project_id": "project-one"},
+    )
+
+    assert engine.get_goal_status("goal-one")["project_id"] == "project-one"
+    events = engine.get_goal_events("goal-one")
+    assert [(event["step"], event["status"]) for event in events] == [
+        ("queued", "queued"),
+        ("running", "running"),
+        ("validation", "started"),
+        ("validation", "completed"),
+    ]
+
+    assert engine.recover_interrupted_goals() == ["goal-one"]
+    recovered = engine.get_goal_status("goal-one")
+    assert recovered["status"] == "interrupted"
+    assert recovered["current_step"] == "interrupted"
+    assert engine.get_goal_events("goal-one")[-1]["status"] == "interrupted"
+
+
+def test_goal_status_prefers_goal_run_over_legacy_manager_state(
+    tmp_path: Path,
+    monkeypatch,
+):
+    _, _, _, orchestrator = build_state(tmp_path, monkeypatch)
+    goal = orchestrator.queue_goal("État persistant prioritaire", source="api")
+    orchestrator._execution_engine().mark_step_started(goal["id"], "tests")
+
+    status = orchestrator.get_goal_status(goal["id"])
+
+    assert status["status"] == "running"
+    assert status["current_step"] == "tests"
+    assert status["progress"] == 0
+
+
+@pytest.mark.asyncio
+async def test_goal_events_and_goals_endpoints(tmp_path: Path, monkeypatch):
+    _, _, _, orchestrator = build_state(tmp_path, monkeypatch)
+    goal = orchestrator.queue_goal("Objectif observable", source="api")
+    orchestrator._execution_engine().start_goal(goal["id"])
+    monkeypatch.setattr(routes, "get_goal_orchestrator", lambda: orchestrator)
+
+    app = FastAPI()
+    app.include_router(routes.router)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://testserver",
+    ) as client:
+        events_response = await client.get(f"/goal/{goal['id']}/events")
+        goals_response = await client.get("/goals")
+
+    assert events_response.status_code == 200
+    assert events_response.json()["goal_id"] == goal["id"]
+    assert [event["status"] for event in events_response.json()["events"]] == [
+        "queued",
+        "running",
+    ]
+    assert goals_response.status_code == 200
+    assert goals_response.json()["count"] == 1
+    assert goals_response.json()["goals"][0]["goal_id"] == goal["id"]
 
 
 @pytest.mark.asyncio

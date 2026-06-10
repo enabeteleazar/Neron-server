@@ -10,6 +10,10 @@ from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.events.event import Event
 from core.events.event_bus import event_bus
+from core.goals.execution_engine import (
+    GoalExecutionEngine,
+    get_goal_execution_engine,
+)
 from core.goals.goal_manager import get_goal_manager
 from core.planning import AutonomousPlanner
 from core.planning.storage import PlanStorage
@@ -91,6 +95,7 @@ class GoalOrchestrator:
         notifier: Notifier | None = None,
         agent_build_orchestrator: AgentBuildOrchestrator | None = None,
         agent_creator: AgentCreator | None = None,
+        execution_engine: GoalExecutionEngine | None = None,
     ) -> None:
         self.goal_manager = get_goal_manager()
         self.planner = planner or AutonomousPlanner()
@@ -101,6 +106,7 @@ class GoalOrchestrator:
         self.notifier = notifier
         self.agent_build_orchestrator = agent_build_orchestrator or AgentBuildOrchestrator()
         self.agent_creator = agent_creator or AgentCreator()
+        self.execution_engine = execution_engine or get_goal_execution_engine()
 
     def queue_goal(self, objective: str, source: str = "system") -> dict[str, Any]:
         title = objective.strip()
@@ -113,11 +119,18 @@ class GoalOrchestrator:
             metadata={"orchestrated": True, "asynchronous": True},
             deduplicate=False,
         )
-        return self.goal_manager.update_status(
+        queued = self.goal_manager.update_status(
             str(goal["id"]),
             "queued",
             current_step="queued",
         ) or goal
+        self._execution_engine().enqueue_goal(
+            str(goal["id"]),
+            title,
+            source,
+            dict(queued.get("metadata") or {}),
+        )
+        return queued
 
     async def run_goal(
         self,
@@ -137,6 +150,16 @@ class GoalOrchestrator:
                 source=source,
                 metadata={"orchestrated": True},
             )
+        execution_engine = self._execution_engine()
+        if execution_engine.get_goal_status(str(goal["id"])) is None:
+            execution_engine.enqueue_goal(
+                str(goal["id"]),
+                title,
+                source,
+                dict(goal.get("metadata") or {}),
+            )
+        execution_engine.start_goal(str(goal["id"]))
+        execution_engine.mark_step_started(str(goal["id"]), "planning")
         self._update_goal_status(
             str(goal["id"]),
             "active",
@@ -160,6 +183,11 @@ class GoalOrchestrator:
         await self._publish_flow_event(
             "planner.plan_created",
             {"goal_id": goal.get("id"), "plan_id": plan.get("id"), "steps": len(plan.get("steps", []))},
+        )
+        execution_engine.mark_step_completed(
+            str(goal["id"]),
+            "planning",
+            {"plan_id": plan.get("id")},
         )
         self.goal_manager.update_progress(str(goal["id"]), 0.1)
 
@@ -195,6 +223,11 @@ class GoalOrchestrator:
                 "failed",
                 current_step="blocked_by_risk",
                 error=str(plan["error"]),
+            )
+            execution_engine.mark_step_failed(
+                str(goal["id"]),
+                "planning",
+                str(plan["error"]),
             )
             await self._notify_blocked(plan)
             return self._goal_response(decision, goal, plan, created_tasks)
@@ -334,12 +367,30 @@ class GoalOrchestrator:
             }
             self.storage.update(plan)
             if plan.get("goal_id"):
+                project = build_result.get("project") or {}
+                failed_step = str(
+                    project.get("current_step")
+                    or plan.get("current_step")
+                    or "failed"
+                )
                 self._update_goal_status(
                     str(plan.get("goal_id")),
                     "failed",
-                    current_step=str(plan.get("current_step") or "failed"),
+                    current_step=failed_step,
                     error=str(plan.get("error") or "agent_build_failed"),
                 )
+                execution_engine = self._execution_engine_or_none()
+                current_run = (
+                    execution_engine.get_goal_status(str(plan.get("goal_id")))
+                    if execution_engine is not None
+                    else {}
+                ) or {}
+                if execution_engine is not None and current_run.get("status") != "failed":
+                    execution_engine.mark_step_failed(
+                        str(plan.get("goal_id")),
+                        failed_step,
+                        str(plan.get("error") or "agent_build_failed"),
+                    )
             await self._notify_execution_failed(plan)
             return {"status": plan["status"], "plan": plan, "error": plan.get("error")}
 
@@ -840,9 +891,17 @@ class GoalOrchestrator:
         plan["agent_proposal_status"] = plan["agent_creation_proposal"]["status"]
 
     def get_goal_status(self, goal_id: str) -> dict[str, Any] | None:
+        execution_status = self._execution_engine().get_goal_status(goal_id)
         goal = self.goal_manager.get_goal(goal_id)
-        if not goal:
+        if not goal and not execution_status:
             return None
+        goal = goal or {
+            "id": goal_id,
+            "status": execution_status.get("status"),
+            "current_step": execution_status.get("current_step"),
+            "progress": float(execution_status.get("progress") or 0) / 100,
+            "error": execution_status.get("error"),
+        }
 
         plan = self.storage.find_by_goal_id(goal_id)
         project_manager = getattr(self.agent_build_orchestrator, "project_manager", None)
@@ -885,7 +944,7 @@ class GoalOrchestrator:
                 else "pending"
             )
 
-        return {
+        legacy_status = {
             "goal_id": goal_id,
             "status": status,
             "current_step": current_step,
@@ -908,6 +967,23 @@ class GoalOrchestrator:
             "error": errors[0] if errors else goal.get("error"),
             "errors": errors,
             "steps": list((project or {}).get("steps") or []),
+        }
+        if not execution_status:
+            return legacy_status
+        return {
+            **legacy_status,
+            **execution_status,
+            "codex_used": legacy_status["codex_used"],
+            "validation_status": legacy_status["validation_status"],
+            "compile_status": legacy_status["compile_status"],
+            "test_status": legacy_status["test_status"],
+            "business_validation_status": legacy_status["business_validation_status"],
+            "business_validation_result": legacy_status["business_validation_result"],
+            "governor_status": legacy_status["governor_status"],
+            "registry_status": legacy_status["registry_status"],
+            "runtime_status": legacy_status["runtime_status"],
+            "errors": legacy_status["errors"],
+            "steps": legacy_status["steps"],
         }
 
     def _public_goal_status(
@@ -1122,6 +1198,26 @@ class GoalOrchestrator:
                 "completed",
                 current_step="completed",
             )
+            execution_engine = self._execution_engine_or_none()
+            if execution_engine is not None:
+                execution_engine.complete_goal(str(goal_id))
+
+    def _execution_engine(self) -> GoalExecutionEngine:
+        engine = self._execution_engine_or_none()
+        if engine is None:
+            raise RuntimeError("Goal execution engine requires a SQLite-backed manager")
+        return engine
+
+    def _execution_engine_or_none(self) -> GoalExecutionEngine | None:
+        engine = getattr(self, "execution_engine", None)
+        if engine is not None:
+            return engine
+        sqlite_store = getattr(self.goal_manager, "sqlite_store", None)
+        if sqlite_store is None:
+            return None
+        engine = GoalExecutionEngine(sqlite_store)
+        self.execution_engine = engine
+        return engine
 
     def _update_goal_status(
         self,

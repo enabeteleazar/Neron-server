@@ -7,6 +7,7 @@ requests the creation of a dynamic agent:
 
 ```text
 /goal
+  -> GoalExecutionEngine (queued/running/events)
   -> GoalOrchestrator
   -> AutonomousPlanner
   -> AgentCreator
@@ -41,7 +42,8 @@ implementations.
 
 The workflow is correlated with these identifiers:
 
-- `goal_id`: lifecycle record in `data/goals_state.json`.
+- `goal_id`: execution record in SQLite `goal_runs`, mirrored by the legacy
+  lifecycle record in `data/goals_state.json`.
 - `plan_id`: planner record in `data/plans.jsonl`.
 - `agent_request_id`: Agent Creator proposal in
   `data/agent_creator_proposals.jsonl`.
@@ -50,6 +52,10 @@ The workflow is correlated with these identifiers:
 The build project metadata stores `goal_id`, `plan_id`, and
 `agent_request_id`. This allows observation while the synchronous `/goal`
 request is still executing.
+
+Each execution transition is also appended to SQLite `goal_events`. The
+current goal state is read from `goal_runs`; plan and project state only
+enriches compatibility fields such as validation and registry status.
 
 ## Observable Build States
 
@@ -174,11 +180,26 @@ Successful response:
 The endpoint returns `404 Goal not found` for an unknown `goal_id`.
 
 `progress` is an integer percentage from 0 to 100. During a build, project
-progress has priority over goal progress because it is more precise.
+progress is copied into the persistent goal run at each tracked transition.
+
+Ordered transition history is available at:
+
+```http
+GET /goal/{goal_id}/events
+```
+
+All persistent runs are listed by:
+
+```http
+GET /goals
+```
+
+The response contains both `count` and `goals`.
 
 ## Compatibility
 
-- `POST /goal` and `POST /goals/run` are unchanged.
+- `POST /goal` remains asynchronous and returns HTTP 202.
+- `POST /goals/run` remains synchronous for compatibility.
 - Existing `/goals`, planner, project, registry, and runtime routes are
   unchanged.
 - `AgentFactoryAgent`, direct proposal approval, and manual promotion remain
@@ -207,15 +228,19 @@ Required release validation:
 pytest -q
 ```
 
-## Phase 2.2 Recommendations
+## Recovery
 
-1. Make build execution asynchronous and return `202 Accepted` so observation
-   can be used without holding the original HTTP connection.
-2. Add immutable transition events for goal, plan, build, registry, and runtime
-   state changes.
-3. Add per-goal cancellation with rollback before promotion.
-4. Replace process-local runtime state with a restart-safe health record.
-5. Add concurrency locking per agent slug to prevent simultaneous builds of
+Core startup marks SQLite runs left in `running` as `interrupted` and appends
+an `interrupted` event. Runs are not automatically resumed because registry
+promotion and runtime reload do not yet expose resumable, idempotent
+checkpoints.
+
+## Remaining Recommendations
+
+1. Add per-goal cancellation with rollback before promotion.
+2. Add explicit resume/retry policies for interrupted runs.
+3. Replace process-local runtime state with a restart-safe health record.
+4. Add concurrency locking per agent slug to prevent simultaneous builds of
    different specifications targeting the same file.
-6. Require signed validation evidence for legacy manual promotions if those
+5. Require signed validation evidence for legacy manual promotions if those
    paths are kept beyond Phase 2.2.

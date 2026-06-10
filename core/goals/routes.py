@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
+from core.goals.execution_engine import get_goal_execution_engine
 from core.goals.goal_manager import get_goal_manager
 from core.goals.background_runner import get_goal_background_runner
 from core.goals.goal_orchestrator import get_goal_orchestrator
@@ -52,6 +53,12 @@ async def run_goal_alias(payload: GoalAliasRequest) -> dict[str, Any]:
     orchestrator = get_goal_orchestrator()
     goal = orchestrator.queue_goal(objective, source=payload.source)
     goal_id = str(goal["id"])
+    get_goal_execution_engine().enqueue_goal(
+        goal_id,
+        objective,
+        payload.source,
+        dict(goal.get("metadata") or {}),
+    )
     get_goal_background_runner().submit(
         goal_id=goal_id,
         objective=objective,
@@ -67,8 +74,14 @@ async def run_goal_alias(payload: GoalAliasRequest) -> dict[str, Any]:
 
 @router.get("/goals")
 async def list_goals() -> dict[str, Any]:
+    engine_goals = get_goal_execution_engine().list_goals()
     manager = get_goal_manager()
-    return {"goals": manager.list_goals()}
+    legacy_goals = manager.list_goals()
+    run_ids = {goal["goal_id"] for goal in engine_goals}
+    goals = engine_goals + [
+        goal for goal in legacy_goals if str(goal.get("id") or "") not in run_ids
+    ]
+    return {"count": len(goals), "goals": goals}
 
 
 @router.get("/goals/active")
@@ -84,6 +97,17 @@ async def goal_status(goal_id: str) -> dict[str, Any]:
     if status is None:
         raise HTTPException(status_code=404, detail="Goal not found")
     return status
+
+
+@router.get("/goal/{goal_id}/events")
+async def goal_events(goal_id: str) -> dict[str, Any]:
+    engine = get_goal_execution_engine()
+    if engine.get_goal_status(goal_id) is None:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return {
+        "goal_id": goal_id,
+        "events": engine.get_goal_events(goal_id),
+    }
 
 
 @router.post("/goals")

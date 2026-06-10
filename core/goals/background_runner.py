@@ -14,6 +14,7 @@ logger = logging.getLogger("neron.goals.background")
 @dataclass
 class _ThreadResult:
     error: Exception | None = None
+    value: dict | None = None
 
 
 class GoalBackgroundRunner:
@@ -62,6 +63,10 @@ class GoalBackgroundRunner:
             )
 
     async def _execute(self, *, goal_id: str, objective: str, source: str) -> None:
+        from core.goals.execution_engine import get_goal_execution_engine
+
+        execution_engine = get_goal_execution_engine()
+        execution_engine.start_goal(goal_id)
         result = _ThreadResult()
         thread = threading.Thread(
             target=self._run_thread,
@@ -75,6 +80,16 @@ class GoalBackgroundRunner:
                 await asyncio.sleep(0.05)
             if result.error is not None:
                 raise result.error
+            final_status = str((result.value or {}).get("status") or "")
+            current = execution_engine.get_goal_status(goal_id) or {}
+            if current.get("status") not in {"completed", "failed"}:
+                if final_status in {"completed", "plan_finished"}:
+                    execution_engine.complete_goal(goal_id)
+                elif final_status in {"failed", "refused", "blocked_by_risk"}:
+                    execution_engine.fail_goal(
+                        goal_id,
+                        str((result.value or {}).get("error") or final_status),
+                    )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -83,6 +98,7 @@ class GoalBackgroundRunner:
                 goal_id,
                 exc,
             )
+            execution_engine.fail_goal(goal_id, str(exc))
             get_goal_manager().update_status(
                 goal_id,
                 "failed",
@@ -98,17 +114,22 @@ class GoalBackgroundRunner:
         source: str,
     ) -> None:
         try:
-            self._run_workflow(goal_id, objective, source)
+            result.value = self._run_workflow(goal_id, objective, source)
         except Exception as exc:
             result.error = exc
 
-    def _run_workflow(self, goal_id: str, objective: str, source: str) -> None:
+    def _run_workflow(
+        self,
+        goal_id: str,
+        objective: str,
+        source: str,
+    ) -> dict:
         from core.goals.goal_orchestrator import get_goal_orchestrator
 
         loop = asyncio.new_event_loop()
         try:
             asyncio.set_event_loop(loop)
-            loop.run_until_complete(
+            return loop.run_until_complete(
                 get_goal_orchestrator().run_goal(
                     objective,
                     source=source,

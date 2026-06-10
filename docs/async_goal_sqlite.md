@@ -104,6 +104,8 @@ Tables:
 | Table | Purpose |
 | --- | --- |
 | `goals` | Goal lifecycle, progress, error, and full payload |
+| `goal_runs` | Authoritative current state for asynchronous goal execution |
+| `goal_events` | Ordered immutable goal execution transitions |
 | `projects` | Build project state and goal/plan correlation |
 | `workflows` | Planner workflow payloads |
 | `workflow_steps` | Ordered project and workflow transitions |
@@ -172,5 +174,5 @@ pytest -q
   cross-process synchronization mechanism.
 - Simultaneous builds targeting the same agent slug still need a per-slug
   build lock.
-- Background tasks are not resumed automatically after a full process crash;
-  queued/running recovery can be added from SQLite state.
+- Runs left in `running` are marked `interrupted` at Core startup and are not
+  resumed automatically.

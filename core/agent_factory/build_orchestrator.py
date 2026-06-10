@@ -15,6 +15,7 @@ from typing import Any, Literal
 from core.agent_factory.registry import DynamicAgentRegistry
 from core.agent_factory.validator import validate_agent
 from core.evolution.codex_runner import CodexRunner, redact_secrets
+from core.goals.execution_engine import GoalExecutionEngine
 from core.projects.manager import ProjectManager, get_project_manager
 from core.validation.business_validator import BusinessValidator
 
@@ -89,6 +90,7 @@ class AgentBuildOrchestrator:
         codex_runner: Any | None = None,
         runtime_governor: Any | None = None,
         business_validator: BusinessValidator | None = None,
+        execution_engine: GoalExecutionEngine | None = None,
     ) -> None:
         self.project_manager = project_manager or get_project_manager()
         self.project_root = project_root
@@ -99,6 +101,9 @@ class AgentBuildOrchestrator:
         self.runtime_check = runtime_check
         self.codex_runner = codex_runner
         self.runtime_governor = runtime_governor
+        self.execution_engine = execution_engine or GoalExecutionEngine(
+            self.project_manager.sqlite_store
+        )
         self.business_validator = business_validator or BusinessValidator(
             python_executable=self.python_executable,
             project_root=self.project_root,
@@ -186,6 +191,7 @@ class AgentBuildOrchestrator:
             agent_file = self.workspace_agents / f"{spec.name}.py"
             test_file = self.workspace_tests / f"test_{spec.name}.py"
 
+            self._goal_step_started(metadata, "code_generation")
             if mode in {"deterministic", "hybrid"}:
                 agent_file = self._write_agent(spec)
                 test_file = self._write_agent_test(spec, agent_file)
@@ -224,7 +230,14 @@ class AgentBuildOrchestrator:
                 step_status="done",
                 progress=35,
             )
+            self._goal_step_completed(
+                metadata,
+                "code_generation",
+                project_id=project_id,
+                agent_slug=spec.name,
+            )
 
+            self._goal_step_started(metadata, "validation")
             validation = validate_agent(str(agent_file))
             if not validation.get("ok"):
                 self.project_manager.update_project(
@@ -239,6 +252,7 @@ class AgentBuildOrchestrator:
             )
             self._step(project_id, "validation", "done", 50)
 
+            self._goal_step_started(metadata, "compile")
             compile_result = self._run_command(
                 [self.python_executable, "-m", "py_compile", str(agent_file)],
                 "compile_agent",
@@ -256,6 +270,7 @@ class AgentBuildOrchestrator:
             )
             self._step(project_id, "compile", "done", 60)
 
+            self._goal_step_started(metadata, "tests")
             test_result = self._run_command(
                 [self.python_executable, "-m", "pytest", "-q", str(test_file)],
                 "pytest_agent",
@@ -274,6 +289,7 @@ class AgentBuildOrchestrator:
             )
             self._step(project_id, "tests", "done", 70)
 
+            self._goal_step_started(metadata, "business_validation")
             business_validation = self.business_validator.validate(
                 spec.to_dict(),
                 agent_file,
@@ -296,6 +312,7 @@ class AgentBuildOrchestrator:
                 return self._with_build_status(failed, codex_state)
             self._step(project_id, "business_validation", "done", 75)
 
+            self._goal_step_started(metadata, "runtime_governor")
             governor = self._get_runtime_governor()
             governor_allowed = governor.authorize_agent_promotion(
                 agent_name=spec.name,
@@ -319,7 +336,14 @@ class AgentBuildOrchestrator:
                     governor_policy.get("reason") or "runtime_governor_refused",
                 )
                 return self._with_build_status(failed, codex_state)
+            self._goal_step_completed(
+                metadata,
+                "runtime_governor",
+                project_id=project_id,
+                agent_slug=spec.name,
+            )
 
+            self._goal_step_started(metadata, "registry")
             promotion_snapshot = self._snapshot_promotion_target(agent_file)
             destination = self._register_agent(agent_file)
             promotion_destination = destination
@@ -356,7 +380,14 @@ class AgentBuildOrchestrator:
                 step_status="done",
                 progress=90,
             )
+            self._goal_step_completed(
+                metadata,
+                "registry",
+                project_id=project_id,
+                agent_slug=spec.name,
+            )
 
+            self._goal_step_started(metadata, "verification")
             verification = await self._verify_agent(spec)
             if not verification.get("ok"):
                 self._rollback_promotion(destination, promotion_snapshot)
@@ -396,6 +427,12 @@ class AgentBuildOrchestrator:
                 step="verification",
                 step_status="done",
                 progress=100,
+            )
+            self._goal_step_completed(
+                metadata,
+                "verification",
+                project_id=project_id,
+                agent_slug=spec.name,
             )
             promotion_committed = True
             return self._with_build_status(
@@ -874,13 +911,20 @@ class AgentBuildOrchestrator:
         self.project_manager.update_project(project_id, {"test_results": tests})
 
     def _step(self, project_id: str, step: str, status: str, progress: int) -> None:
-        self.project_manager.update_project(
+        project = self.project_manager.update_project(
             project_id,
             {"status": "running"},
             step=step,
             step_status=status,
             progress=progress,
         )
+        if step != "planning" and project:
+            self._goal_step_completed(
+                project.get("metadata") or {},
+                step,
+                project_id=project_id,
+                agent_slug=(project.get("metadata") or {}).get("agent_name"),
+            )
 
     def _fail(
         self,
@@ -912,7 +956,38 @@ class AgentBuildOrchestrator:
             step_status="failed",
             error=error,
         )
+        goal_id = str((existing.get("metadata") or {}).get("goal_id") or "")
+        if goal_id:
+            self.execution_engine.mark_step_failed(goal_id, step, error)
         return {"status": "failed", "project": project}
+
+    def _goal_step_started(
+        self,
+        metadata: dict[str, Any],
+        step: str,
+    ) -> None:
+        goal_id = str(metadata.get("goal_id") or "")
+        if goal_id:
+            self.execution_engine.mark_step_started(goal_id, step)
+
+    def _goal_step_completed(
+        self,
+        metadata: dict[str, Any],
+        step: str,
+        *,
+        project_id: str,
+        agent_slug: str | None,
+    ) -> None:
+        goal_id = str(metadata.get("goal_id") or "")
+        if goal_id:
+            self.execution_engine.mark_step_completed(
+                goal_id,
+                step,
+                {
+                    "project_id": project_id,
+                    "agent_slug": agent_slug,
+                },
+            )
 
     def _relative(self, path: Path) -> str:
         try:

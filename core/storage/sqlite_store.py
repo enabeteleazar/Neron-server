@@ -101,6 +101,42 @@ class SQLiteStore:
                     PRIMARY KEY (project_id, position)
                 )
             """,
+            """
+                CREATE TABLE IF NOT EXISTS goal_runs (
+                    goal_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    current_step TEXT,
+                    progress INTEGER NOT NULL DEFAULT 0,
+                    plan_id TEXT,
+                    project_id TEXT,
+                    agent_slug TEXT,
+                    created_at REAL NOT NULL,
+                    updated_at REAL NOT NULL,
+                    started_at REAL,
+                    finished_at REAL,
+                    error TEXT,
+                    metadata_json TEXT NOT NULL
+                )
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_goal_runs_status
+                    ON goal_runs(status)
+            """,
+            """
+                CREATE TABLE IF NOT EXISTS goal_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    goal_id TEXT NOT NULL,
+                    step TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    message TEXT,
+                    payload_json TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_goal_events_goal_id
+                    ON goal_events(goal_id, id)
+            """,
         )
         with self._transaction() as connection:
             for statement in statements:
@@ -311,6 +347,136 @@ class SQLiteStore:
             (owner_type, owner_id),
         )
 
+    def create_goal_run(
+        self,
+        run: dict[str, Any],
+        event: dict[str, Any],
+    ) -> None:
+        with self._transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO goal_runs (
+                    goal_id, status, current_step, progress, plan_id,
+                    project_id, agent_slug, created_at, updated_at,
+                    started_at, finished_at, error, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(goal_id) DO NOTHING
+                """,
+                self._goal_run_values(run),
+            )
+            if connection.execute(
+                "SELECT changes()"
+            ).fetchone()[0]:
+                self._insert_goal_event(connection, event)
+
+    def update_goal_run(
+        self,
+        goal_id: str,
+        updates: dict[str, Any],
+        event: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        allowed = {
+            "status",
+            "current_step",
+            "progress",
+            "plan_id",
+            "project_id",
+            "agent_slug",
+            "updated_at",
+            "started_at",
+            "finished_at",
+            "error",
+            "metadata_json",
+        }
+        assignments: list[str] = []
+        values: list[Any] = []
+        for key, value in updates.items():
+            if key not in allowed:
+                continue
+            assignments.append(f"{key} = ?")
+            values.append(
+                self._dump(value)
+                if key == "metadata_json" and isinstance(value, dict)
+                else value
+            )
+        if not assignments:
+            return self.get_goal_run(goal_id)
+
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                f"UPDATE goal_runs SET {', '.join(assignments)} WHERE goal_id = ?",
+                (*values, goal_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+            if event is not None:
+                self._insert_goal_event(connection, event)
+            row = connection.execute(
+                "SELECT * FROM goal_runs WHERE goal_id = ?",
+                (goal_id,),
+            ).fetchone()
+        return self._goal_run_from_row(row) if row else None
+
+    def get_goal_run(self, goal_id: str) -> dict[str, Any] | None:
+        with self._lock, self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM goal_runs WHERE goal_id = ?",
+                (goal_id,),
+            ).fetchone()
+        return self._goal_run_from_row(row) if row else None
+
+    def list_goal_runs(self) -> list[dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM goal_runs ORDER BY created_at DESC"
+            ).fetchall()
+        return [self._goal_run_from_row(row) for row in rows]
+
+    def list_goal_events(self, goal_id: str) -> list[dict[str, Any]]:
+        with self._lock, self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT id, goal_id, step, status, message, payload_json, created_at
+                FROM goal_events
+                WHERE goal_id = ?
+                ORDER BY id ASC
+                """,
+                (goal_id,),
+            ).fetchall()
+        return [self._goal_event_from_row(row) for row in rows]
+
+    def interrupt_running_goal_runs(self, now: float) -> list[str]:
+        with self._transaction() as connection:
+            rows = connection.execute(
+                "SELECT goal_id FROM goal_runs WHERE status = 'running'"
+            ).fetchall()
+            goal_ids = [str(row["goal_id"]) for row in rows]
+            for goal_id in goal_ids:
+                connection.execute(
+                    """
+                    UPDATE goal_runs
+                    SET status = 'interrupted',
+                        current_step = 'interrupted',
+                        updated_at = ?,
+                        finished_at = ?,
+                        error = COALESCE(error, 'Execution interrupted by process restart')
+                    WHERE goal_id = ?
+                    """,
+                    (now, now, goal_id),
+                )
+                self._insert_goal_event(
+                    connection,
+                    {
+                        "goal_id": goal_id,
+                        "step": "interrupted",
+                        "status": "interrupted",
+                        "message": "Execution interrupted by process restart",
+                        "payload": {},
+                        "created_at": now,
+                    },
+                )
+        return goal_ids
+
     def journal_mode(self) -> str:
         with self._connect() as connection:
             row = connection.execute("PRAGMA journal_mode").fetchone()
@@ -352,6 +518,72 @@ class SQLiteStore:
                     self._dump(step),
                 ),
             )
+
+    def _goal_run_values(self, run: dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            str(run["goal_id"]),
+            str(run.get("status") or "queued"),
+            self._optional_text(run.get("current_step")),
+            int(run.get("progress") or 0),
+            self._optional_text(run.get("plan_id")),
+            self._optional_text(run.get("project_id")),
+            self._optional_text(run.get("agent_slug")),
+            float(run.get("created_at") or time.time()),
+            float(run.get("updated_at") or time.time()),
+            run.get("started_at"),
+            run.get("finished_at"),
+            self._optional_text(run.get("error")),
+            self._dump(run.get("metadata") or {}),
+        )
+
+    def _insert_goal_event(
+        self,
+        connection: sqlite3.Connection,
+        event: dict[str, Any],
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO goal_events (
+                goal_id, step, status, message, payload_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(event["goal_id"]),
+                str(event.get("step") or "unknown"),
+                str(event.get("status") or "unknown"),
+                self._optional_text(event.get("message")),
+                self._dump(event.get("payload") or {}),
+                float(event.get("created_at") or time.time()),
+            ),
+        )
+
+    def _goal_run_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "goal_id": str(row["goal_id"]),
+            "status": str(row["status"]),
+            "current_step": row["current_step"],
+            "progress": int(row["progress"]),
+            "plan_id": row["plan_id"],
+            "project_id": row["project_id"],
+            "agent_slug": row["agent_slug"],
+            "created_at": float(row["created_at"]),
+            "updated_at": float(row["updated_at"]),
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "error": row["error"],
+            "metadata": self._load_payload(row["metadata_json"]),
+        }
+
+    def _goal_event_from_row(self, row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": int(row["id"]),
+            "goal_id": str(row["goal_id"]),
+            "step": str(row["step"]),
+            "status": str(row["status"]),
+            "message": row["message"],
+            "payload": self._load_payload(row["payload_json"]),
+            "created_at": float(row["created_at"]),
+        }
 
     def _fetch_payload(
         self,

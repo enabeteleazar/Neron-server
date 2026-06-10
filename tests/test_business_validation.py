@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+from core.goals.execution_engine import GoalExecutionEngine
 from core.projects.manager import ProjectManager
 from core.validation.business_validator import BusinessValidator
 
@@ -154,6 +155,9 @@ async def test_business_failure_after_pytest_is_not_registered(
     monkeypatch: pytest.MonkeyPatch,
 ):
     builder = make_builder(tmp_path)
+    engine = GoalExecutionEngine(builder.project_manager.sqlite_store)
+    engine.enqueue_goal("goal-business-failure", "Validation métier", "test", {})
+    engine.start_goal("goal-business-failure")
 
     def write_incorrect_easter_agent(spec):
         return write_agent(
@@ -164,7 +168,8 @@ async def test_business_failure_after_pytest_is_not_registered(
     monkeypatch.setattr(builder, "_write_agent", write_incorrect_easter_agent)
 
     result = await builder.build_from_request(
-        "Créer un agent qui donne la date de Pâques"
+        "Créer un agent qui donne la date de Pâques",
+        tracking_context={"goal_id": "goal-business-failure"},
     )
 
     project = result["project"]
@@ -175,6 +180,14 @@ async def test_business_failure_after_pytest_is_not_registered(
     assert project["current_step"] == "business_validation"
     assert project["registry_status"] == "not_registered"
     assert project["error"]
+    run = engine.get_goal_status("goal-business-failure")
+    assert run["status"] == "failed"
+    assert run["current_step"] == "business_validation"
+    assert any(
+        event["step"] == "business_validation"
+        and event["status"] == "failed"
+        for event in engine.get_goal_events("goal-business-failure")
+    )
     assert not (
         tmp_path / "core" / "agents" / "generated" / "donne_la_date_agent.py"
     ).exists()

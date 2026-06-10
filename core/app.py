@@ -282,8 +282,15 @@ async def lifespan(app: FastAPI):
         register_default_subscribers()
 
         try:
+            from core.goals.execution_engine import get_goal_execution_engine
             from core.goals.goal_manager import get_goal_manager
             get_goal_manager().ensure_core_goals()
+            interrupted = get_goal_execution_engine().recover_interrupted_goals()
+            if interrupted:
+                logger.warning(
+                    "Goal executions interrupted after restart: %s",
+                    ", ".join(interrupted),
+                )
             logger.info("GoalSystem initialise")
         except Exception as exc:
             logger.warning("GoalSystem init failed: %s", exc)
