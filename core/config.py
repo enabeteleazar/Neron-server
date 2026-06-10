@@ -104,9 +104,31 @@ class Config:
     # Canonique: neron_llm. Fallback legacy: llm.url/timeout/retry.
     _neron_llm_cfg = _cfg.get("neron_llm") or _cfg.get("llm", {})
     NERON_LLM: dict = {
-        "url":     _neron_llm_cfg.get("url",     "http://localhost:8765"),
-        "timeout": float(_neron_llm_cfg.get("timeout", 30)),
-        "retry":   int(_neron_llm_cfg.get("retry",   2)),
+        "url": _get(
+            {"neron_llm": _neron_llm_cfg},
+            "neron_llm",
+            "url",
+            fallback_env="NERON_LLM_URL",
+            default="http://localhost:8765",
+        ),
+        "timeout": float(
+            _get(
+                {"neron_llm": _neron_llm_cfg},
+                "neron_llm",
+                "timeout",
+                fallback_env="NERON_LLM_TIMEOUT",
+                default=30,
+            )
+        ),
+        "retry": int(
+            _get(
+                {"neron_llm": _neron_llm_cfg},
+                "neron_llm",
+                "retry",
+                fallback_env="NERON_LLM_RETRY",
+                default=2,
+            )
+        ),
         "api_key": _get(_cfg, "neron", "api_key", fallback_env="NERON_API_KEY", default=""),
     }
 
@@ -168,8 +190,8 @@ class Config:
 
     # ── Twilio ────────────────────────────────────────────────────────────
     TWILIO_ENABLED     = str(_get(_cfg, "twilio", "enabled",     default=False)).lower() == "true"
-    TWILIO_ACCOUNT_SID = _get(_cfg, "twilio", "account_sid",     default="")
-    TWILIO_AUTH_TOKEN  = _get(_cfg, "twilio", "auth_token",      default="")
+    TWILIO_ACCOUNT_SID = _get(_cfg, "twilio", "account_sid", fallback_env="TWILIO_ACCOUNT_SID", default="")
+    TWILIO_AUTH_TOKEN  = _get(_cfg, "twilio", "auth_token", fallback_env="TWILIO_AUTH_TOKEN", default="")
     TWILIO_FROM        = _get(_cfg, "twilio", "from_number",     default="")
     TWILIO_TO          = _get(_cfg, "twilio", "to_number",       default="")
 

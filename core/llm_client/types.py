@@ -45,3 +45,11 @@ DEGRADED_RESPONSE = LLMGenerateResponse(
     warning    = "LLM service unreachable",
 )
 
+
+def degraded_response(warning: str) -> LLMGenerateResponse:
+    return LLMGenerateResponse(
+        result=DEGRADED_RESPONSE.result,
+        model_used=DEGRADED_RESPONSE.model_used,
+        latency_ms=DEGRADED_RESPONSE.latency_ms,
+        warning=warning,
+    )

@@ -33,11 +33,10 @@ logs/
 # =========================
 # CONFIG SENSIBLE
 # =========================
+secrets.env
 *.env
 .env.
 .env.local
-neron.yaml
-neron.yaml.dev
 
 homebox.tail7f8e60.ts.net.*
 

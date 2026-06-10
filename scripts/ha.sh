@@ -198,7 +198,7 @@ config() {
 
     CURRENT_URL=$($PYTHON -c "import yaml; d=yaml.safe_load(open('$CONFIG_FILE')); print(d.get('home_assistant',{}).get('url','http://homeassistant.local:8123'))")
     CURRENT_ENABLED=$($PYTHON -c "import yaml; d=yaml.safe_load(open('$CONFIG_FILE')); print(d.get('home_assistant',{}).get('enabled',False))")
-    CURRENT_TOKEN=$($PYTHON -c "import yaml; d=yaml.safe_load(open('$CONFIG_FILE')); print(d.get('home_assistant',{}).get('token',''))")
+    CURRENT_TOKEN="${HOMEASSISTANT_TOKEN:-}"
 
     echo "  État actuel  : $CURRENT_ENABLED"
     echo "  URL actuelle : $CURRENT_URL"
@@ -237,7 +237,7 @@ with open(config_file, "r") as f:
 config.setdefault("home_assistant", {})
 config["home_assistant"]["enabled"] = True
 config["home_assistant"]["url"] = url
-config["home_assistant"]["token"] = token
+# token moved to /etc/neron/secrets.env as HOMEASSISTANT_TOKEN
 
 with open(config_file, "w") as f:
     yaml.dump(config, f, allow_unicode=True)

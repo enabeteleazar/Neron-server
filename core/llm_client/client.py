@@ -25,10 +25,10 @@ from typing import Any
 import httpx
 
 from core.llm_client.types import (
-    DEGRADED_RESPONSE,
     LLMGenerateRequest,
     LLMGenerateResponse,
     TaskType,
+    degraded_response,
 )
 
 logger = logging.getLogger("neron.llm_client")
@@ -96,6 +96,7 @@ class NéronLLMClient:
             headers["X-Neron-API-Key"] = self._api_key
 
         last_error: str | None = None
+        last_error_kind = "unreachable"
 
         for attempt in range(1, self._retries + 2):   # +2 → initial + N retries
             t0 = time.monotonic()
@@ -130,11 +131,13 @@ class NéronLLMClient:
 
             except httpx.TimeoutException:
                 last_error = f"timeout after {self._timeout}s"
+                last_error_kind = "timeout"
                 # Timeout is retryable
 
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
                 last_error = f"HTTP {status}"
+                last_error_kind = self._http_error_kind(status)
                 if status in (400, 401, 403, 404, 422):
                     # 4xx client errors — no point retrying
                     logger.error(
@@ -149,10 +152,12 @@ class NéronLLMClient:
 
             except httpx.ConnectError:
                 last_error = f"connection refused to {self._base_url}"
+                last_error_kind = "unreachable"
                 # Service is down — keep retrying (systemd may be restarting it)
 
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)
+                last_error_kind = "client_error"
 
             logger.warning(
                 json.dumps({
@@ -174,7 +179,35 @@ class NéronLLMClient:
                 "error":      last_error,
             })
         )
-        return DEGRADED_RESPONSE
+        return degraded_response(self._warning_for_error(last_error_kind, last_error))
+
+    def _http_error_kind(self, status: int) -> str:
+        if status in (401, 403):
+            return "unauthorized"
+        if status == 404:
+            return "not_found"
+        if status == 422:
+            return "validation_error"
+        if status == 400:
+            return "bad_request"
+        if status >= 500:
+            return "upstream_error"
+        return "http_error"
+
+    def _warning_for_error(self, kind: str, detail: str | None) -> str:
+        messages = {
+            "unauthorized": "LLM authentication rejected",
+            "not_found": "LLM endpoint not found",
+            "validation_error": "LLM request validation failed",
+            "bad_request": "LLM request rejected",
+            "upstream_error": "LLM provider failure",
+            "timeout": "LLM service timeout",
+            "unreachable": "LLM service unreachable",
+            "client_error": "LLM client error",
+            "http_error": "LLM HTTP error",
+        }
+        message = messages.get(kind, "LLM service error")
+        return f"{message} ({detail})" if detail else message
 
     async def health(self) -> bool:
         """Check whether neron/llm/ is reachable.  Returns True/False, never raises."""
@@ -184,4 +217,3 @@ class NéronLLMClient:
                 return resp.status_code == 200
         except Exception:  # noqa: BLE001
             return False
-
