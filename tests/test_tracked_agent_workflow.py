@@ -514,6 +514,90 @@ async def test_agent_build_deduplicates_wwdc_apostrophe_variants(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_easter_2027_does_not_reuse_generic_easter_project(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+    generic_query = "Créer un agent qui donne la date de Pâques"
+    generic_spec = orchestrator.plan_spec(generic_query)
+    generic_project = manager.create_project(
+        title=generic_spec.title,
+        project_type=generic_spec.kind,
+        query=generic_query,
+        metadata=orchestrator._project_metadata(generic_spec, generic_query),
+    )
+    manager.update_project(
+        generic_project["project_id"],
+        {
+            "status": "completed",
+            "business_validation_status": "passed",
+            "business_validation_result": {"ok": True, "status": "passed"},
+            "registered_agent": generic_spec.name,
+        },
+        progress=100,
+    )
+
+    result = await orchestrator.build_from_request(
+        "Créer un agent qui donne la date de Pâques 2027"
+    )
+
+    assert result.get("reused_existing_project") is not True
+    assert result["project"]["project_id"] != generic_project["project_id"]
+    assert len(manager.list_projects(limit=10)) == 2
+
+
+@pytest.mark.asyncio
+async def test_completed_legacy_project_without_business_validation_is_not_reused(
+    tmp_path: Path,
+):
+    manager = ProjectManager(tmp_path / "projects.json")
+    orchestrator = AgentBuildOrchestrator(
+        project_manager=manager,
+        project_root=tmp_path,
+        workspace_agents=tmp_path / "workspace" / "agents",
+        workspace_tests=tmp_path / "workspace" / "agent_tests",
+        generated_agents=tmp_path / "core" / "agents" / "generated",
+        runtime_check=False,
+    )
+    query = "Créer un agent nommé legacy_business_agent"
+    spec = orchestrator.plan_spec(query)
+    legacy_project = manager.create_project(
+        title=spec.title,
+        project_type=spec.kind,
+        query=query,
+        metadata=orchestrator._project_metadata(spec, query),
+    )
+    manager.update_project(
+        legacy_project["project_id"],
+        {
+            "status": "completed",
+            "business_validation_status": None,
+            "business_validation_result": None,
+            "registered_agent": spec.name,
+        },
+        progress=100,
+    )
+
+    result = await orchestrator.build_from_request(query)
+
+    exposed_legacy = next(
+        project
+        for project in manager.list_projects(limit=10)
+        if project["project_id"] == legacy_project["project_id"]
+    )
+    assert exposed_legacy["business_validation_status"] == "not_validated"
+    assert result["reused_existing_project"] is False
+    assert result["project"]["project_id"] != legacy_project["project_id"]
+    assert result["project"]["business_validation_status"] == "passed"
+
+
+@pytest.mark.asyncio
 async def test_repeated_agent_build_returns_reused_existing_project(tmp_path: Path):
     manager = ProjectManager(tmp_path / "projects.json")
     orchestrator = AgentBuildOrchestrator(
@@ -2158,6 +2242,7 @@ async def test_project_routes_list_get_and_search(monkeypatch, tmp_path: Path):
     assert listed["count"] == 1
     assert fetched["project"]["project_id"] == project["project_id"]
     assert searched["projects"][0]["project_id"] == project["project_id"]
+    assert listed["projects"][0]["business_validation_status"] == "pending"
 
 
 @pytest.mark.asyncio

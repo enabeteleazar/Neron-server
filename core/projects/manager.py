@@ -63,6 +63,8 @@ class ProjectManager:
                 "validation_status": "pending",
                 "compile_status": "pending",
                 "test_status": "pending",
+                "business_validation_status": "pending",
+                "business_validation_result": None,
                 "governor_status": "pending",
                 "registry_status": "not_registered",
                 "runtime_status": "pending",
@@ -143,7 +145,10 @@ class ProjectManager:
         projects = self._load()
         if status:
             projects = [project for project in projects if project.get("status") == status]
-        return list(reversed(projects[-max(1, min(limit, 500)):]))
+        return [
+            self._with_business_validation_status(project)
+            for project in reversed(projects[-max(1, min(limit, 500)):])
+        ]
 
     def diagnose_recent_failures(self, limit: int = 10) -> dict[str, Any]:
         failed_projects = [
@@ -233,6 +238,7 @@ class ProjectManager:
         normalized_agent = self._normalize(agent_name)
         normalized_intent = self._normalize(intent_key)
         normalized_spec = self._normalize(spec_signature)
+        requested_years = self._explicit_years(normalized_spec)
 
         for project in reversed(self._load()):
             if project.get("status") not in allowed_statuses:
@@ -240,20 +246,36 @@ class ProjectManager:
 
             metadata = project.get("metadata") or {}
             spec = metadata.get("spec") or {}
+            project_intent = self._normalize(str(metadata.get("intent_key") or ""))
+            project_signature = self._normalize(str(metadata.get("spec_signature") or ""))
+
+            if project_intent or project_signature:
+                if normalized_intent and project_intent == normalized_intent:
+                    return project
+                if normalized_spec and project_signature == normalized_spec:
+                    return project
+                continue
+
             candidates = [
                 project.get("registered_agent"),
                 metadata.get("agent_name"),
                 spec.get("name") if isinstance(spec, dict) else None,
             ]
-            if normalized_agent and any(self._normalize(str(item or "")) == normalized_agent for item in candidates):
-                return project
-
-            project_intent = self._normalize(str(metadata.get("intent_key") or ""))
-            if normalized_intent and project_intent == normalized_intent:
-                return project
-
-            project_signature = self._normalize(str(metadata.get("spec_signature") or ""))
-            if normalized_spec and project_signature == normalized_spec:
+            project_identity = self._normalize(
+                " ".join(
+                    [
+                        str(project.get("title") or ""),
+                        str(project.get("query") or ""),
+                        json.dumps(spec, ensure_ascii=False) if isinstance(spec, dict) else "",
+                    ]
+                )
+            )
+            if requested_years != self._explicit_years(project_identity):
+                continue
+            if normalized_agent and any(
+                self._normalize(str(item or "")) == normalized_agent
+                for item in candidates
+            ):
                 return project
 
         return None
@@ -305,6 +327,27 @@ class ProjectManager:
         for char in text:
             cleaned.append(char if char.isalnum() else " ")
         return " ".join("".join(cleaned).split())
+
+    def _explicit_years(self, value: str) -> set[str]:
+        return {
+            token
+            for token in self._normalize(value).split()
+            if len(token) == 4 and token.isdigit() and 1900 <= int(token) <= 2199
+        }
+
+    def _with_business_validation_status(
+        self,
+        project: dict[str, Any],
+    ) -> dict[str, Any]:
+        exposed = dict(project)
+        if not exposed.get("business_validation_status"):
+            exposed["business_validation_status"] = (
+                "not_validated"
+                if exposed.get("status") == "completed"
+                else "pending"
+            )
+        exposed.setdefault("business_validation_result", None)
+        return exposed
 
     def _diagnose_failed_project(
         self,
