@@ -17,6 +17,7 @@ from core.agent_factory.validator import validate_agent
 from core.evolution.codex_runner import CodexRunner, redact_secrets
 from core.goals.execution_engine import GoalExecutionEngine
 from core.projects.manager import ProjectManager, get_project_manager
+from core.runtime.sandbox.agent_sandbox import AgentSandbox
 from core.validation.business_validator import BusinessValidator
 
 
@@ -90,6 +91,7 @@ class AgentBuildOrchestrator:
         codex_runner: Any | None = None,
         runtime_governor: Any | None = None,
         business_validator: BusinessValidator | None = None,
+        agent_sandbox: AgentSandbox | None = None,
         execution_engine: GoalExecutionEngine | None = None,
     ) -> None:
         self.project_manager = project_manager or get_project_manager()
@@ -101,12 +103,17 @@ class AgentBuildOrchestrator:
         self.runtime_check = runtime_check
         self.codex_runner = codex_runner
         self.runtime_governor = runtime_governor
+        self.agent_sandbox = agent_sandbox or AgentSandbox(
+            python_executable=self.python_executable,
+            project_root=self.project_root,
+        )
         self.execution_engine = execution_engine or GoalExecutionEngine(
             self.project_manager.sqlite_store
         )
         self.business_validator = business_validator or BusinessValidator(
             python_executable=self.python_executable,
             project_root=self.project_root,
+            sandbox=self.agent_sandbox,
         )
 
     async def build_from_request(
@@ -143,12 +150,15 @@ class AgentBuildOrchestrator:
             intent_key=metadata["intent_key"],
             spec_signature=metadata["spec_signature"],
         )
-        existing_needs_business_validation = bool(
+        existing_needs_validation = bool(
             existing
             and existing.get("status") == "completed"
-            and existing.get("business_validation_status") != "passed"
+            and (
+                existing.get("business_validation_status") != "passed"
+                or existing.get("sandbox_status") != "passed"
+            )
         )
-        if existing and not existing_needs_business_validation:
+        if existing and not existing_needs_validation:
             return self._with_build_status(
                 self._reuse_existing_project(existing, spec),
                 codex_state,
@@ -156,7 +166,7 @@ class AgentBuildOrchestrator:
 
         registered_agent = (
             None
-            if existing_needs_business_validation
+            if existing_needs_validation
             else self._registered_agent_for_spec(spec, metadata)
         )
         if registered_agent:
@@ -270,6 +280,7 @@ class AgentBuildOrchestrator:
             )
             self._step(project_id, "compile", "done", 60)
 
+            self._sandbox_started(metadata, project_id)
             self._goal_step_started(metadata, "tests")
             test_result = self._run_command(
                 [self.python_executable, "-m", "pytest", "-q", str(test_file)],
@@ -281,6 +292,7 @@ class AgentBuildOrchestrator:
                     project_id,
                     {"test_status": "failed"},
                 )
+                self._sandbox_failed(metadata, project_id, test_result)
                 failed = self._fail(project_id, "tests", test_result["stdout_tail"] or test_result["stderr_tail"])
                 return self._with_build_status(failed, codex_state)
             self.project_manager.update_project(
@@ -303,6 +315,7 @@ class AgentBuildOrchestrator:
                 },
             )
             if not business_validation.get("ok"):
+                self._sandbox_failed(metadata, project_id, business_validation)
                 errors = business_validation.get("errors") or ["business_validation_failed"]
                 failed = self._fail(
                     project_id,
@@ -311,6 +324,25 @@ class AgentBuildOrchestrator:
                 )
                 return self._with_build_status(failed, codex_state)
             self._step(project_id, "business_validation", "done", 75)
+
+            sandbox_verification = self._sandbox_verify_agent(spec, agent_file)
+            if not sandbox_verification.get("ok"):
+                self._sandbox_failed(
+                    metadata,
+                    project_id,
+                    sandbox_verification,
+                )
+                failed = self._fail(
+                    project_id,
+                    "sandbox",
+                    str(sandbox_verification.get("error") or "sandbox_verification_failed"),
+                )
+                return self._with_build_status(failed, codex_state)
+            self._sandbox_passed(
+                metadata,
+                project_id,
+                sandbox_verification,
+            )
 
             self._goal_step_started(metadata, "runtime_governor")
             governor = self._get_runtime_governor()
@@ -886,6 +918,12 @@ class AgentBuildOrchestrator:
         }
 
     def _run_command(self, command: list[str], name: str) -> dict[str, Any]:
+        if name.startswith("pytest_agent"):
+            return self.agent_sandbox.run_pytest(
+                command[-1],
+                timeout=120,
+                name=name,
+            )
         completed = subprocess.run(
             command,
             cwd=self.project_root,
@@ -901,6 +939,113 @@ class AgentBuildOrchestrator:
             "stderr_tail": completed.stderr[-4000:],
             "ran_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    def _sandbox_verify_agent(
+        self,
+        spec: AgentSpec,
+        agent_file: Path,
+    ) -> dict[str, Any]:
+        execution = self.agent_sandbox.execute_agent(
+            agent_file,
+            "combien de temps avant la WWDC ?",
+            name="sandbox_verification",
+        )
+        if not execution.get("ok"):
+            return execution
+        raw = execution.get("result")
+        response = ""
+        if isinstance(raw, dict):
+            response = str(
+                raw.get("response")
+                or raw.get("content")
+                or raw.get("result")
+                or raw.get("answer")
+                or ""
+            ).strip()
+            status = str(raw.get("status") or "").lower()
+            if status and status not in {"ok", "success", "passed"}:
+                return {
+                    "ok": False,
+                    "error": f"sandbox_agent_status_not_ok: {raw.get('status')}",
+                    "sandbox": execution.get("sandbox"),
+                }
+        else:
+            response = str(raw or "").strip()
+        if not response:
+            return {
+                "ok": False,
+                "error": "sandbox_empty_response",
+                "sandbox": execution.get("sandbox"),
+            }
+        return {
+            "ok": True,
+            "response": response,
+            "sandbox": execution.get("sandbox"),
+            "agent": spec.name,
+        }
+
+    def _sandbox_started(
+        self,
+        metadata: dict[str, Any],
+        project_id: str,
+    ) -> None:
+        self.project_manager.update_project(
+            project_id,
+            {"sandbox_status": "running"},
+        )
+        goal_id = str(metadata.get("goal_id") or "")
+        if goal_id:
+            self.execution_engine.mark_sandbox_started(
+                goal_id,
+                {"project_id": project_id},
+            )
+
+    def _sandbox_passed(
+        self,
+        metadata: dict[str, Any],
+        project_id: str,
+        result: dict[str, Any],
+    ) -> None:
+        self.project_manager.update_project(
+            project_id,
+            {
+                "sandbox_status": "passed",
+                "sandbox_result": result,
+            },
+            step="sandbox",
+            step_status="done",
+            progress=78,
+        )
+        goal_id = str(metadata.get("goal_id") or "")
+        if goal_id:
+            self.execution_engine.mark_sandbox_passed(
+                goal_id,
+                {
+                    "project_id": project_id,
+                    "agent_slug": metadata.get("agent_name"),
+                },
+            )
+
+    def _sandbox_failed(
+        self,
+        metadata: dict[str, Any],
+        project_id: str,
+        result: dict[str, Any],
+    ) -> None:
+        self.project_manager.update_project(
+            project_id,
+            {
+                "sandbox_status": "failed",
+                "sandbox_result": result,
+            },
+        )
+        goal_id = str(metadata.get("goal_id") or "")
+        if goal_id:
+            self.execution_engine.mark_sandbox_failed(
+                goal_id,
+                str(result.get("error") or "agent_sandbox_failed"),
+                {"project_id": project_id},
+            )
 
     def _append_test_result(self, project_id: str, result: dict[str, Any]) -> None:
         project = self.project_manager.get_project(project_id)

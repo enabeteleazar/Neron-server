@@ -15,6 +15,7 @@ STEP_PROGRESS = {
     "compile": 60,
     "tests": 70,
     "business_validation": 75,
+    "sandbox": 78,
     "runtime_governor": 80,
     "registry": 90,
     "verification": 95,
@@ -176,6 +177,42 @@ class GoalExecutionEngine:
             ),
         )
 
+    def mark_sandbox_started(
+        self,
+        goal_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        return self._mark_sandbox_event(
+            goal_id,
+            "sandbox_started",
+            payload=payload,
+        )
+
+    def mark_sandbox_passed(
+        self,
+        goal_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        return self._mark_sandbox_event(
+            goal_id,
+            "sandbox_passed",
+            payload=payload,
+            progress=STEP_PROGRESS["sandbox"],
+        )
+
+    def mark_sandbox_failed(
+        self,
+        goal_id: str,
+        error: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        return self._mark_sandbox_event(
+            goal_id,
+            "sandbox_failed",
+            error=error,
+            payload=payload,
+        )
+
     def complete_goal(self, goal_id: str) -> dict[str, Any] | None:
         now = time.time()
         return self.sqlite_store.update_goal_run(
@@ -211,6 +248,52 @@ class GoalExecutionEngine:
 
     def recover_interrupted_goals(self) -> list[str]:
         return self.sqlite_store.interrupt_running_goal_runs(time.time())
+
+    def _mark_sandbox_event(
+        self,
+        goal_id: str,
+        event_status: str,
+        *,
+        error: str | None = None,
+        payload: dict[str, Any] | None = None,
+        progress: int | None = None,
+    ) -> dict[str, Any] | None:
+        now = time.time()
+        current = self.sqlite_store.get_goal_run(goal_id) or {}
+        updates: dict[str, Any] = {
+            "current_step": "sandbox",
+            "updated_at": now,
+        }
+        if progress is not None:
+            updates["progress"] = max(
+                int(current.get("progress") or 0),
+                progress,
+            )
+        if event_status == "sandbox_failed":
+            updates.update(
+                {
+                    "status": "failed",
+                    "finished_at": now,
+                    "error": error,
+                }
+            )
+        else:
+            updates["status"] = "running"
+        event_payload = dict(payload or {})
+        if error:
+            event_payload["error"] = error
+        return self.sqlite_store.update_goal_run(
+            goal_id,
+            updates,
+            self._event(
+                goal_id,
+                "sandbox",
+                event_status,
+                event_status,
+                event_payload,
+                now=now,
+            ),
+        )
 
     def _event(
         self,

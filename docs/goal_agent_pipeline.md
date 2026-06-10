@@ -86,6 +86,7 @@ validation
 compile
 tests
 business_validation
+sandbox
 runtime_governor
 registry
 verification
@@ -104,7 +105,9 @@ conditions are true:
 3. The generated pytest file succeeds.
 4. Business validation executes the workspace agent and its response satisfies
    the inferred scenario.
-5. `RuntimeGovernor.authorize_agent_promotion` returns `True`.
+5. The shared Agent Sandbox completes isolated pytest, business validation,
+   and verification.
+6. `RuntimeGovernor.authorize_agent_promotion` returns `True`.
 
 Reliable built-in scenarios currently cover Easter 2027, the time remaining
 before Christmas, and IPv4 subnet calculation. Other goals use a compatibility
@@ -137,6 +140,7 @@ removed. The runtime is reloaded after rollback.
 | Compile failure | No | `not_registered` | `not_available` |
 | Test failure | No | `not_registered` | `not_available` |
 | Business validation failure | No | `not_registered` | `not_available` |
+| Sandbox failure | No | `not_registered` | `not_available` |
 | Governor refusal | No | `not_registered` | `not_available` |
 | Registry load failure | Rolled back | `not_registered` | Reloaded |
 | Runtime verification failure | Rolled back | `not_registered` | `failed` |

@@ -30,6 +30,7 @@ validation
 compile
 tests
 business_validation
+sandbox
 runtime_governor
 registry
 verification
@@ -69,3 +70,5 @@ Queued runs are left queued because they never claimed execution.
 - Events describe pipeline transitions but do not yet store resumable
   checkpoints or cancellation tokens.
 - Concurrent builds targeting the same agent slug still need a per-slug lock.
+- Sandbox transitions use the explicit event statuses `sandbox_started`,
+  `sandbox_passed`, and `sandbox_failed`.

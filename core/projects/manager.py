@@ -65,6 +65,8 @@ class ProjectManager:
                 "test_status": "pending",
                 "business_validation_status": "pending",
                 "business_validation_result": None,
+                "sandbox_status": "pending",
+                "sandbox_result": None,
                 "governor_status": "pending",
                 "registry_status": "not_registered",
                 "runtime_status": "pending",
