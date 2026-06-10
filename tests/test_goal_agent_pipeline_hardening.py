@@ -318,3 +318,49 @@ async def test_goal_status_returns_404_for_unknown_goal(monkeypatch):
         await routes.goal_status("missing-goal")
 
     assert exc_info.value.status_code == 404
+
+
+def test_completed_goal_status_exposes_legacy_project_as_not_business_validated(
+    tmp_path: Path,
+    monkeypatch,
+):
+    monkeypatch.setattr(persistence, "GOALS_PATH", tmp_path / "data" / "goals_state.json")
+    monkeypatch.setattr(goal_manager, "_GOAL_MANAGER", None)
+    manager = goal_manager.get_goal_manager()
+    goal = manager.create_goal("Créer un agent legacy", metadata={"orchestrated": True})
+    manager.update_status(goal["id"], "completed")
+
+    storage = PlanStorage(tmp_path / "data" / "plans.jsonl")
+    projects = ProjectManager(tmp_path / "data" / "projects.json")
+    project = projects.create_project(
+        title="Agent legacy",
+        project_type="agent",
+        metadata={"goal_id": goal["id"], "plan_id": "plan-legacy"},
+    )
+    projects.update_project(
+        project["project_id"],
+        {
+            "status": "completed",
+            "business_validation_status": None,
+            "business_validation_result": None,
+        },
+        progress=100,
+    )
+    storage.save(
+        {
+            "id": "plan-legacy",
+            "goal_id": goal["id"],
+            "status": "plan_finished",
+            "build_project_id": project["project_id"],
+        }
+    )
+
+    orchestrator = GoalOrchestrator.__new__(GoalOrchestrator)
+    orchestrator.goal_manager = manager
+    orchestrator.storage = storage
+    orchestrator.agent_build_orchestrator = SimpleNamespace(project_manager=projects)
+
+    payload = orchestrator.get_goal_status(goal["id"])
+
+    assert payload["business_validation_status"] == "not_validated"
+    assert payload["business_validation_result"] is None

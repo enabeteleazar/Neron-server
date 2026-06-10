@@ -181,6 +181,64 @@ async def test_business_failure_after_pytest_is_not_registered(
 
 
 @pytest.mark.asyncio
+async def test_deterministic_easter_2027_is_validated_and_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    builder = make_builder(tmp_path)
+
+    async def successful_verification(spec):
+        return {
+            "ok": True,
+            "response": "Pâques 2027 tombe le 28 mars 2027.",
+            "runtime_reload": {"ok": True, "agents": [spec.name]},
+        }
+
+    monkeypatch.setattr(builder, "_verify_agent", successful_verification)
+
+    result = await builder.build_from_request(
+        "Créer un agent nommé easter_2027_agent qui donne la date exacte de Pâques 2027"
+    )
+
+    project = result["project"]
+    response = project["business_validation_result"]["actual_response"]
+    assert result["status"] == "completed"
+    assert "2027" in response
+    assert "28 mars" in response or "2027-03-28" in response
+    assert project["business_validation_status"] == "passed"
+    assert project["registry_status"] == "registered"
+    assert project["runtime_status"] == "available"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("goal", "expected_value"),
+    [
+        (
+            "Créer un agent nommé christmas_2028_agent pour donner la date de Noël 2028",
+            "25/12/2028",
+        ),
+        (
+            "Créer un agent nommé ipv4_subnet_agent qui calcule un subnet IPv4",
+            "192.168.1.0",
+        ),
+    ],
+)
+async def test_deterministic_known_business_agents_pass_validation(
+    tmp_path: Path,
+    goal: str,
+    expected_value: str,
+):
+    result = await make_builder(tmp_path).build_from_request(goal)
+
+    project = result["project"]
+    assert result["status"] == "completed"
+    assert project["business_validation_status"] == "passed"
+    assert expected_value in project["business_validation_result"]["actual_response"]
+    assert project["registry_status"] == "registered"
+
+
+@pytest.mark.asyncio
 async def test_generic_agents_without_reliable_scenario_remain_compatible(
     tmp_path: Path,
 ):
