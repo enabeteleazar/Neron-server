@@ -251,6 +251,11 @@ async def test_goal_status_aggregates_plan_and_build_state(tmp_path: Path, monke
             "validation_status": "passed",
             "compile_status": "passed",
             "test_status": "passed",
+            "business_validation_status": "passed",
+            "business_validation_result": {
+                "ok": True,
+                "status": "passed",
+            },
             "governor_status": "allowed",
             "registry_status": "registered",
             "registered_agent": "observable_agent",
@@ -280,6 +285,11 @@ async def test_goal_status_aggregates_plan_and_build_state(tmp_path: Path, monke
         "validation_status": "passed",
         "compile_status": "passed",
         "test_status": "passed",
+        "business_validation_status": "passed",
+        "business_validation_result": {
+            "ok": True,
+            "status": "passed",
+        },
         "governor_status": "allowed",
         "registry_status": "registered",
         "runtime_status": "pending",

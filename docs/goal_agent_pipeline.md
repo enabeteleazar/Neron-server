@@ -13,6 +13,7 @@ requests the creation of a dynamic agent:
   -> AgentBuildOrchestrator
   -> CodexRunner (codex/hybrid modes only)
   -> validation and tests
+  -> BusinessValidator
   -> RuntimeGovernor
   -> DynamicAgentRegistry
   -> AgentRuntimeManager
@@ -29,8 +30,9 @@ implementations.
 | `GoalOrchestrator` | Own the goal-to-plan workflow and correlate IDs | Write generated agent files directly |
 | `AutonomousPlanner` | Produce structured steps | Promote or execute generated code |
 | `AgentCreator` | Persist a traceable proposal | Write or execute production code |
-| `AgentBuildOrchestrator` | Build, validate, test, govern, promote, and verify | Bypass validation or the Governor |
+| `AgentBuildOrchestrator` | Build, validate, test, run business validation, govern, promote, and verify | Bypass validation or the Governor |
 | `CodexRunner` | Optionally generate workspace code and tests | Write to `core/agents/generated` |
+| `BusinessValidator` | Execute the workspace agent in an isolated process and verify a business scenario | Promote or reload runtime agents |
 | `RuntimeGovernor` | Authorize or refuse promotion | Load agents |
 | `DynamicAgentRegistry` | Load valid generated agent modules | Decide whether promotion is allowed |
 | `AgentRuntimeManager` | Reload and execute registered agents | Promote workspace files |
@@ -59,6 +61,8 @@ Every build project exposes:
 - `validation_status`
 - `compile_status`
 - `test_status`
+- `business_validation_status`
+- `business_validation_result`
 - `governor_status`
 - `registry_status`
 - `runtime_status`
@@ -75,6 +79,7 @@ code_generation
 validation
 compile
 tests
+business_validation
 runtime_governor
 registry
 verification
@@ -91,7 +96,15 @@ conditions are true:
 1. The generated workspace file passes `validate_agent`.
 2. Python compilation succeeds.
 3. The generated pytest file succeeds.
-4. `RuntimeGovernor.authorize_agent_promotion` returns `True`.
+4. Business validation executes the workspace agent and its response satisfies
+   the inferred scenario.
+5. `RuntimeGovernor.authorize_agent_promotion` returns `True`.
+
+Reliable built-in scenarios currently cover Easter 2027, the time remaining
+before Christmas, and IPv4 subnet calculation. Other goals use a compatibility
+fallback requiring a non-empty successful response. The fallback rejects
+generic claims such as `Agent disponible pour`, `Je suis un agent`, and
+`Réponse déterministe`.
 
 The shared legacy `promote_agent` helper also consults the Runtime Governor.
 Existing callers remain compatible because its original positional arguments
@@ -117,6 +130,7 @@ removed. The runtime is reloaded after rollback.
 | Validation failure | No | `not_registered` | `not_available` |
 | Compile failure | No | `not_registered` | `not_available` |
 | Test failure | No | `not_registered` | `not_available` |
+| Business validation failure | No | `not_registered` | `not_available` |
 | Governor refusal | No | `not_registered` | `not_available` |
 | Registry load failure | Rolled back | `not_registered` | Reloaded |
 | Runtime verification failure | Rolled back | `not_registered` | `failed` |
@@ -145,6 +159,11 @@ Successful response:
   "validation_status": "passed",
   "compile_status": "passed",
   "test_status": "passed",
+  "business_validation_status": "passed",
+  "business_validation_result": {
+    "ok": true,
+    "status": "passed"
+  },
   "governor_status": "allowed",
   "registry_status": "registered",
   "runtime_status": "pending",

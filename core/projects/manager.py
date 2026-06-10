@@ -63,6 +63,8 @@ class ProjectManager:
                 "validation_status": "pending",
                 "compile_status": "pending",
                 "test_status": "pending",
+                "business_validation_status": "pending",
+                "business_validation_result": None,
                 "governor_status": "pending",
                 "registry_status": "not_registered",
                 "runtime_status": "pending",

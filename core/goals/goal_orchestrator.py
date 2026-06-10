@@ -887,6 +887,8 @@ class GoalOrchestrator:
             "validation_status": (project or {}).get("validation_status") or (plan or {}).get("validation_status") or "pending",
             "compile_status": (project or {}).get("compile_status") or (plan or {}).get("compile_status") or "pending",
             "test_status": (project or {}).get("test_status") or (plan or {}).get("test_status") or "pending",
+            "business_validation_status": (project or {}).get("business_validation_status") or (plan or {}).get("business_validation_status") or "pending",
+            "business_validation_result": (project or {}).get("business_validation_result") or (plan or {}).get("business_validation_result"),
             "governor_status": (project or {}).get("governor_status") or (plan or {}).get("governor_status") or "pending",
             "registry_status": (project or {}).get("registry_status") or (plan or {}).get("registry_status") or "not_registered",
             "runtime_status": (project or {}).get("runtime_status") or (plan or {}).get("runtime_status") or "pending",

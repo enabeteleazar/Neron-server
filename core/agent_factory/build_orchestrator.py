@@ -16,6 +16,7 @@ from core.agent_factory.registry import DynamicAgentRegistry
 from core.agent_factory.validator import validate_agent
 from core.evolution.codex_runner import CodexRunner, redact_secrets
 from core.projects.manager import ProjectManager, get_project_manager
+from core.validation.business_validator import BusinessValidator
 
 
 DEFAULT_PROJECT_ROOT = Path("/etc/neron")
@@ -87,6 +88,7 @@ class AgentBuildOrchestrator:
         runtime_check: bool = True,
         codex_runner: Any | None = None,
         runtime_governor: Any | None = None,
+        business_validator: BusinessValidator | None = None,
     ) -> None:
         self.project_manager = project_manager or get_project_manager()
         self.project_root = project_root
@@ -97,6 +99,10 @@ class AgentBuildOrchestrator:
         self.runtime_check = runtime_check
         self.codex_runner = codex_runner
         self.runtime_governor = runtime_governor
+        self.business_validator = business_validator or BusinessValidator(
+            python_executable=self.python_executable,
+            project_root=self.project_root,
+        )
 
     async def build_from_request(
         self,
@@ -259,6 +265,28 @@ class AgentBuildOrchestrator:
             )
             self._step(project_id, "tests", "done", 70)
 
+            business_validation = self.business_validator.validate(
+                spec.to_dict(),
+                agent_file,
+                query,
+            )
+            self.project_manager.update_project(
+                project_id,
+                {
+                    "business_validation_status": business_validation["status"],
+                    "business_validation_result": business_validation,
+                },
+            )
+            if not business_validation.get("ok"):
+                errors = business_validation.get("errors") or ["business_validation_failed"]
+                failed = self._fail(
+                    project_id,
+                    "business_validation",
+                    "; ".join(str(error) for error in errors),
+                )
+                return self._with_build_status(failed, codex_state)
+            self._step(project_id, "business_validation", "done", 75)
+
             governor = self._get_runtime_governor()
             governor_allowed = governor.authorize_agent_promotion(
                 agent_name=spec.name,
@@ -273,7 +301,7 @@ class AgentBuildOrchestrator:
                 },
                 step="runtime_governor",
                 step_status="done" if governor_allowed else "failed",
-                progress=75,
+                progress=80,
             )
             if not governor_allowed:
                 failed = self._fail(
@@ -317,7 +345,7 @@ class AgentBuildOrchestrator:
                 },
                 step="registry",
                 step_status="done",
-                progress=85,
+                progress=90,
             )
 
             verification = await self._verify_agent(spec)
@@ -1194,10 +1222,11 @@ class Agent:
     name = {spec.name!r}
 
     async def execute(self, text: str = "") -> dict:
+        request = text.strip() or {spec.goal!r}
         return {{
             "status": "ok",
             "agent": self.name,
-            "response": {("Agent disponible pour : " + spec.goal)!r},
+            "response": f"Demande traitée : {{request}}",
         }}
 '''
 
