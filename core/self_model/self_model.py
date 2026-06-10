@@ -17,6 +17,7 @@ import asyncio
 
 from core.events.event import Event
 from core.events.event_bus import event_bus
+from core.identity import get_identity
 
 
 STATE_PATH = Path("/etc/neron/data/self_model_state.json")
@@ -45,12 +46,7 @@ class SelfModel:
     last_update: float | None = None
 
     def __post_init__(self) -> None:
-        self.identity = {
-            "name": "Néron",
-            "role": "Assistant IA personnel",
-            "language": "fr",
-            "version": "0.3.0",
-        }
+        self.identity = get_identity()
 
     def update_from_event(self, event: Any) -> None:
         event_type = (
@@ -1538,6 +1534,7 @@ class SelfModel:
             self.health_global = "stable"
 
     def to_dict(self) -> dict[str, Any]:
+        self.identity = get_identity()
         return {
             "identity": self.identity,
             "runtime": self.runtime,

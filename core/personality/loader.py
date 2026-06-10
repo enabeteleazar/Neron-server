@@ -1,7 +1,7 @@
 """
 loader.py — Chargement de la persona Neron
-Fusionne persona.yaml (config de base) avec l'état SQLite (état dynamique).
-Protège les champs définis dans core_identity.protected_fields du YAML.
+Fusionne persona.yaml (comportement) avec l'état SQLite (état dynamique).
+L'identité est toujours injectée depuis NERON.md.
 """
 
 from __future__ import annotations
@@ -12,6 +12,8 @@ import sqlite3
 from pathlib import Path
 
 import yaml
+
+from core.identity import build_identity_prompt, get_identity
 
 from .constants import DB_FILENAME, DEFAULTS
 
@@ -128,19 +130,7 @@ def _load_yaml_base() -> dict:
 
 
 def _get_protected_fields(yaml_base: dict) -> set:
-    """
-    Lit les champs protégés depuis core_identity.protected_fields dans le YAML.
-    Fallback sur un set minimal si le champ est absent ou mal formé.
-    """
-    try:
-        fields = yaml_base.get("core_identity", {}).get("protected_fields", [])
-        if isinstance(fields, list) and fields:
-            return set(fields)
-    except Exception:
-        pass
-    logger.warning(
-        "[PERSONA] core_identity.protected_fields absent ou invalide — fallback minimal."
-    )
+    """Identity fields are immutable because they come from NERON.md."""
     return {"name", "role", "core_identity"}
 
 
@@ -149,15 +139,15 @@ def _get_protected_fields(yaml_base: dict) -> set:
 def load_persona() -> dict:
     """
     Charge et fusionne la persona complète.
-    1. Lit persona.yaml (base immuable)
-    2. Sauvegarde les champs protégés
+    1. Lit persona.yaml (comportement)
+    2. Charge l'identité canonique depuis NERON.md
     3. Charge l'état SQLite
     4. Fusionne sections dynamiques + DEFAULTS
     5. Réimpose les champs protégés
     """
     base      = _load_yaml_base()
+    identity = get_identity()
     protected = _get_protected_fields(base)
-    protected_values = {f: base[f] for f in protected if f in base}
 
     conn = None
     try:
@@ -182,7 +172,13 @@ def load_persona() -> dict:
     for field in ("mood", "energy_level"):
         base[field] = state.get(field, DEFAULTS.get(field))
 
-    # Réimpose les champs protégés
-    base.update(protected_values)
+    # Compatibilité de l'API persona, sans dupliquer la source d'identité.
+    base.update(identity)
+    base["core_identity"] = {
+        "name": identity["name"],
+        "role": identity["role"],
+        "protected_fields": sorted(protected),
+    }
+    base["system_prompt"] = build_identity_prompt()
 
     return base

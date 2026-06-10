@@ -2,7 +2,7 @@
 # LEGACY: do not install for the current Neron OS runtime.
 # This unit points to the old `server.core.app:app` import path.
 # Use `deploy/neron-core.service` / `neron-core.service` instead.
-Description=Néron autonomous assistant (API) - LEGACY server.core path
+Description=Legacy Core API service - server.core path
 After=network.target
 
 [Service]

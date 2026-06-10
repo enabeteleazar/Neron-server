@@ -220,8 +220,10 @@ class TelegramGateway:
     ) -> None:
         if not self._is_authorized(update):
             return await self._unauthorized(update)
+        from core.identity import get_identity
+        identity = get_identity()
         await update.message.reply_text(
-            "👋 Bonjour ! Je suis <b>Néron</b>, ton assistant IA personnel.\n"
+            f"👋 Bonjour ! Je suis <b>{identity['name']}</b>, {identity['role']}.\n"
             "Tape /help pour voir les commandes disponibles.",
             parse_mode="HTML",
         )

@@ -39,9 +39,6 @@ except Exception:
     _build_personality_prompt  = None   # type: ignore[assignment]
     _PERSONALITY_AVAILABLE     = False
 
-_STATIC_SYSTEM_PROMPT: str = settings.SYSTEM_PROMPT
-
-
 def _get_system_prompt(user_context: str = "") -> tuple[str, bool]:
     """Return (system_prompt, personality_active).
 
@@ -53,7 +50,7 @@ def _get_system_prompt(user_context: str = "") -> tuple[str, bool]:
             return _build_personality_prompt(user_context=user_context), True
         except Exception:
             pass
-    return _STATIC_SYSTEM_PROMPT, False
+    return settings.SYSTEM_PROMPT, False
 
 
 def _build_prompt(query: str, context_data: str | None = None) -> str:

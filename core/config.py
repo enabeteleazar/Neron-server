@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from core.identity import build_identity_prompt, get_identity
+
 try:
     import yaml
 except ImportError:
@@ -74,7 +76,7 @@ _cfg = _load_yaml()
 
 class Config:
     # ── General ───────────────────────────────────────────────────────────
-    VERSION  = _get(_cfg, "neron", "version",   fallback_env="NERON_VERSION",  default="2.1.0")
+    VERSION  = get_identity()["version"]
     API_KEY  = _get(_cfg, "neron", "api_key",   fallback_env="NERON_API_KEY",  default="changez_moi")
 
     # FIX: validation du log_level — avertit si valeur invalide (ex: "LOGGER")
@@ -95,7 +97,7 @@ class Config:
     # ── LLM ───────────────────────────────────────────────────────────────
     OLLAMA_MODEL    = _get(_cfg, "llm", "model",       fallback_env="OLLAMA_MODEL", default="llama3.2:1b")
     OLLAMA_HOST     = _get(_cfg, "llm", "host",        fallback_env="OLLAMA_HOST",  default="http://localhost:11434")
-    SYSTEM_PROMPT   = _cfg.get("neron", {}).get("system_prompt", "Tu es Néron, un assistant IA personnel.")
+    SYSTEM_PROMPT   = build_identity_prompt()
     LLM_TIMEOUT     = float(_get(_cfg, "llm", "timeout",     fallback_env="LLM_TIMEOUT", default=120))
     LLM_TEMPERATURE = float(_get(_cfg, "llm", "temperature",                             default=0.7))
     LLM_MAX_TOKENS  = int(_get(_cfg, "llm",   "max_tokens",                              default=2048))

@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from core.identity import build_identity_prompt
+
 logger = logging.getLogger("neron.sessions")
 
 SESSIONS_DIR = Path(os.getenv("NERON_SESSIONS_DIR", Path.home() / ".neron" / "sessions"))
@@ -24,7 +26,7 @@ MAX_HISTORY_TOKENS = int(os.getenv("NERON_MAX_HISTORY_TOKENS", "8000"))
 @dataclass
 class Session:
     id: str
-    system_prompt: str = "Tu es Neron, un assistant IA local connecté à NEXUS."
+    system_prompt: str = field(default_factory=build_identity_prompt)
     history: list[dict] = field(default_factory=list)
     metadata: dict = field(default_factory=dict)
     # Contexte éphémère pour l'injection de skills — NON persisté intentionnellement
@@ -145,7 +147,7 @@ class SessionStore:
     ) -> Session:
         session = Session(
             id=session_id,
-            system_prompt=system_prompt or "Tu es Neron, un assistant IA local.",
+            system_prompt=system_prompt or build_identity_prompt(),
             metadata=metadata or {},
         )
         self._cache[session_id] = session

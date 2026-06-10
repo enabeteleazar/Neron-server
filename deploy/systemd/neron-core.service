@@ -1,5 +1,5 @@
 [Unit]
-Description=Néron autonomous assistant (API)
+Description=Core API service
 After=network.target
 
 [Service]

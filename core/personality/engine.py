@@ -30,8 +30,8 @@ def build_system_prompt(user_context: str = "") -> str:
             "Répondez de façon neutre et informez l'utilisateur du problème."
         )
 
-    name = persona.get("name", "Neron")
-    role = persona.get("role", "assistant")
+    name = persona["name"]
+    role = persona["role"]
 
     traits_raw = persona.get("traits", [])
     traits_inline = (

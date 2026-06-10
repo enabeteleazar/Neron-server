@@ -16,6 +16,8 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 from websockets.server import WebSocketServerProtocol
 
+from core.identity import build_identity_prompt
+
 if TYPE_CHECKING:
     from core.pipeline.routing.agent_router import AgentRouter
     from core.modules.sessions import SessionStore
@@ -30,7 +32,6 @@ logger = logging.getLogger("neron.gateway")
 DEFAULT_HOST = "0.0.0.0"
 DEFAULT_PORT = 18789
 MAX_MESSAGE_SIZE = 10 * 1024 * 1024  # 10 MB
-DEFAULT_SYSTEM_PROMPT = "Tu es Neron, un assistant IA local."
 
 # Codes d'erreur JSON-RPC 2.0
 ERROR_PARSE_ERROR      = -32700
@@ -320,7 +321,7 @@ class NeronGateway:
         """
         del client  # non utilisé
         session_id = params.get("session_id") or str(uuid.uuid4())
-        system     = params.get("system", DEFAULT_SYSTEM_PROMPT)
+        system     = params.get("system") or build_identity_prompt()
         session    = self.sessions.create(session_id, system_prompt=system)
         return {"session_id": session.id, "created": True}
 

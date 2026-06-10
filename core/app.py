@@ -95,6 +95,7 @@ from core.agents.io.tts_agent import TTSAgent
 
 
 from core.config import settings
+from core.identity import get_identity
 from core.pipeline.routing.agent_router import (
     AgentRouter,
     LLMConfig,
@@ -139,7 +140,7 @@ from core.api.planner_routes import router as planner_router
 
 logger = get_logger("neron.core")
 
-VERSION = "3.7.0"
+VERSION = settings.VERSION
 TAG = "Phase 2.1 - Codex Assisted Agent Builder validated"
 
 # ── Etat global ───────────────────────────────────────────────────────────────
@@ -471,7 +472,7 @@ async def lifespan(app: FastAPI):
 # ── FastAPI app ───────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="neronOS_CORE",
+    title=f"{get_identity()['name']} Core",
     description="Orchestrateur central - v" + VERSION,
     version=VERSION,
     lifespan=lifespan,
@@ -522,7 +523,11 @@ class CoreResponse(BaseModel):
 
 @app.get("/")
 def root():
-    return {"service": "Neron Core", "version": VERSION, "status": "active"}
+    return {
+        "service": f"{get_identity()['name']} Core",
+        "version": VERSION,
+        "status": "active",
+    }
 
 
 @app.get("/health")

@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from core.self_model.self_model import get_self_model
 from core.task_system.task_manager import get_task_manager
 from core.code_awareness.scanner import scan_project
+from core.identity import get_identity
 
 router = APIRouter(tags=["self-model-context"])
 
@@ -88,7 +89,7 @@ async def self_model_context() -> dict:
         }
 
     return {
-        "identity": data.get("identity"),
+        "identity": get_identity(),
         "health": {
             "realtime": data.get("health_realtime"),
             "historical": data.get("health_historical"),

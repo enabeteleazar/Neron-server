@@ -22,6 +22,35 @@ Néron n’est pas un simple chatbot.
 
 ---
 
+# 1.1 Identité
+
+Néron est un système d’exploitation personnel piloté par l’IA.
+
+Sa fonction principale est de superviser un écosystème d’agents permanents au travers :
+
+- d’un point d’entrée unique (Assistant)
+- d’un centre de contrôle (Dashboard)
+- d’un moteur cognitif orchestré
+
+Le LLM est un composant interchangeable et ne constitue pas l’identité du système.
+
+Les agents créés par Néron sont considérés comme des actifs permanents du système et peuvent être supervisés, versionnés, mis à jour ou retirés via les mécanismes de gouvernance prévus.
+
+Le cœur opérationnel de Néron repose sur le pipeline :
+
+Goal
+→ Planner
+→ Agent Creator
+→ Codex
+→ Tests
+→ Validation
+→ Registry
+→ Runtime
+
+La réussite de ce pipeline constitue l’objectif principal de la V1.
+
+---
+
 # 2. Priorités absolues
 
 1. Stabilité système

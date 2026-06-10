@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import logging
 
+from core.identity import get_identity
+
 from .engine  import build_system_prompt
 from .loader  import _init_db, _safe_json_load, load_persona
 from .updater import force_update, update_from_feedback
@@ -35,10 +37,11 @@ def get_current_state() -> dict:
     except Exception as e:
         # FIX: %s au lieu de f-string
         logger.error("[PERSONALITY] get_current_state échoué : %s", e)
+        identity = get_identity()
         return {
             "error":        str(e),
             "status":       "unavailable",
-            "name":         "Neron",
+            **identity,
             "mood":         "neutre",
             "energy_level": "normal",
         }

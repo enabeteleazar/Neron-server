@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from core.identity import get_identity
+
 logger = logging.getLogger("neron.skills")
 
 WORKSPACE_DIR = Path(os.getenv("NERON_WORKSPACE_DIR", Path.home() / ".neron" / "workspace"))
@@ -184,12 +186,13 @@ class SkillRegistry:
 
     def _install_builtin_skills(self) -> None:
         """Installe les skills de base de Neron sans fichiers sur disque."""
+        identity = get_identity()
         builtins = [
             Skill(
                 name="neron_core",
                 description="Capacités de base de Neron (identité, statut).",
                 inject_always=True,
-                skill_md=NERON_CORE_SKILL_MD,
+                skill_md=_build_neron_core_skill(identity),
             ),
             Skill(
                 name="ollama",
@@ -201,7 +204,7 @@ class SkillRegistry:
                 name="nexus_avatar",
                 description="Contrôle l'avatar 3D dans NEXUS.",
                 triggers=["avatar", "animation", "expression", "parle", "bouge"],
-                skill_md=NEXUS_AVATAR_SKILL_MD,
+                skill_md=_build_nexus_avatar_skill(identity),
             ),
         ]
         for skill in builtins:
@@ -293,9 +296,10 @@ class SkillRegistry:
 # Contenu SKILL.md des skills intégrées
 # ──────────────────────────────────────────────────────────────────────────────
 
-NERON_CORE_SKILL_MD = """
-# Neron Core
-Tu es **Neron**, l'assistant IA local du projet NEXUS.
+def _build_neron_core_skill(identity: dict[str, str]) -> str:
+    return f"""
+# {identity["name"]} Core
+Tu es **{identity["name"]}**, {identity["role"]}.
 Tu es incarné dans un avatar 3D rendu via Three.js r128.
 Tu communiques via un Gateway WebSocket local sur le réseau LAN/Tailscale.
 Tu peux interagir avec des modèles LLM locaux via Ollama.
@@ -316,9 +320,10 @@ Endpoints utiles :
 - POST /api/generate     — completion simple
 """.strip()
 
-NEXUS_AVATAR_SKILL_MD = """
+def _build_nexus_avatar_skill(identity: dict[str, str]) -> str:
+    return f"""
 # NEXUS Avatar Skill
-L'avatar 3D de Neron est rendu dans Three.js r128 (hiérarchie THREE.Group, MeshPhongMaterial).
+L'avatar 3D de {identity["name"]} est rendu dans Three.js r128 (hiérarchie THREE.Group, MeshPhongMaterial).
 Quand tu veux animer ou décrire une action de l'avatar, précise :
 - L'expression : neutre | sourire | surprise | pensif | alerte
 - L'animation : idle | parler | hocher | regarder_gauche | regarder_droite

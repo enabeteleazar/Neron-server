@@ -90,12 +90,6 @@ neron:
   endpoint: http://localhost:8010/input/text
   api_key_env: NERON_API_KEY
   log_level: INFO
-  version: 2.1.0
-  system_prompt: >-
-    Tu es Néron, un assistant IA personnel installé sur Homebox.
-    Tu es concis et direct. Tu réponds uniquement en français.
-    Tu n'évoques jamais les conversations passées sauf demande explicite.
-    Tu ne te présentes jamais comme une IA générique.
 
 scheduler:
   enabled: true
