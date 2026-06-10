@@ -31,6 +31,12 @@ class PlanStorage:
                 return plan
         return None
 
+    def find_by_goal_id(self, goal_id: str) -> dict[str, Any] | None:
+        for plan in reversed(self._read_all()):
+            if str(plan.get("goal_id") or "") == goal_id:
+                return plan
+        return None
+
     def update(self, updated_plan: dict[str, Any]) -> None:
         plans = self._read_all()
         plan_id = updated_plan.get("id")

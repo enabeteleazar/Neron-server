@@ -6,12 +6,14 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from core.cognitive.critic_engine import get_critic_engine
+from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.events.event import Event
 from core.events.event_bus import event_bus
 from core.goals.goal_manager import get_goal_manager
 from core.planning import AutonomousPlanner
 from core.planning.storage import PlanStorage
+from core.projects.manager import get_project_manager
 from core.task_system.task_executor import get_task_executor
 from core.task_system.task_manager import get_task_manager
 
@@ -88,6 +90,7 @@ class GoalOrchestrator:
         storage: PlanStorage | None = None,
         notifier: Notifier | None = None,
         agent_build_orchestrator: AgentBuildOrchestrator | None = None,
+        agent_creator: AgentCreator | None = None,
     ) -> None:
         self.goal_manager = get_goal_manager()
         self.planner = planner or AutonomousPlanner()
@@ -97,6 +100,7 @@ class GoalOrchestrator:
         self.critic = get_critic_engine()
         self.notifier = notifier
         self.agent_build_orchestrator = agent_build_orchestrator or AgentBuildOrchestrator()
+        self.agent_creator = agent_creator or AgentCreator()
 
     async def run_goal(self, objective: str, source: str = "system") -> dict[str, Any]:
         title = objective.strip()
@@ -129,10 +133,12 @@ class GoalOrchestrator:
             "planner.plan_created",
             {"goal_id": goal.get("id"), "plan_id": plan.get("id"), "steps": len(plan.get("steps", []))},
         )
+        self.goal_manager.update_progress(str(goal["id"]), 0.1)
 
         created_tasks = self.task_manager.create_tasks_from_plan(plan)
         plan["tasks_generated"] = True
         plan["generated_task_ids"] = [task.get("id") for task in created_tasks]
+        self.goal_manager.update_progress(str(goal["id"]), 0.2)
 
         risk = self.critic.evaluate_plan(plan)
         sensitive = self._detect_sensitive_action(plan)
@@ -156,6 +162,7 @@ class GoalOrchestrator:
             plan["approval_required"] = False
             plan["error"] = "Exécution bloquée par le CriticEngine."
             self.storage.save(plan)
+            self.goal_manager.update_status(str(goal["id"]), "failed")
             await self._notify_blocked(plan)
             return self._goal_response(decision, goal, plan, created_tasks)
 
@@ -205,20 +212,71 @@ class GoalOrchestrator:
         plan["execution_started_at"] = self._now()
         plan["executed_by"] = approved_by
         plan["agent_build_orchestrator_called"] = True
+        plan["current_step"] = "agent_creator"
+        if plan.get("goal_id"):
+            self.goal_manager.update_progress(str(plan.get("goal_id")), 0.3)
         self.storage.update(plan)
         await self._notify_execution_started(plan)
 
+        task_executor = getattr(self, "task_executor", None)
+        creator = (
+            getattr(task_executor, "agent_creator", None)
+            or getattr(self, "agent_creator", None)
+        )
+        if creator is not None:
+            proposal = creator.request_agent_creation(
+                goal=str(plan.get("goal") or ""),
+                plan=plan,
+            )
+        else:
+            proposal = {
+                "agent_request_id": f"legacy-{plan_id}",
+                "agent_name": None,
+                "goal": str(plan.get("goal") or ""),
+                "required_capabilities": [],
+                "status": "pending_human_validation",
+                "human_validation_required": True,
+                "code_execution_allowed": False,
+                "applied_to_core": False,
+                "created_from_goal_id": plan.get("goal_id"),
+                "created_from_plan_id": plan_id,
+            }
+        plan["agent_creator_called"] = True
+        plan["agent_creation_proposal"] = proposal
+        plan["agent_request_id"] = proposal.get("agent_request_id")
+        plan["agent_proposal_status"] = proposal.get("status")
+        plan["current_step"] = "agent_build"
+        self.storage.update(plan)
+        await self._publish_flow_event(
+            "agent_creator.proposal_created",
+            {
+                "goal_id": plan.get("goal_id"),
+                "plan_id": plan.get("id"),
+                "agent_request_id": proposal.get("agent_request_id"),
+                "agent_name": proposal.get("agent_name"),
+                "status": proposal.get("status"),
+            },
+        )
+
         source_channel = str(plan.get("source") or "api_goal").removesuffix("_goal")
-        build_result = await self.agent_build_orchestrator.build_from_request(
-            str(plan.get("goal") or ""),
-            requested_by=approved_by,
-            source_channel=source_channel or "api",
-            build_mode=self._agent_build_mode_for_source(source_channel),
+        build_result = await self._run_agent_build(
+            plan,
+            approved_by=approved_by,
+            source_channel=source_channel,
+            proposal=proposal,
         )
         plan["agent_build_result"] = build_result
         plan["agent_build_status"] = build_result.get("status")
         plan["agent_creator_called"] = True
         self._attach_build_result(plan, build_result)
+        if creator is not None and hasattr(creator, "update_proposal"):
+            updated_proposal = creator.update_proposal(
+                str(plan.get("agent_request_id") or ""),
+                plan.get("agent_creation_proposal") or {},
+            )
+            if updated_proposal:
+                plan["agent_creation_proposal"] = updated_proposal
+                plan["agent_proposal_status"] = updated_proposal.get("status")
 
         if build_result.get("status") != "completed":
             for task in related_tasks:
@@ -242,7 +300,7 @@ class GoalOrchestrator:
                 "total": len(related_tasks),
             }
             self.storage.update(plan)
-            if plan["status"] == "refused" and plan.get("goal_id"):
+            if plan.get("goal_id"):
                 self.goal_manager.update_status(str(plan.get("goal_id")), "failed")
             await self._notify_execution_failed(plan)
             return {"status": plan["status"], "plan": plan, "error": plan.get("error")}
@@ -275,6 +333,7 @@ class GoalOrchestrator:
         }
         plan["task_counts"] = dict(plan["execution_summary"])
         plan["status"] = "plan_finished"
+        plan["current_step"] = "completed"
         plan["finished_at"] = self._now()
         plan["error"] = None
         self.storage.update(plan)
@@ -658,11 +717,13 @@ class GoalOrchestrator:
     def _attach_build_result(self, plan: dict[str, Any], build_result: dict[str, Any]) -> None:
         project = build_result.get("project") or {}
         spec = build_result.get("spec") or {}
+        registered_record = build_result.get("agent") or {}
         result = project.get("result") or {}
         created_files = list(project.get("created_files") or [])
         agent_name = (
             project.get("registered_agent")
             or result.get("agent")
+            or registered_record.get("agent_name")
             or spec.get("name")
         )
         runtime_reload = (
@@ -680,13 +741,34 @@ class GoalOrchestrator:
         if agent_name:
             plan["agent_name"] = agent_name
             plan["registered_agent"] = agent_name
-            plan["agent_request_id"] = str(project.get("project_id") or agent_name)
+            plan["agent_request_id"] = (
+                plan.get("agent_request_id")
+                or str(project.get("project_id") or agent_name)
+            )
         if agent_path:
             plan["agent_path"] = agent_path
             plan["agent_state"] = "registered"
         plan["created_files"] = created_files
         plan["build_project_id"] = project.get("project_id")
-        plan["registry_status"] = project.get("registry_status")
+        reused_registered = bool(build_result.get("reused_registered_agent"))
+        plan["registry_status"] = project.get("registry_status") or (
+            "registered" if reused_registered else None
+        )
+        plan["validation_status"] = project.get("validation_status") or (
+            "previously_validated" if reused_registered else None
+        )
+        plan["compile_status"] = project.get("compile_status") or (
+            "previously_validated" if reused_registered else None
+        )
+        plan["test_status"] = project.get("test_status") or (
+            "previously_validated" if reused_registered else None
+        )
+        plan["governor_status"] = project.get("governor_status") or (
+            "not_required" if reused_registered else None
+        )
+        plan["runtime_status"] = project.get("runtime_status") or (
+            "available" if reused_registered and build_result.get("status") == "completed" else None
+        )
         plan["runtime_reload"] = runtime_reload
         plan["tests_ok"] = tests_ok
         plan["build_mode"] = build_result.get("build_mode")
@@ -697,6 +779,7 @@ class GoalOrchestrator:
         plan["applied_to_core"] = build_result.get("status") == "completed" and bool(agent_name)
         plan["human_validation_required"] = False
         plan["agent_creation_proposal"] = {
+            **(plan.get("agent_creation_proposal") or {}),
             "agent_request_id": plan.get("agent_request_id"),
             "agent_name": agent_name,
             "goal": spec.get("goal") or plan.get("goal"),
@@ -713,6 +796,122 @@ class GoalOrchestrator:
             "codex_fallback": plan.get("codex_fallback"),
         }
         plan["agent_proposal_status"] = plan["agent_creation_proposal"]["status"]
+
+    def get_goal_status(self, goal_id: str) -> dict[str, Any] | None:
+        goal = self.goal_manager.get_goal(goal_id)
+        if not goal:
+            return None
+
+        plan = self.storage.find_by_goal_id(goal_id)
+        project_manager = getattr(self.agent_build_orchestrator, "project_manager", None)
+        if project_manager is None:
+            project_manager = get_project_manager()
+        project = None
+        if plan and plan.get("build_project_id"):
+            project = project_manager.get_project(str(plan["build_project_id"]))
+        if project is None:
+            project = project_manager.find_project_by_tracking(
+                goal_id=goal_id,
+                plan_id=str((plan or {}).get("id") or "") or None,
+            )
+
+        project_metadata = (project or {}).get("metadata") or {}
+        project_result = (project or {}).get("result") or {}
+        agent_slug = (
+            (plan or {}).get("registered_agent")
+            or (plan or {}).get("agent_name")
+            or (project or {}).get("registered_agent")
+            or project_result.get("agent")
+            or project_metadata.get("agent_name")
+        )
+        errors = self._goal_status_errors(plan, project)
+        status = str((plan or {}).get("status") or goal.get("status") or "unknown")
+        current_step = str(
+            (project or {}).get("current_step")
+            or (plan or {}).get("current_step")
+            or status
+        )
+        progress = self._goal_status_progress(goal, plan, project)
+
+        return {
+            "goal_id": goal_id,
+            "status": status,
+            "current_step": current_step,
+            "progress": progress,
+            "plan_id": (plan or {}).get("id"),
+            "agent_slug": agent_slug,
+            "codex_used": bool(
+                (plan or {}).get("codex_used")
+                or project_metadata.get("codex_used")
+            ),
+            "validation_status": (project or {}).get("validation_status") or (plan or {}).get("validation_status") or "pending",
+            "compile_status": (project or {}).get("compile_status") or (plan or {}).get("compile_status") or "pending",
+            "test_status": (project or {}).get("test_status") or (plan or {}).get("test_status") or "pending",
+            "governor_status": (project or {}).get("governor_status") or (plan or {}).get("governor_status") or "pending",
+            "registry_status": (project or {}).get("registry_status") or (plan or {}).get("registry_status") or "not_registered",
+            "runtime_status": (project or {}).get("runtime_status") or (plan or {}).get("runtime_status") or "pending",
+            "errors": errors,
+        }
+
+    def _goal_status_errors(
+        self,
+        plan: dict[str, Any] | None,
+        project: dict[str, Any] | None,
+    ) -> list[str]:
+        errors: list[str] = []
+        for value in ((plan or {}).get("error"), (project or {}).get("error")):
+            if value and str(value) not in errors:
+                errors.append(str(value))
+        for step in (project or {}).get("steps") or []:
+            value = step.get("error")
+            if value and str(value) not in errors:
+                errors.append(str(value))
+        return errors
+
+    def _goal_status_progress(
+        self,
+        goal: dict[str, Any],
+        plan: dict[str, Any] | None,
+        project: dict[str, Any] | None,
+    ) -> int:
+        if project and project.get("progress") is not None:
+            return int(project["progress"])
+        plan_status = str((plan or {}).get("status") or "")
+        if plan_status in PLAN_TERMINAL_STATUSES or goal.get("status") == "completed":
+            return 100
+        return int(float(goal.get("progress") or 0) * 100)
+
+    async def _run_agent_build(
+        self,
+        plan: dict[str, Any],
+        *,
+        approved_by: str,
+        source_channel: str,
+        proposal: dict[str, Any],
+    ) -> dict[str, Any]:
+        kwargs = {
+            "requested_by": approved_by,
+            "source_channel": source_channel or "api",
+            "build_mode": self._agent_build_mode_for_source(source_channel),
+            "tracking_context": {
+                "goal_id": plan.get("goal_id"),
+                "plan_id": plan.get("id"),
+                "agent_request_id": proposal.get("agent_request_id"),
+            },
+        }
+        try:
+            return await self.agent_build_orchestrator.build_from_request(
+                str(plan.get("goal") or ""),
+                **kwargs,
+            )
+        except TypeError as exc:
+            if "tracking_context" not in str(exc):
+                raise
+            kwargs.pop("tracking_context")
+            return await self.agent_build_orchestrator.build_from_request(
+                str(plan.get("goal") or ""),
+                **kwargs,
+            )
 
     def _agent_build_mode_for_source(self, source_channel: str) -> str:
         if source_channel in {"telegram", "validation", "telegram_validation"}:

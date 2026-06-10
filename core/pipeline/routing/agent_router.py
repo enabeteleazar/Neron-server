@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import logging
 import re
+import subprocess
+import sys
 import unicodedata
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.pipeline.intent.intent_router import Intent, IntentResult
 
 logger = logging.getLogger("pipeline.agent_router")
+
+WORKSPACE_AGENTS_DIR = Path("/etc/neron/workspace/agents")
 
 _llm: Optional[object] = None
 _memory: Optional[object] = None
@@ -416,8 +421,6 @@ async def _run_dynamic_agent(query: str) -> str:
 
 
 async def _promote_dynamic_agent(query: str) -> str:
-    from pathlib import Path
-
     from core.agent_factory.promoter import promote_agent
     from core.agent_factory.validator import validate_agent
 
@@ -427,8 +430,8 @@ async def _promote_dynamic_agent(query: str) -> str:
         return "Nom d’agent introuvable. Exemple : valide l agent meteo"
 
     candidates = [
-        Path(f"/etc/neron/workspace/agents/{agent_name}_agent.py"),
-        Path(f"/etc/neron/workspace/agents/{agent_name}.py"),
+        WORKSPACE_AGENTS_DIR / f"{agent_name}_agent.py",
+        WORKSPACE_AGENTS_DIR / f"{agent_name}.py",
     ]
 
     source = next((path for path in candidates if path.exists()), None)
@@ -442,6 +445,11 @@ async def _promote_dynamic_agent(query: str) -> str:
     if not validation["ok"]:
         return f"Validation échouée : {validation['error']}"
 
+    test_result = _run_agent_promotion_test(source)
+    if test_result and test_result["returncode"] != 0:
+        error = test_result["stdout_tail"] or test_result["stderr_tail"] or "pytest_failed"
+        return f"Tests échoués : {error}"
+
     result = promote_agent(str(source))
 
     if not result["ok"]:
@@ -452,6 +460,32 @@ async def _promote_dynamic_agent(query: str) -> str:
         f"Source : {result['source']}\n"
         f"Destination : {result['destination']}"
     )
+
+
+def _run_agent_promotion_test(source: Path) -> dict[str, Any] | None:
+    workspace_root = source.parent.parent
+    project_root = workspace_root.parent
+    candidates = (
+        workspace_root / "agent_tests" / f"test_{source.stem}.py",
+        project_root / "tests" / f"test_{source.stem}.py",
+    )
+    test_file = next((path for path in candidates if path.exists()), None)
+    if test_file is None:
+        return None
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", str(test_file)],
+        cwd=project_root,
+        text=True,
+        capture_output=True,
+        timeout=120,
+    )
+    return {
+        "returncode": completed.returncode,
+        "stdout_tail": completed.stdout[-4000:],
+        "stderr_tail": completed.stderr[-4000:],
+        "test_file": str(test_file),
+    }
 
 
 class AgentRouter:

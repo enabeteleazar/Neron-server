@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import tempfile
 from pathlib import Path
 
@@ -105,6 +106,14 @@ def test_goal_creates_specialized_agent_without_human_approval(monkeypatch):
         assert proposal["human_validation_required"] is False
         assert proposal["code_execution_allowed"] is True
         assert proposal["applied_to_core"] is True
+        proposals_path = tmp_path / "data" / "agent_creator_proposals.jsonl"
+        assert proposals_path.exists()
+        persisted_proposal = json.loads(
+            proposals_path.read_text(encoding="utf-8").splitlines()[-1]
+        )
+        assert persisted_proposal["agent_request_id"] == proposal["agent_request_id"]
+        assert persisted_proposal["status"] == "auto_applied"
+        assert persisted_proposal["applied_to_core"] is True
 
         agent_path = tmp_path / "project" / "core" / "agents" / "generated" / "agriculture_weather_agent.py"
         workspace_path = tmp_path / "project" / "workspace" / "agents" / "agriculture_weather_agent.py"

@@ -49,7 +49,12 @@ class ProjectManager:
             "steps": [],
             "created_files": [],
             "test_results": [],
+            "validation_status": "pending",
+            "compile_status": "pending",
+            "test_status": "pending",
+            "governor_status": "pending",
             "registry_status": "not_registered",
+            "runtime_status": "pending",
             "result": None,
             "error": None,
             "metadata": metadata or {},
@@ -99,6 +104,20 @@ class ProjectManager:
     def get_project(self, project_id: str) -> dict[str, Any] | None:
         for project in self._load():
             if project.get("project_id") == project_id:
+                return project
+        return None
+
+    def find_project_by_tracking(
+        self,
+        *,
+        goal_id: str | None = None,
+        plan_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        for project in reversed(self._load()):
+            metadata = project.get("metadata") or {}
+            if goal_id and str(metadata.get("goal_id") or "") == goal_id:
+                return project
+            if plan_id and str(metadata.get("plan_id") or "") == plan_id:
                 return project
         return None
 

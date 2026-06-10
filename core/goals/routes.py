@@ -64,6 +64,15 @@ async def active_goal() -> dict[str, Any]:
     return {"active_goal": manager.get_active_goal()}
 
 
+@router.get("/goal/{goal_id}/status")
+async def goal_status(goal_id: str) -> dict[str, Any]:
+    orchestrator = get_goal_orchestrator()
+    status = orchestrator.get_goal_status(goal_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return status
+
+
 @router.post("/goals")
 async def create_goal(payload: GoalCreateRequest) -> dict[str, Any]:
     manager = get_goal_manager()

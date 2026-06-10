@@ -86,6 +86,7 @@ class AgentBuildOrchestrator:
         python_executable: str | None = None,
         runtime_check: bool = True,
         codex_runner: Any | None = None,
+        runtime_governor: Any | None = None,
     ) -> None:
         self.project_manager = project_manager or get_project_manager()
         self.project_root = project_root
@@ -95,6 +96,7 @@ class AgentBuildOrchestrator:
         self.python_executable = python_executable or sys.executable
         self.runtime_check = runtime_check
         self.codex_runner = codex_runner
+        self.runtime_governor = runtime_governor
 
     async def build_from_request(
         self,
@@ -103,6 +105,7 @@ class AgentBuildOrchestrator:
         requested_by: str = "user",
         source_channel: str = "api",
         build_mode: BuildMode = "deterministic",
+        tracking_context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         mode = self._normalize_build_mode(build_mode)
         codex_state = self._codex_state(mode)
@@ -120,7 +123,10 @@ class AgentBuildOrchestrator:
             }
 
         spec = self.plan_spec(query)
-        metadata = self._project_metadata(spec, query)
+        metadata = {
+            **self._project_metadata(spec, query),
+            **(tracking_context or {}),
+        }
         existing = self.project_manager.find_existing_agent_project(
             agent_name=spec.name,
             intent_key=metadata["intent_key"],
@@ -155,6 +161,9 @@ class AgentBuildOrchestrator:
             metadata=metadata,
         )
         project_id = str(project["project_id"])
+        promotion_destination: Path | None = None
+        promotion_snapshot: bytes | None = None
+        promotion_committed = False
 
         try:
             self._step(project_id, "planning", "done", 10)
@@ -203,8 +212,16 @@ class AgentBuildOrchestrator:
 
             validation = validate_agent(str(agent_file))
             if not validation.get("ok"):
+                self.project_manager.update_project(
+                    project_id,
+                    {"validation_status": "failed"},
+                )
                 failed = self._fail(project_id, "validation", validation.get("error", "validation_failed"))
                 return self._with_build_status(failed, codex_state)
+            self.project_manager.update_project(
+                project_id,
+                {"validation_status": "passed"},
+            )
             self._step(project_id, "validation", "done", 50)
 
             compile_result = self._run_command(
@@ -212,8 +229,17 @@ class AgentBuildOrchestrator:
                 "compile_agent",
             )
             if compile_result["returncode"] != 0:
+                self.project_manager.update_project(
+                    project_id,
+                    {"compile_status": "failed"},
+                )
                 failed = self._fail(project_id, "compile", compile_result["stderr_tail"] or "compile_failed", compile_result)
                 return self._with_build_status(failed, codex_state)
+            self.project_manager.update_project(
+                project_id,
+                {"compile_status": "passed"},
+            )
+            self._step(project_id, "compile", "done", 60)
 
             test_result = self._run_command(
                 [self.python_executable, "-m", "pytest", "-q", str(test_file)],
@@ -221,11 +247,45 @@ class AgentBuildOrchestrator:
             )
             self._append_test_result(project_id, test_result)
             if test_result["returncode"] != 0:
+                self.project_manager.update_project(
+                    project_id,
+                    {"test_status": "failed"},
+                )
                 failed = self._fail(project_id, "tests", test_result["stdout_tail"] or test_result["stderr_tail"])
                 return self._with_build_status(failed, codex_state)
+            self.project_manager.update_project(
+                project_id,
+                {"test_status": "passed"},
+            )
             self._step(project_id, "tests", "done", 70)
 
+            governor = self._get_runtime_governor()
+            governor_allowed = governor.authorize_agent_promotion(
+                agent_name=spec.name,
+                requested_by=requested_by,
+            )
+            governor_policy = governor.to_dict()
+            self.project_manager.update_project(
+                project_id,
+                {
+                    "governor_status": "allowed" if governor_allowed else "refused",
+                    "governor_policy": governor_policy,
+                },
+                step="runtime_governor",
+                step_status="done" if governor_allowed else "failed",
+                progress=75,
+            )
+            if not governor_allowed:
+                failed = self._fail(
+                    project_id,
+                    "runtime_governor",
+                    governor_policy.get("reason") or "runtime_governor_refused",
+                )
+                return self._with_build_status(failed, codex_state)
+
+            promotion_snapshot = self._snapshot_promotion_target(agent_file)
             destination = self._register_agent(agent_file)
+            promotion_destination = destination
 
             registry = DynamicAgentRegistry(self.generated_agents)
             registry.load_generated_agents()
@@ -235,6 +295,8 @@ class AgentBuildOrchestrator:
             )
 
             if not destination.exists() or not registered_record:
+                self._rollback_promotion(destination, promotion_snapshot)
+                self._reload_runtime_after_rollback()
                 failed = self._fail(
                     project_id,
                     "registry",
@@ -260,9 +322,20 @@ class AgentBuildOrchestrator:
 
             verification = await self._verify_agent(spec)
             if not verification.get("ok"):
+                self._rollback_promotion(destination, promotion_snapshot)
+                self._reload_runtime_after_rollback()
+                self.project_manager.update_project(
+                    project_id,
+                    {
+                        "registry_status": "not_registered",
+                        "registered_agent": None,
+                        "runtime_status": "failed",
+                    },
+                )
                 failed = self._fail(project_id, "verification", verification.get("error", "verification_failed"))
                 return self._with_build_status(failed, codex_state)
 
+            runtime_status = "skipped" if verification.get("skipped") else "available"
             completed = self.project_manager.update_project(
                 project_id,
                 {
@@ -276,6 +349,7 @@ class AgentBuildOrchestrator:
                         "available": True,
                         **self._codex_project_metadata(codex_state),
                     },
+                    "runtime_status": runtime_status,
                     "error": None,
                     "metadata": {
                         **metadata,
@@ -286,6 +360,7 @@ class AgentBuildOrchestrator:
                 step_status="done",
                 progress=100,
             )
+            promotion_committed = True
             return self._with_build_status(
                 {
                     "status": "completed",
@@ -299,6 +374,9 @@ class AgentBuildOrchestrator:
                 codex_state,
             )
         except Exception as exc:
+            if promotion_destination is not None and not promotion_committed:
+                self._rollback_promotion(promotion_destination, promotion_snapshot)
+                self._reload_runtime_after_rollback()
             failed = self._fail(project_id, "exception", str(exc))
             return self._with_build_status(
                 {
@@ -549,6 +627,34 @@ class AgentBuildOrchestrator:
         shutil.copy2(agent_file, destination)
         return destination
 
+    def _snapshot_promotion_target(self, agent_file: Path) -> bytes | None:
+        destination = self.generated_agents / agent_file.name
+        return destination.read_bytes() if destination.exists() else None
+
+    def _rollback_promotion(self, destination: Path, previous: bytes | None) -> None:
+        if previous is None:
+            destination.unlink(missing_ok=True)
+            return
+        destination.write_bytes(previous)
+
+    def _reload_runtime_after_rollback(self) -> None:
+        if not self.runtime_check:
+            return
+        from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+
+        manager = get_agent_runtime_manager()
+        registry = getattr(manager, "registry", None)
+        if registry is not None and hasattr(registry, "generated_dir"):
+            registry.generated_dir = self.generated_agents
+        manager.reload()
+
+    def _get_runtime_governor(self) -> Any:
+        if self.runtime_governor is not None:
+            return self.runtime_governor
+        from core.runtime.governor import get_runtime_governor
+
+        return get_runtime_governor()
+
     def _registered_agent_for_spec(
         self,
         spec: AgentSpec,
@@ -741,12 +847,21 @@ class AgentBuildOrchestrator:
     ) -> dict[str, Any]:
         if test_result:
             self._append_test_result(project_id, test_result)
+        existing = self.project_manager.get_project(project_id) or {}
+        created_files = [
+            path
+            for path in existing.get("created_files") or []
+            if "core/agents/generated/" not in str(path).replace("\\", "/")
+        ]
         project = self.project_manager.update_project(
             project_id,
             {
                 "status": "failed",
                 "current_step": step,
                 "registry_status": "not_registered",
+                "registered_agent": None,
+                "created_files": created_files,
+                "runtime_status": "failed" if step == "verification" else "not_available",
                 "result": {"available": False},
             },
             step=step,

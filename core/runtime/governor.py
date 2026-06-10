@@ -226,6 +226,28 @@ class RuntimeGovernor:
         )
         return True
 
+    def authorize_agent_promotion(
+        self,
+        *,
+        agent_name: str,
+        requested_by: str = "system",
+    ) -> bool:
+        allowed = (
+            self.policy.runtime_mode != "survival"
+            and self.policy.autonomous_actions_allowed
+        )
+        log = logger.info if allowed else logger.warning
+        log(
+            "agent_promotion_%s agent=%s requested_by=%s runtime_mode=%s autonomous=%s reason=%s",
+            "allowed" if allowed else "denied",
+            agent_name,
+            requested_by,
+            self.policy.runtime_mode,
+            self.policy.autonomous_actions_allowed,
+            self.policy.reason,
+        )
+        return allowed
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self.policy)
 
