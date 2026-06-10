@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
 from core.goals.goal_manager import get_goal_manager
+from core.goals.background_runner import get_goal_background_runner
 from core.goals.goal_orchestrator import get_goal_orchestrator
 
 
@@ -42,14 +43,26 @@ async def run_goal(payload: GoalRunRequest) -> dict[str, Any]:
     return result
 
 
-@router.post("/goal")
+@router.post("/goal", status_code=status.HTTP_202_ACCEPTED)
 async def run_goal_alias(payload: GoalAliasRequest) -> dict[str, Any]:
     objective = (payload.goal or payload.objective or "").strip()
     if not objective:
         raise HTTPException(status_code=422, detail="goal or objective is required")
 
     orchestrator = get_goal_orchestrator()
-    return await orchestrator.run_goal(objective, source=payload.source)
+    goal = orchestrator.queue_goal(objective, source=payload.source)
+    goal_id = str(goal["id"])
+    get_goal_background_runner().submit(
+        goal_id=goal_id,
+        objective=objective,
+        source=payload.source,
+    )
+    return {
+        "accepted": True,
+        "goal_id": goal_id,
+        "status": "queued",
+        "status_url": f"/goal/{goal_id}/status",
+    }
 
 
 @router.get("/goals")

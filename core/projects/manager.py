@@ -8,6 +8,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from core.storage.sqlite_store import SQLiteStore, get_path_lock
+
 
 PROJECTS_PATH = Path("/etc/neron/data/projects.json")
 
@@ -17,9 +19,17 @@ def _now() -> float:
 
 
 class ProjectManager:
-    def __init__(self, path: Path = PROJECTS_PATH, evolution_state_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        path: Path = PROJECTS_PATH,
+        evolution_state_path: Path | None = None,
+        sqlite_store: SQLiteStore | None = None,
+    ) -> None:
         self.path = path
         self.evolution_state_path = evolution_state_path or path.parent / "evolution_state.json"
+        self.sqlite_store = sqlite_store or SQLiteStore(path.parent / "neron_state.sqlite3")
+        self._lock = get_path_lock(path)
+        self._legacy_imported = False
 
     def create_project(
         self,
@@ -31,37 +41,38 @@ class ProjectManager:
         query: str = "",
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        projects = self._load()
-        project_id = self._make_project_id(title, project_type)
-        created_at = _now()
-        project = {
-            "project_id": project_id,
-            "title": title,
-            "type": project_type,
-            "status": "pending",
-            "current_step": "created",
-            "progress": 0,
-            "requested_by": requested_by,
-            "source_channel": source_channel,
-            "query": query,
-            "created_at": created_at,
-            "updated_at": created_at,
-            "steps": [],
-            "created_files": [],
-            "test_results": [],
-            "validation_status": "pending",
-            "compile_status": "pending",
-            "test_status": "pending",
-            "governor_status": "pending",
-            "registry_status": "not_registered",
-            "runtime_status": "pending",
-            "result": None,
-            "error": None,
-            "metadata": metadata or {},
-        }
-        projects.append(project)
-        self._save(projects)
-        return project
+        with self._lock:
+            projects = self._load()
+            project_id = self._make_project_id(title, project_type)
+            created_at = _now()
+            project = {
+                "project_id": project_id,
+                "title": title,
+                "type": project_type,
+                "status": "pending",
+                "current_step": "created",
+                "progress": 0,
+                "requested_by": requested_by,
+                "source_channel": source_channel,
+                "query": query,
+                "created_at": created_at,
+                "updated_at": created_at,
+                "steps": [],
+                "created_files": [],
+                "test_results": [],
+                "validation_status": "pending",
+                "compile_status": "pending",
+                "test_status": "pending",
+                "governor_status": "pending",
+                "registry_status": "not_registered",
+                "runtime_status": "pending",
+                "result": None,
+                "error": None,
+                "metadata": metadata or {},
+            }
+            projects.append(project)
+            self._save(projects)
+            return project
 
     def update_project(
         self,
@@ -73,32 +84,33 @@ class ProjectManager:
         progress: int | None = None,
         error: str | None = None,
     ) -> dict[str, Any] | None:
-        projects = self._load()
-        for project in projects:
-            if project.get("project_id") != project_id:
-                continue
+        with self._lock:
+            projects = self._load()
+            for project in projects:
+                if project.get("project_id") != project_id:
+                    continue
 
-            if step:
-                project["current_step"] = step
-                project.setdefault("steps", []).append(
-                    {
-                        "name": step,
-                        "status": step_status or "done",
-                        "at": _now(),
-                        "error": error,
-                    }
-                )
-            if updates:
-                project.update(updates)
-            if progress is not None:
-                project["progress"] = max(0, min(100, int(progress)))
-            if error:
-                project["error"] = error
-            if project.get("status") == "completed":
-                project["current_step"] = "completed"
-            project["updated_at"] = _now()
-            self._save(projects)
-            return project
+                if step:
+                    project["current_step"] = step
+                    project.setdefault("steps", []).append(
+                        {
+                            "name": step,
+                            "status": step_status or "done",
+                            "at": _now(),
+                            "error": error,
+                        }
+                    )
+                if updates:
+                    project.update(updates)
+                if progress is not None:
+                    project["progress"] = max(0, min(100, int(progress)))
+                if error:
+                    project["error"] = error
+                if project.get("status") == "completed":
+                    project["current_step"] = "completed"
+                project["updated_at"] = _now()
+                self._save(projects)
+                return project
         return None
 
     def get_project(self, project_id: str) -> dict[str, Any] | None:
@@ -113,6 +125,12 @@ class ProjectManager:
         goal_id: str | None = None,
         plan_id: str | None = None,
     ) -> dict[str, Any] | None:
+        tracked = self.sqlite_store.find_project_by_tracking(
+            goal_id=goal_id,
+            plan_id=plan_id,
+        )
+        if tracked is not None:
+            return tracked
         for project in reversed(self._load()):
             metadata = project.get("metadata") or {}
             if goal_id and str(metadata.get("goal_id") or "") == goal_id:
@@ -241,6 +259,15 @@ class ProjectManager:
         return None
 
     def _load(self) -> list[dict[str, Any]]:
+        if not self._legacy_imported:
+            for project in self._load_legacy():
+                project_id = str(project.get("project_id") or "")
+                if project_id and self.sqlite_store.get_project(project_id) is None:
+                    self.sqlite_store.upsert_project(project)
+            self._legacy_imported = True
+        return self.sqlite_store.list_projects()
+
+    def _load_legacy(self) -> list[dict[str, Any]]:
         if not self.path.exists():
             return []
         try:
@@ -251,11 +278,16 @@ class ProjectManager:
         return projects if isinstance(projects, list) else []
 
     def _save(self, projects: list[dict[str, Any]]) -> None:
+        selected = projects[-500:]
+        for project in selected:
+            self.sqlite_store.upsert_project(project)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(
-            json.dumps({"projects": projects[-500:]}, indent=2, ensure_ascii=False),
+        tmp = self.path.with_suffix(f"{self.path.suffix}.tmp")
+        tmp.write_text(
+            json.dumps({"projects": selected}, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        tmp.replace(self.path)
 
     def _make_project_id(self, title: str, project_type: str) -> str:
         words = [

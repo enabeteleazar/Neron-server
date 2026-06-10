@@ -173,6 +173,9 @@ progress has priority over goal progress because it is more precise.
 
 ## Operational Checks
 
+Phase 2.2 asynchronous acceptance and SQLite persistence are documented in
+`docs/async_goal_sqlite.md`.
+
 Inspect one workflow:
 
 ```bash

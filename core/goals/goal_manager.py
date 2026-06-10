@@ -4,7 +4,8 @@ import time
 from typing import Any
 
 from core.goals.goal import Goal
-from core.goals.persistence import load_goals_state, save_goals_state
+from core.goals import persistence
+from core.storage.sqlite_store import SQLiteStore, get_path_lock
 
 
 PRIORITY_WEIGHT = {
@@ -16,12 +17,26 @@ PRIORITY_WEIGHT = {
 
 
 class GoalManager:
+    def __init__(self, sqlite_store: SQLiteStore | None = None) -> None:
+        self.sqlite_store = sqlite_store or SQLiteStore(
+            persistence.GOALS_PATH.parent / "neron_state.sqlite3"
+        )
+        self._lock = get_path_lock(persistence.GOALS_PATH)
+        self._legacy_imported = False
+
     def _load_goals(self) -> list[Goal]:
-        data = load_goals_state()
-        return [Goal.from_dict(item) for item in data.get("goals", [])]
+        if not self._legacy_imported:
+            data = persistence.load_goals_state()
+            for item in data.get("goals", []):
+                goal_id = str(item.get("id") or "")
+                if goal_id and self.sqlite_store.get_goal(goal_id) is None:
+                    self.sqlite_store.upsert_goal(Goal.from_dict(item).to_dict())
+            self._legacy_imported = True
+        stored = self.sqlite_store.list_goals()
+        return [Goal.from_dict(item) for item in stored]
 
     def _save_goals(self, goals: list[Goal], active_goal_id: str | None = None) -> None:
-        data = load_goals_state()
+        data = persistence.load_goals_state()
 
         if active_goal_id is None:
             active = self._select_active_goal(goals)
@@ -31,12 +46,14 @@ class GoalManager:
         data["active_goal_id"] = active_goal_id
         data["last_update"] = time.time()
 
-        save_goals_state(data)
+        for goal in goals:
+            self.sqlite_store.upsert_goal(goal.to_dict())
+        persistence.save_goals_state(data)
 
     def _select_active_goal(self, goals: list[Goal]) -> Goal | None:
         candidates = [
             goal for goal in goals
-            if goal.status in ("pending", "active")
+            if goal.status in ("pending", "queued", "active")
         ]
 
         if not candidates:
@@ -61,18 +78,20 @@ class GoalManager:
         return None
 
     def get_active_goal(self) -> dict[str, Any] | None:
-        goals = self._load_goals()
-        active = self._select_active_goal(goals)
+        with self._lock:
+            goals = self._load_goals()
+            active = self._select_active_goal(goals)
 
-        if not active:
-            return None
+            if not active:
+                return None
 
-        if active.status == "pending":
-            active.status = "active"
-            active.updated_at = time.time()
-            self._save_goals(goals, active.id)
+            if active.status == "pending":
+                active.status = "active"
+                active.current_step = "active"
+                active.updated_at = time.time()
+                self._save_goals(goals, active.id)
 
-        return active.to_dict()
+            return active.to_dict()
 
     def create_goal(
         self,
@@ -81,52 +100,66 @@ class GoalManager:
         priority: str = "medium",
         source: str = "system",
         metadata: dict[str, Any] | None = None,
+        deduplicate: bool = True,
     ) -> dict[str, Any]:
-        goals = self._load_goals()
+        with self._lock:
+            goals = self._load_goals()
 
-        for goal in goals:
-            if goal.title == title and goal.status in ("pending", "active"):
-                return goal.to_dict()
+            if deduplicate:
+                for goal in goals:
+                    if goal.title == title and goal.status in ("pending", "queued", "active"):
+                        return goal.to_dict()
 
-        goal = Goal.create(
-            title=title,
-            description=description,
-            priority=priority,
-            source=source,
-            metadata=metadata,
-        )
+            goal = Goal.create(
+                title=title,
+                description=description,
+                priority=priority,
+                source=source,
+                metadata=metadata,
+            )
 
-        goals.append(goal)
-        self._save_goals(goals)
+            goals.append(goal)
+            self._save_goals(goals)
 
-        return goal.to_dict()
+            return goal.to_dict()
 
-    def update_status(self, goal_id: str, status: str) -> dict[str, Any] | None:
-        goals = self._load_goals()
+    def update_status(
+        self,
+        goal_id: str,
+        status: str,
+        *,
+        current_step: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any] | None:
+        with self._lock:
+            goals = self._load_goals()
 
-        for goal in goals:
-            if goal.id == goal_id:
-                goal.status = status
-                goal.updated_at = time.time()
+            for goal in goals:
+                if goal.id == goal_id:
+                    goal.status = status
+                    goal.current_step = current_step or status
+                    goal.error = error
+                    goal.updated_at = time.time()
 
-                if status == "completed":
-                    goal.progress = 1.0
+                    if status == "completed":
+                        goal.progress = 1.0
 
-                self._save_goals(goals)
-                return goal.to_dict()
+                    self._save_goals(goals)
+                    return goal.to_dict()
 
         return None
 
     def update_progress(self, goal_id: str, progress: float) -> dict[str, Any] | None:
-        goals = self._load_goals()
+        with self._lock:
+            goals = self._load_goals()
 
-        for goal in goals:
-            if goal.id == goal_id:
-                goal.progress = max(0.0, min(1.0, progress))
-                goal.updated_at = time.time()
+            for goal in goals:
+                if goal.id == goal_id:
+                    goal.progress = max(0.0, min(1.0, progress))
+                    goal.updated_at = time.time()
 
-                self._save_goals(goals)
-                return goal.to_dict()
+                    self._save_goals(goals)
+                    return goal.to_dict()
 
         return None
 

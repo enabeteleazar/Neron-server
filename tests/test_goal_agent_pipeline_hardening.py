@@ -244,7 +244,7 @@ async def test_goal_status_aggregates_plan_and_build_state(tmp_path: Path, monke
             "codex_used": True,
         },
     )
-    projects.update_project(
+    updated_project = projects.update_project(
         project["project_id"],
         {
             "status": "running",
@@ -260,6 +260,7 @@ async def test_goal_status_aggregates_plan_and_build_state(tmp_path: Path, monke
         step_status="done",
         progress=85,
     )
+    assert updated_project is not None
 
     orchestrator = GoalOrchestrator.__new__(GoalOrchestrator)
     orchestrator.goal_manager = manager
@@ -273,6 +274,7 @@ async def test_goal_status_aggregates_plan_and_build_state(tmp_path: Path, monke
         "current_step": "registry",
         "progress": 85,
         "plan_id": "plan-observable",
+        "project_id": project["project_id"],
         "agent_slug": "observable_agent",
         "codex_used": True,
         "validation_status": "passed",
@@ -281,7 +283,16 @@ async def test_goal_status_aggregates_plan_and_build_state(tmp_path: Path, monke
         "governor_status": "allowed",
         "registry_status": "registered",
         "runtime_status": "pending",
+        "error": None,
         "errors": [],
+        "steps": [
+            {
+                "name": "registry",
+                "status": "done",
+                "at": updated_project["steps"][0]["at"],
+                "error": None,
+            }
+        ],
     }
 
     monkeypatch.setattr(routes, "get_goal_orchestrator", lambda: orchestrator)

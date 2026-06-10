@@ -102,18 +102,46 @@ class GoalOrchestrator:
         self.agent_build_orchestrator = agent_build_orchestrator or AgentBuildOrchestrator()
         self.agent_creator = agent_creator or AgentCreator()
 
-    async def run_goal(self, objective: str, source: str = "system") -> dict[str, Any]:
+    def queue_goal(self, objective: str, source: str = "system") -> dict[str, Any]:
         title = objective.strip()
         if not title:
-            return {"status": "invalid", "message": "Objectif vide."}
-
+            raise ValueError("Objectif vide.")
         goal = self.goal_manager.create_goal(
             title=title,
             priority="high" if source == "telegram" else "medium",
             source=source,
-            metadata={"orchestrated": True},
+            metadata={"orchestrated": True, "asynchronous": True},
+            deduplicate=False,
         )
-        self.goal_manager.update_status(str(goal["id"]), "active")
+        return self.goal_manager.update_status(
+            str(goal["id"]),
+            "queued",
+            current_step="queued",
+        ) or goal
+
+    async def run_goal(
+        self,
+        objective: str,
+        source: str = "system",
+        goal_id: str | None = None,
+    ) -> dict[str, Any]:
+        title = objective.strip()
+        if not title:
+            return {"status": "invalid", "message": "Objectif vide."}
+
+        goal = self.goal_manager.get_goal(goal_id) if goal_id else None
+        if goal is None:
+            goal = self.goal_manager.create_goal(
+                title=title,
+                priority="high" if source == "telegram" else "medium",
+                source=source,
+                metadata={"orchestrated": True},
+            )
+        self._update_goal_status(
+            str(goal["id"]),
+            "active",
+            current_step="planning",
+        )
         goal = self.goal_manager.get_goal(str(goal["id"])) or goal
         await self._publish_flow_event("goal.created", {"goal_id": goal.get("id"), "title": title, "source": source})
 
@@ -162,7 +190,12 @@ class GoalOrchestrator:
             plan["approval_required"] = False
             plan["error"] = "Exécution bloquée par le CriticEngine."
             self.storage.save(plan)
-            self.goal_manager.update_status(str(goal["id"]), "failed")
+            self._update_goal_status(
+                str(goal["id"]),
+                "failed",
+                current_step="blocked_by_risk",
+                error=str(plan["error"]),
+            )
             await self._notify_blocked(plan)
             return self._goal_response(decision, goal, plan, created_tasks)
 
@@ -301,7 +334,12 @@ class GoalOrchestrator:
             }
             self.storage.update(plan)
             if plan.get("goal_id"):
-                self.goal_manager.update_status(str(plan.get("goal_id")), "failed")
+                self._update_goal_status(
+                    str(plan.get("goal_id")),
+                    "failed",
+                    current_step=str(plan.get("current_step") or "failed"),
+                    error=str(plan.get("error") or "agent_build_failed"),
+                )
             await self._notify_execution_failed(plan)
             return {"status": plan["status"], "plan": plan, "error": plan.get("error")}
 
@@ -824,11 +862,12 @@ class GoalOrchestrator:
             or project_result.get("agent")
             or project_metadata.get("agent_name")
         )
-        errors = self._goal_status_errors(plan, project)
-        status = str((plan or {}).get("status") or goal.get("status") or "unknown")
+        errors = self._goal_status_errors(goal, plan, project)
+        status = self._public_goal_status(goal, plan, project)
         current_step = str(
             (project or {}).get("current_step")
             or (plan or {}).get("current_step")
+            or goal.get("current_step")
             or status
         )
         progress = self._goal_status_progress(goal, plan, project)
@@ -839,6 +878,7 @@ class GoalOrchestrator:
             "current_step": current_step,
             "progress": progress,
             "plan_id": (plan or {}).get("id"),
+            "project_id": (project or {}).get("project_id") or (plan or {}).get("build_project_id"),
             "agent_slug": agent_slug,
             "codex_used": bool(
                 (plan or {}).get("codex_used")
@@ -850,16 +890,40 @@ class GoalOrchestrator:
             "governor_status": (project or {}).get("governor_status") or (plan or {}).get("governor_status") or "pending",
             "registry_status": (project or {}).get("registry_status") or (plan or {}).get("registry_status") or "not_registered",
             "runtime_status": (project or {}).get("runtime_status") or (plan or {}).get("runtime_status") or "pending",
+            "error": errors[0] if errors else goal.get("error"),
             "errors": errors,
+            "steps": list((project or {}).get("steps") or []),
         }
+
+    def _public_goal_status(
+        self,
+        goal: dict[str, Any],
+        plan: dict[str, Any] | None,
+        project: dict[str, Any] | None,
+    ) -> str:
+        goal_status = str(goal.get("status") or "")
+        plan_status = str((plan or {}).get("status") or "")
+        project_status = str((project or {}).get("status") or "")
+        if goal_status == "completed" or plan_status == "plan_finished":
+            return "completed"
+        if goal_status == "failed" or plan_status in {"failed", "refused", "blocked_by_risk"}:
+            return "failed"
+        if project_status in {"completed", "failed"}:
+            return project_status
+        return plan_status or goal_status or "unknown"
 
     def _goal_status_errors(
         self,
+        goal: dict[str, Any],
         plan: dict[str, Any] | None,
         project: dict[str, Any] | None,
     ) -> list[str]:
         errors: list[str] = []
-        for value in ((plan or {}).get("error"), (project or {}).get("error")):
+        for value in (
+            goal.get("error"),
+            (plan or {}).get("error"),
+            (project or {}).get("error"),
+        ):
             if value and str(value) not in errors:
                 errors.append(str(value))
         for step in (project or {}).get("steps") or []:
@@ -1038,7 +1102,31 @@ class GoalOrchestrator:
         goal_id = plan.get("goal_id")
         if goal_id:
             self.goal_manager.update_progress(str(goal_id), 1.0)
-            self.goal_manager.update_status(str(goal_id), "completed")
+            self._update_goal_status(
+                str(goal_id),
+                "completed",
+                current_step="completed",
+            )
+
+    def _update_goal_status(
+        self,
+        goal_id: str,
+        status: str,
+        *,
+        current_step: str | None = None,
+        error: str | None = None,
+    ) -> dict[str, Any] | None:
+        try:
+            return self.goal_manager.update_status(
+                goal_id,
+                status,
+                current_step=current_step,
+                error=error,
+            )
+        except TypeError as exc:
+            if "unexpected keyword argument" not in str(exc):
+                raise
+            return self.goal_manager.update_status(goal_id, status)
 
     async def _notify(self, message: str, level: str = "info") -> None:
         if self.notifier:

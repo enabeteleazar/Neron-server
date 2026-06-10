@@ -13,8 +13,10 @@ class Goal:
     description: str = ""
     priority: str = "medium"
     status: str = "pending"
+    current_step: str = "pending"
     source: str = "system"
     progress: float = 0.0
+    error: str | None = None
     dependencies: list[str] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
@@ -45,8 +47,10 @@ class Goal:
             "description": self.description,
             "priority": self.priority,
             "status": self.status,
+            "current_step": self.current_step,
             "source": self.source,
             "progress": self.progress,
+            "error": self.error,
             "dependencies": self.dependencies,
             "metadata": self.metadata,
             "created_at": self.created_at,
@@ -61,8 +65,10 @@ class Goal:
             description=data.get("description", ""),
             priority=data.get("priority", "medium"),
             status=data.get("status", "pending"),
+            current_step=data.get("current_step", data.get("status", "pending")),
             source=data.get("source", "system"),
             progress=float(data.get("progress", 0.0)),
+            error=data.get("error"),
             dependencies=list(data.get("dependencies", [])),
             metadata=dict(data.get("metadata", {})),
             created_at=float(data.get("created_at", time.time())),

@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.storage.sqlite_store import get_path_lock
+
 
 TASKS_FILE = Path("/etc/neron/data/tasks.json")
 
@@ -33,6 +35,8 @@ def normalize_task_title(title: str | None) -> str:
 
 class TaskManager:
     def __init__(self) -> None:
+        self.path = TASKS_FILE
+        self._lock = get_path_lock(self.path)
         self.tasks: list[dict[str, Any]] = []
         self._load()
 
@@ -40,24 +44,28 @@ class TaskManager:
         return datetime.now(timezone.utc).isoformat()
 
     def _load(self) -> None:
-        if not TASKS_FILE.exists():
-            return
+        with self._lock:
+            if not self.path.exists():
+                return
 
-        try:
-            data = json.loads(TASKS_FILE.read_text())
-            self.tasks = data.get("tasks", [])
-        except Exception:
-            self.tasks = []
+            try:
+                data = json.loads(self.path.read_text())
+                self.tasks = data.get("tasks", [])
+            except Exception:
+                self.tasks = []
 
     def save(self) -> None:
-        TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        TASKS_FILE.write_text(
-            json.dumps(
-                {"tasks": self.tasks},
-                indent=2,
-                ensure_ascii=False,
+        with self._lock:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(f"{self.path.suffix}.tmp")
+            tmp.write_text(
+                json.dumps(
+                    {"tasks": self.tasks},
+                    indent=2,
+                    ensure_ascii=False,
+                )
             )
-        )
+            tmp.replace(self.path)
 
     def create_task(
         self,
@@ -68,23 +76,24 @@ class TaskManager:
         source: str = "manual",
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        task = {
-            "id": str(uuid.uuid4()),
-            "title": title,
-            "description": description,
-            "priority": priority,
-            "status": status,
-            "source": source,
-            "metadata": metadata or {},
-            "progress": 0,
-            "created_at": self._now(),
-            "updated_at": self._now(),
-            "completed_at": None,
-        }
+        with self._lock:
+            task = {
+                "id": str(uuid.uuid4()),
+                "title": title,
+                "description": description,
+                "priority": priority,
+                "status": status,
+                "source": source,
+                "metadata": metadata or {},
+                "progress": 0,
+                "created_at": self._now(),
+                "updated_at": self._now(),
+                "completed_at": None,
+            }
 
-        self.tasks.append(task)
-        self.save()
-        return task
+            self.tasks.append(task)
+            self.save()
+            return task
 
     def list_tasks(
         self,
@@ -173,54 +182,55 @@ class TaskManager:
         self,
         plan: dict[str, Any],
     ) -> list[dict[str, Any]]:
-        goal = str(plan.get("goal") or "")
-        plan_id = str(plan.get("id") or "")
-        created: list[dict[str, Any]] = []
+        with self._lock:
+            goal = str(plan.get("goal") or "")
+            plan_id = str(plan.get("id") or "")
+            created: list[dict[str, Any]] = []
 
-        existing_keys = {
-            (
-                normalize_task_title(task.get("title")),
-                task.get("source"),
-                task.get("plan_id"),
-            )
-            for task in self.tasks
-        }
+            existing_keys = {
+                (
+                    normalize_task_title(task.get("title")),
+                    task.get("source"),
+                    task.get("plan_id"),
+                )
+                for task in self.tasks
+            }
 
-        for step in plan.get("steps", []):
-            title = str(step.get("title") or "").strip()
-            if not title:
-                continue
+            for step in plan.get("steps", []):
+                title = str(step.get("title") or "").strip()
+                if not title:
+                    continue
 
-            key = (
-                normalize_task_title(title),
-                "planner",
-                plan_id,
-            )
+                key = (
+                    normalize_task_title(title),
+                    "planner",
+                    plan_id,
+                )
 
-            if key in existing_keys:
-                continue
+                if key in existing_keys:
+                    continue
 
-            task = self.create_task(
-                title=title,
-                description=str(step.get("description") or goal),
-                priority="medium",
-                status="active",
-                source="planner",
-            )
+                task = self.create_task(
+                    title=title,
+                    description=str(step.get("description") or goal),
+                    priority="medium",
+                    status="active",
+                    source="planner",
+                )
 
-            task["plan_id"] = plan_id
-            task["goal"] = goal
-            task["agent"] = step.get("agent")
-            task["action"] = step.get("action")
-            task["updated_at"] = self._now()
+                task["plan_id"] = plan_id
+                task["goal"] = goal
+                task["agent"] = step.get("agent")
+                task["action"] = step.get("action")
+                task["updated_at"] = self._now()
 
-            created.append(task)
-            existing_keys.add(key)
+                created.append(task)
+                existing_keys.add(key)
 
-        if created:
-            self.save()
+            if created:
+                self.save()
 
-        return created
+            return created
 
 
     def get_task(self, task_id: str) -> dict[str, Any] | None:
@@ -258,15 +268,16 @@ class TaskManager:
         task_id: str,
         updates: dict[str, Any],
     ) -> dict[str, Any] | None:
-        task = self.get_task(task_id)
+        with self._lock:
+            task = self.get_task(task_id)
 
-        if not task:
-            return None
+            if not task:
+                return None
 
-        task.update(updates)
-        task["updated_at"] = self._now()
-        self.save()
-        return task
+            task.update(updates)
+            task["updated_at"] = self._now()
+            self.save()
+            return task
 
     def update_status(self, task_id: str, status: str) -> dict[str, Any] | None:
         allowed_statuses = {
@@ -293,21 +304,23 @@ class TaskManager:
         return self.update_task(task_id, updates)
 
     def delete_task(self, task_id: str) -> bool:
-        before = len(self.tasks)
-        self.tasks = [task for task in self.tasks if task.get("id") != task_id]
-        deleted = len(self.tasks) != before
-        if deleted:
-            self.save()
-        return deleted
+        with self._lock:
+            before = len(self.tasks)
+            self.tasks = [task for task in self.tasks if task.get("id") != task_id]
+            deleted = len(self.tasks) != before
+            if deleted:
+                self.save()
+            return deleted
 
     def clear_done(self) -> int:
-        done_statuses = {"done", "completed"}
-        before = len(self.tasks)
-        self.tasks = [task for task in self.tasks if task.get("status") not in done_statuses]
-        removed = before - len(self.tasks)
-        if removed:
-            self.save()
-        return removed
+        with self._lock:
+            done_statuses = {"done", "completed"}
+            before = len(self.tasks)
+            self.tasks = [task for task in self.tasks if task.get("status") not in done_statuses]
+            removed = before - len(self.tasks)
+            if removed:
+                self.save()
+            return removed
 
     def fail_task(
         self,
@@ -324,14 +337,15 @@ class TaskManager:
         )
 
     def complete_task(self, task_id: str) -> bool:
-        for task in self.tasks:
-            if task.get("id") == task_id:
-                task["status"] = "completed"
-                task["progress"] = 100
-                task["updated_at"] = self._now()
-                task["completed_at"] = self._now()
-                self.save()
-                return True
+        with self._lock:
+            for task in self.tasks:
+                if task.get("id") == task_id:
+                    task["status"] = "completed"
+                    task["progress"] = 100
+                    task["updated_at"] = self._now()
+                    task["completed_at"] = self._now()
+                    self.save()
+                    return True
 
         return False
 

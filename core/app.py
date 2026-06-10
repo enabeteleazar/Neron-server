@@ -417,6 +417,12 @@ async def lifespan(app: FastAPI):
         logger.info(json.dumps({"event": "shutdown_started"}))
 
         try:
+            from core.goals.background_runner import get_goal_background_runner
+            await get_goal_background_runner().shutdown()
+        except Exception as e:
+            logger.warning("Erreur arrêt workflows goals : %s", e)
+
+        try:
             await get_self_monitor().stop()
         except Exception as e:
             logger.warning("Erreur arrêt SelfMonitor : %s", e)
