@@ -989,15 +989,41 @@ class AgentBuildOrchestrator:
         metadata: dict[str, Any],
         project_id: str,
     ) -> None:
+        diagnostics = self._sandbox_diagnostics()
         self.project_manager.update_project(
             project_id,
-            {"sandbox_status": "running"},
+            {
+                "sandbox_status": "running",
+                "sandbox_backend": diagnostics.get("backend_used"),
+                "sandbox_isolation_level": diagnostics.get("isolation_level"),
+            },
         )
         goal_id = str(metadata.get("goal_id") or "")
         if goal_id:
+            event_payload = {
+                "project_id": project_id,
+                **diagnostics,
+            }
+            self.execution_engine.mark_sandbox_backend_event(
+                goal_id,
+                "sandbox_backend_selected",
+                event_payload,
+            )
+            if diagnostics.get("backend_used") == "systemd":
+                self.execution_engine.mark_sandbox_backend_event(
+                    goal_id,
+                    "sandbox_systemd_started",
+                    event_payload,
+                )
+            elif diagnostics.get("fallback_reason"):
+                self.execution_engine.mark_sandbox_backend_event(
+                    goal_id,
+                    "sandbox_fallback_python",
+                    event_payload,
+                )
             self.execution_engine.mark_sandbox_started(
                 goal_id,
-                {"project_id": project_id},
+                event_payload,
             )
 
     def _sandbox_passed(
@@ -1006,11 +1032,14 @@ class AgentBuildOrchestrator:
         project_id: str,
         result: dict[str, Any],
     ) -> None:
+        diagnostics = self._sandbox_result_diagnostics(result)
         self.project_manager.update_project(
             project_id,
             {
                 "sandbox_status": "passed",
                 "sandbox_result": result,
+                "sandbox_backend": diagnostics.get("backend_used"),
+                "sandbox_isolation_level": diagnostics.get("isolation_level"),
             },
             step="sandbox",
             step_status="done",
@@ -1032,20 +1061,63 @@ class AgentBuildOrchestrator:
         project_id: str,
         result: dict[str, Any],
     ) -> None:
+        diagnostics = self._sandbox_result_diagnostics(result)
         self.project_manager.update_project(
             project_id,
             {
                 "sandbox_status": "failed",
                 "sandbox_result": result,
+                "sandbox_backend": diagnostics.get("backend_used"),
+                "sandbox_isolation_level": diagnostics.get("isolation_level"),
             },
         )
         goal_id = str(metadata.get("goal_id") or "")
         if goal_id:
+            if diagnostics.get("backend_used") == "systemd" and (
+                result.get("backend_error")
+                or (result.get("sandbox") or {}).get("backend_error")
+            ):
+                self.execution_engine.mark_sandbox_backend_event(
+                    goal_id,
+                    "sandbox_systemd_failed",
+                    {
+                        "project_id": project_id,
+                        **diagnostics,
+                        "error": result.get("error"),
+                    },
+                )
             self.execution_engine.mark_sandbox_failed(
                 goal_id,
                 str(result.get("error") or "agent_sandbox_failed"),
-                {"project_id": project_id},
+                {"project_id": project_id, **diagnostics},
             )
+
+    def _sandbox_diagnostics(self) -> dict[str, Any]:
+        diagnostics = getattr(self.agent_sandbox, "diagnostics", None)
+        if callable(diagnostics):
+            return dict(diagnostics())
+        return {}
+
+    def _sandbox_result_diagnostics(
+        self,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        sandbox = result.get("sandbox") or result
+        diagnostics = self._sandbox_diagnostics()
+        for key in (
+            "backend_used",
+            "isolation_level",
+            "systemd_available",
+            "user_available",
+            "sudo_used",
+            "sudo_available",
+            "sudo_error",
+            "systemd_run_path",
+            "fallback_reason",
+        ):
+            if sandbox.get(key) is not None:
+                diagnostics[key] = sandbox[key]
+        return diagnostics
 
     def _append_test_result(self, project_id: str, result: dict[str, Any]) -> None:
         project = self.project_manager.get_project(project_id)

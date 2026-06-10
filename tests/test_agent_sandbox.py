@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 
@@ -43,6 +44,7 @@ def test_agent_ok_passes_sandbox(tmp_path: Path):
     result = AgentSandbox(
         project_root=tmp_path,
         workspace=workspace,
+        backend="python",
     ).execute_agent(agent, "test")
 
     assert result["ok"] is True
@@ -66,6 +68,7 @@ def test_agent_timeout_fails_sandbox(tmp_path: Path):
         project_root=tmp_path,
         workspace=workspace,
         timeout=1,
+        backend="python",
     ).execute_agent(agent, "test")
 
     assert result["ok"] is False
@@ -90,11 +93,297 @@ def test_agent_write_outside_workspace_is_blocked(tmp_path: Path):
     result = AgentSandbox(
         project_root=tmp_path,
         workspace=workspace,
+        backend="python",
     ).execute_agent(agent, "test")
 
     assert result["ok"] is False
     assert "sandbox_write_blocked" in result["error"]
     assert not outside.exists()
+
+
+def test_auto_selects_systemd_when_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: f"/usr/bin/{command}" if command == "systemd-run" else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+
+    sandbox = AgentSandbox(
+        project_root=tmp_path,
+        backend="auto",
+        systemd_use_sudo="false",
+    )
+
+    assert sandbox.diagnostics()["backend_used"] == "systemd"
+    assert sandbox.diagnostics()["fallback_reason"] is None
+
+
+def test_auto_falls_back_when_systemd_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda _command: None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+
+    diagnostics = AgentSandbox(project_root=tmp_path, backend="auto").diagnostics()
+
+    assert diagnostics["backend_used"] == "python"
+    assert diagnostics["fallback_reason"] == "systemd_run_unavailable"
+
+
+def test_auto_falls_back_when_system_user_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: f"/usr/bin/{command}" if command == "systemd-run" else None,
+    )
+
+    def missing_user(_user):
+        raise KeyError
+
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        missing_user,
+    )
+
+    diagnostics = AgentSandbox(project_root=tmp_path, backend="auto").diagnostics()
+
+    assert diagnostics["backend_used"] == "python"
+    assert diagnostics["fallback_reason"] == "neron_agent_user_unavailable"
+
+
+def test_systemd_command_contains_required_isolation_properties(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: f"/usr/bin/{command}" if command == "systemd-run" else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+    sandbox = AgentSandbox(
+        project_root=tmp_path,
+        workspace=tmp_path / "workspace",
+        backend="systemd",
+        systemd_use_sudo="false",
+    )
+
+    command = sandbox._systemd_command(["python", "runner.py"], 30)
+
+    assert command == [
+        "/usr/bin/systemd-run",
+        "--uid=neron-agent",
+        "--property=DynamicUser=no",
+        "--property=NoNewPrivileges=yes",
+        "--property=PrivateTmp=yes",
+        "--property=ProtectSystem=strict",
+        "--property=ProtectHome=yes",
+        f"--property=ReadWritePaths={tmp_path / 'workspace'}",
+        f"--property=WorkingDirectory={tmp_path / 'workspace'}",
+        "--property=MemoryMax=256M",
+        "--property=CPUQuota=50%",
+        "--property=RuntimeMaxSec=30",
+        "--property=RestrictAddressFamilies=AF_UNIX",
+        "--property=SystemCallFilter=@system-service",
+        "--wait",
+        "--pipe",
+        "--",
+        "python",
+        "runner.py",
+    ]
+
+
+def test_systemd_execution_is_mocked_and_reports_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    agent = write_agent(
+        tmp_path / "workspace" / "agents" / "mocked_agent.py",
+        ["class Agent:", "    pass"],
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: f"/usr/bin/{command}" if command == "systemd-run" else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+    process = Mock()
+    process.communicate.return_value = (
+        '__NERON_AGENT_SANDBOX_RESULT__{"ok": true, "result": "mocked"}\n',
+        "",
+    )
+    process.returncode = 0
+    popen = Mock(return_value=process)
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.Popen",
+        popen,
+    )
+
+    result = AgentSandbox(
+        project_root=tmp_path,
+        workspace=tmp_path / "workspace",
+        backend="systemd",
+        systemd_use_sudo="false",
+    ).execute_agent(agent, "test")
+
+    command = popen.call_args.args[0]
+    assert command[0] == "/usr/bin/systemd-run"
+    assert "--uid=neron-agent" in command
+    assert "--property=RuntimeMaxSec=30" in command
+    assert result["ok"] is True
+    assert result["sandbox"]["backend_used"] == "systemd"
+    assert result["sandbox"]["isolation_level"] == "kernel_systemd"
+
+
+def test_systemd_auto_uses_sudo_for_non_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: f"/usr/bin/{command}"
+        if command in {"sudo", "systemd-run"}
+        else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.os.geteuid",
+        lambda: 1000,
+    )
+    completed = Mock(returncode=0, stdout="systemd 257", stderr="")
+    run = Mock(return_value=completed)
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.run",
+        run,
+    )
+
+    sandbox = AgentSandbox(
+        project_root=tmp_path,
+        backend="systemd",
+        systemd_use_sudo="auto",
+    )
+    command = sandbox._systemd_command(["python", "runner.py"], 30)
+    diagnostics = sandbox.diagnostics()
+
+    run.assert_called_once_with(
+        ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run", "--version"],
+        text=True,
+        capture_output=True,
+        timeout=3,
+    )
+    assert command[:3] == ["/usr/bin/sudo", "-n", "/usr/bin/systemd-run"]
+    assert diagnostics["sudo_used"] is True
+    assert diagnostics["sudo_available"] is True
+    assert diagnostics["sudo_error"] is None
+    assert diagnostics["systemd_run_path"] == "/usr/bin/systemd-run"
+
+
+def test_systemd_strict_fails_cleanly_when_sudo_is_unavailable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    agent = write_agent(
+        tmp_path / "workspace" / "agents" / "mocked_agent.py",
+        ["class Agent:", "    pass"],
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: "/usr/bin/systemd-run" if command == "systemd-run" else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.os.geteuid",
+        lambda: 1000,
+    )
+    popen = Mock()
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.Popen",
+        popen,
+    )
+
+    result = AgentSandbox(
+        project_root=tmp_path,
+        workspace=tmp_path / "workspace",
+        backend="systemd",
+        systemd_use_sudo="auto",
+    ).execute_agent(agent, "test")
+
+    assert result["ok"] is False
+    assert result["error"] == "agent_sandbox_sudo_unavailable"
+    assert result["sandbox"]["backend_error"] is True
+    assert result["sandbox"]["sudo_used"] is True
+    assert result["sandbox"]["sudo_available"] is False
+    assert result["sandbox"]["sudo_error"] == "sudo_not_found"
+    popen.assert_not_called()
+
+
+def test_auto_falls_back_to_python_when_sudo_probe_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: f"/usr/bin/{command}"
+        if command in {"sudo", "systemd-run"}
+        else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.os.geteuid",
+        lambda: 1000,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.run",
+        Mock(
+            return_value=Mock(
+                returncode=1,
+                stdout="",
+                stderr="sudo: a password is required",
+            )
+        ),
+    )
+
+    diagnostics = AgentSandbox(
+        project_root=tmp_path,
+        backend="auto",
+        systemd_use_sudo="auto",
+    ).diagnostics()
+
+    assert diagnostics["backend_used"] == "python"
+    assert diagnostics["fallback_reason"] == "systemd_sudo_unavailable"
+    assert diagnostics["sudo_used"] is False
+    assert diagnostics["sudo_available"] is False
+    assert diagnostics["sudo_error"] == (
+        "sudo_exit_1: sudo: a password is required"
+    )
 
 
 def test_business_validation_uses_agent_sandbox(tmp_path: Path):
@@ -145,6 +434,36 @@ def test_goal_execution_engine_records_sandbox_events(tmp_path: Path):
     ] == ["sandbox_started", "sandbox_passed"]
 
 
+def test_goal_execution_engine_records_backend_events(tmp_path: Path):
+    manager = ProjectManager(tmp_path / "data" / "projects.json")
+    engine = GoalExecutionEngine(manager.sqlite_store)
+    engine.enqueue_goal("goal-sandbox-backend", "Sandbox backend", "test")
+    engine.start_goal("goal-sandbox-backend")
+
+    for status in (
+        "sandbox_backend_selected",
+        "sandbox_systemd_started",
+        "sandbox_systemd_failed",
+        "sandbox_fallback_python",
+    ):
+        engine.mark_sandbox_backend_event(
+            "goal-sandbox-backend",
+            status,
+            {"backend_used": "systemd"},
+        )
+
+    statuses = [
+        event["status"]
+        for event in engine.get_goal_events("goal-sandbox-backend")
+    ]
+    assert statuses[-4:] == [
+        "sandbox_backend_selected",
+        "sandbox_systemd_started",
+        "sandbox_systemd_failed",
+        "sandbox_fallback_python",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_registry_not_reached_when_sandbox_fails(
     tmp_path: Path,
@@ -153,6 +472,15 @@ async def test_registry_not_reached_when_sandbox_fails(
     class FailingVerificationSandbox:
         def __init__(self):
             self.executions = 0
+
+        def diagnostics(self):
+            return {
+                "backend_used": "python",
+                "isolation_level": "process_python_audit",
+                "systemd_available": False,
+                "user_available": False,
+                "fallback_reason": "systemd_run_unavailable",
+            }
 
         def run_pytest(self, test_file, *, timeout, name):
             return {
@@ -209,11 +537,15 @@ async def test_registry_not_reached_when_sandbox_fails(
     project = result["project"]
     assert result["status"] == "failed"
     assert project["sandbox_status"] == "failed"
+    assert project["sandbox_backend"] == "python"
+    assert project["sandbox_isolation_level"] == "process_python_audit"
     assert project["registry_status"] == "not_registered"
     assert project["runtime_status"] == "not_available"
     statuses = [
         event["status"]
         for event in engine.get_goal_events("goal-sandbox-failure")
     ]
+    assert "sandbox_backend_selected" in statuses
+    assert "sandbox_fallback_python" in statuses
     assert "sandbox_started" in statuses
     assert "sandbox_failed" in statuses

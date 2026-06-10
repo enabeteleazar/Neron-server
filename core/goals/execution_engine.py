@@ -213,6 +213,26 @@ class GoalExecutionEngine:
             payload=payload,
         )
 
+    def mark_sandbox_backend_event(
+        self,
+        goal_id: str,
+        status: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        allowed = {
+            "sandbox_backend_selected",
+            "sandbox_systemd_started",
+            "sandbox_systemd_failed",
+            "sandbox_fallback_python",
+        }
+        if status not in allowed:
+            raise ValueError(f"Unsupported sandbox event: {status}")
+        return self._mark_sandbox_event(
+            goal_id,
+            status,
+            payload=payload,
+        )
+
     def complete_goal(self, goal_id: str) -> dict[str, Any] | None:
         now = time.time()
         return self.sqlite_store.update_goal_run(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import pwd
 import shutil
 import signal
 import subprocess
@@ -12,6 +13,9 @@ from typing import Any
 
 
 _RESULT_MARKER = "__NERON_AGENT_SANDBOX_RESULT__"
+_SYSTEMD_USER = "neron-agent"
+_VALID_BACKENDS = {"auto", "python", "systemd"}
+_VALID_SYSTEMD_SUDO_MODES = {"auto", "false", "true"}
 
 
 class AgentSandbox:
@@ -23,15 +27,54 @@ class AgentSandbox:
         python_executable: str | None = None,
         timeout: int = 30,
         memory_bytes: int = 512 * 1024 * 1024,
+        backend: str | None = None,
+        systemd_use_sudo: str | None = None,
     ) -> None:
         self.project_root = Path(project_root).resolve()
         self.workspace = Path(workspace or self.project_root / "workspace").resolve()
         self.python_executable = python_executable or sys.executable
         self.timeout = timeout
         self.memory_bytes = memory_bytes
+        self.backend = (backend or os.getenv("NERON_SANDBOX_BACKEND", "auto")).lower()
+        if self.backend not in _VALID_BACKENDS:
+            raise ValueError(
+                "NERON_SANDBOX_BACKEND must be one of: auto, python, systemd"
+            )
+        self.systemd_use_sudo = (
+            systemd_use_sudo
+            or os.getenv("NERON_SANDBOX_SYSTEMD_USE_SUDO", "auto")
+        ).lower()
+        if self.systemd_use_sudo not in _VALID_SYSTEMD_SUDO_MODES:
+            raise ValueError(
+                "NERON_SANDBOX_SYSTEMD_USE_SUDO must be one of: "
+                "auto, false, true"
+            )
         self._runner = Path(__file__).with_name("_runner.py").resolve()
         self._bwrap = shutil.which("bwrap")
         self._bwrap_available = self._probe_bwrap()
+        self._systemd_run = shutil.which("systemd-run")
+        self._systemd_available = bool(self._systemd_run)
+        self._user_available = self._probe_system_user()
+        self._sudo = shutil.which("sudo")
+        self._sudo_used = self._should_use_sudo()
+        self._sudo_available, self._sudo_error = self._probe_sudo()
+        self._backend_used, self._fallback_reason = self._select_backend()
+
+    def diagnostics(self) -> dict[str, Any]:
+        isolation = self._python_isolation()
+        if self._backend_used == "systemd":
+            isolation = "systemd"
+        return {
+            "backend_used": self._backend_used,
+            "isolation_level": self._isolation_level(isolation),
+            "systemd_available": self._systemd_available,
+            "user_available": self._user_available,
+            "sudo_used": self._sudo_used and self._backend_used == "systemd",
+            "sudo_available": self._sudo_available,
+            "sudo_error": self._sudo_error,
+            "systemd_run_path": self._systemd_run,
+            "fallback_reason": self._fallback_reason,
+        }
 
     def run_pytest(
         self,
@@ -113,10 +156,12 @@ class AgentSandbox:
             str(self._runner),
             json.dumps(payload, ensure_ascii=True),
         ]
-        isolation = "python_audit"
-        if self._bwrap_available and self._bwrap:
+        isolation = self._python_isolation()
+        if self._backend_used == "systemd":
+            command = self._systemd_command(command, effective_timeout)
+            isolation = "systemd"
+        elif isolation == "bubblewrap":
             command = self._bwrap_command(command, sandbox_tmp)
-            isolation = "bubblewrap"
 
         environment = {
             "HOME": str(self.workspace),
@@ -127,6 +172,21 @@ class AgentSandbox:
             "TMPDIR": str(sandbox_tmp),
         }
         started_at = datetime.now(timezone.utc).isoformat()
+        preflight_error = self._systemd_preflight_error()
+        if preflight_error:
+            return {
+                "name": name,
+                "command": self._redacted_command(command),
+                "returncode": 1,
+                "stdout_tail": "",
+                "stderr_tail": "",
+                "error": preflight_error,
+                "timed_out": False,
+                "isolation": isolation,
+                "backend_error": True,
+                **self._result_diagnostics(isolation),
+                "ran_at": started_at,
+            }
         try:
             process = subprocess.Popen(
                 command,
@@ -151,6 +211,7 @@ class AgentSandbox:
                     "error": "agent_sandbox_timeout",
                     "timed_out": True,
                     "isolation": isolation,
+                    **self._result_diagnostics(isolation),
                     "ran_at": started_at,
                 }
         except Exception as exc:
@@ -163,6 +224,8 @@ class AgentSandbox:
                 "error": f"agent_sandbox_error: {exc}",
                 "timed_out": False,
                 "isolation": isolation,
+                "backend_error": self._backend_used == "systemd",
+                **self._result_diagnostics(isolation),
                 "ran_at": started_at,
             }
 
@@ -174,6 +237,7 @@ class AgentSandbox:
             "stderr_tail": stderr[-4000:],
             "timed_out": False,
             "isolation": isolation,
+            **self._result_diagnostics(isolation),
             "ran_at": started_at,
         }
         result["payload"] = self._extract_payload(stdout)
@@ -181,7 +245,102 @@ class AgentSandbox:
             result["returncode"] = int(result["payload"]["returncode"])
         if not result["payload"].get("ok"):
             result["error"] = result["payload"].get("error") or "agent_sandbox_failed"
+            if self._backend_used == "systemd" and result["payload"].get(
+                "error"
+            ) == "agent_sandbox_no_result":
+                result["backend_error"] = True
         return result
+
+    def _select_backend(self) -> tuple[str, str | None]:
+        if self.backend == "python":
+            return "python", None
+        if self.backend == "systemd":
+            return "systemd", None
+        if not self._systemd_available:
+            return "python", "systemd_run_unavailable"
+        if not self._user_available:
+            return "python", "neron_agent_user_unavailable"
+        if self._sudo_used and not self._sudo_available:
+            return "python", "systemd_sudo_unavailable"
+        return "systemd", None
+
+    def _systemd_preflight_error(self) -> str | None:
+        if self._backend_used != "systemd":
+            return None
+        if not self._systemd_available:
+            return "agent_sandbox_systemd_unavailable"
+        if not self._user_available:
+            return "agent_sandbox_user_unavailable"
+        if self._sudo_used and not self._sudo_available:
+            return "agent_sandbox_sudo_unavailable"
+        return None
+
+    def _probe_system_user(self) -> bool:
+        try:
+            pwd.getpwnam(_SYSTEMD_USER)
+        except KeyError:
+            return False
+        return True
+
+    def _should_use_sudo(self) -> bool:
+        if self.systemd_use_sudo == "true":
+            return True
+        if self.systemd_use_sudo == "false":
+            return False
+        return os.geteuid() != 0
+
+    def _probe_sudo(self) -> tuple[bool, str | None]:
+        if not self._sudo_used:
+            return bool(self._sudo), None
+        if (
+            self.backend == "python"
+            or not self._systemd_available
+            or not self._user_available
+        ):
+            return bool(self._sudo), None
+        if not self._sudo:
+            return False, "sudo_not_found"
+        try:
+            completed = subprocess.run(
+                [self._sudo, "-n", self._systemd_run, "--version"],
+                text=True,
+                capture_output=True,
+                timeout=3,
+            )
+        except Exception as exc:
+            return False, f"sudo_probe_failed: {exc}"
+        if completed.returncode == 0:
+            return True, None
+        detail = (completed.stderr or completed.stdout or "").strip()
+        error = f"sudo_exit_{completed.returncode}"
+        if detail:
+            error = f"{error}: {detail[-500:]}"
+        return False, error
+
+    def _python_isolation(self) -> str:
+        if self._bwrap_available and self._bwrap:
+            return "bubblewrap"
+        return "python_audit"
+
+    def _isolation_level(self, isolation: str) -> str:
+        return {
+            "systemd": "kernel_systemd",
+            "bubblewrap": "kernel_bubblewrap",
+            "python_audit": "process_python_audit",
+        }[isolation]
+
+    def _result_diagnostics(self, isolation: str) -> dict[str, Any]:
+        return {
+            "backend_used": self._backend_used,
+            "isolation_level": self._isolation_level(isolation),
+            "systemd_available": self._systemd_available,
+            "user_available": self._user_available,
+            "sudo_used": self._sudo_used and self._backend_used == "systemd",
+            "sudo_available": self._sudo_available,
+            "sudo_error": self._sudo_error,
+            "systemd_run_path": self._systemd_run,
+            "fallback_reason": self._fallback_reason,
+        }
 
     def _probe_bwrap(self) -> bool:
         if not self._bwrap:
@@ -242,6 +401,36 @@ class AgentSandbox:
             str(sandbox_tmp),
             *command,
         ]
+
+    def _systemd_command(
+        self,
+        command: list[str],
+        effective_timeout: int,
+    ) -> list[str]:
+        executable = self._systemd_run or "systemd-run"
+        systemd_command = [
+            executable,
+            f"--uid={_SYSTEMD_USER}",
+            "--property=DynamicUser=no",
+            "--property=NoNewPrivileges=yes",
+            "--property=PrivateTmp=yes",
+            "--property=ProtectSystem=strict",
+            "--property=ProtectHome=yes",
+            f"--property=ReadWritePaths={self.workspace}",
+            f"--property=WorkingDirectory={self.workspace}",
+            "--property=MemoryMax=256M",
+            "--property=CPUQuota=50%",
+            f"--property=RuntimeMaxSec={min(effective_timeout, 30)}",
+            "--property=RestrictAddressFamilies=AF_UNIX",
+            "--property=SystemCallFilter=@system-service",
+            "--wait",
+            "--pipe",
+            "--",
+            *command,
+        ]
+        if self._sudo_used:
+            return [self._sudo or "sudo", "-n", *systemd_command]
+        return systemd_command
 
     def _extract_payload(self, stdout: str) -> dict[str, Any]:
         line = next(
