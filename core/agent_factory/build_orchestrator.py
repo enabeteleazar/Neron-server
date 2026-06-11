@@ -156,6 +156,10 @@ class AgentBuildOrchestrator:
             and (
                 existing.get("business_validation_status") != "passed"
                 or existing.get("sandbox_status") != "passed"
+                or (
+                    metadata.get("internal_capability_request")
+                    and not self._has_strict_internal_business_validation(existing)
+                )
             )
         )
         if existing and not existing_needs_validation:
@@ -166,7 +170,7 @@ class AgentBuildOrchestrator:
 
         registered_agent = (
             None
-            if existing_needs_validation
+            if existing_needs_validation or metadata.get("internal_capability_request")
             else self._registered_agent_for_spec(spec, metadata)
         )
         if registered_agent:
@@ -306,6 +310,7 @@ class AgentBuildOrchestrator:
                 spec.to_dict(),
                 agent_file,
                 query,
+                context=metadata,
             )
             self.project_manager.update_project(
                 project_id,
@@ -787,6 +792,19 @@ class AgentBuildOrchestrator:
             "normalized_query": self._normalize_for_key(query),
             "spec_signature": self._spec_signature(spec),
         }
+
+    def _has_strict_internal_business_validation(
+        self,
+        project: dict[str, Any],
+    ) -> bool:
+        validation = project.get("business_validation_result") or {}
+        scenario = validation.get("scenario") or {}
+        context = validation.get("validation_context") or {}
+        return bool(
+            validation.get("ok")
+            and context.get("internal_capability_request")
+            and scenario.get("fallback") is False
+        )
 
     def _reuse_existing_project(self, project: dict[str, Any], spec: AgentSpec) -> dict[str, Any]:
         return {
