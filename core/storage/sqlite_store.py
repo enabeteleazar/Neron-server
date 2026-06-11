@@ -152,6 +152,23 @@ class SQLiteStore:
                 CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_status_priority
                     ON scheduler_tasks(status, priority, created_at)
             """,
+            """
+                CREATE TABLE IF NOT EXISTS agent_runtime_executions (
+                    execution_id TEXT PRIMARY KEY,
+                    agent_slug TEXT NOT NULL,
+                    request TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT,
+                    finished_at TEXT,
+                    duration_ms REAL,
+                    result TEXT,
+                    error TEXT
+                )
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_agent_runtime_executions_started
+                    ON agent_runtime_executions(started_at DESC)
+            """,
         )
         with self._transaction() as connection:
             for statement in statements:

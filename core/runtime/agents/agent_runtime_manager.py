@@ -70,68 +70,26 @@ class AgentRuntimeManager:
         }
 
     async def run(self, name: str, text: str = "") -> dict[str, Any]:
+        from core.agent_runtime.runtime import AgentRuntime
+
         self.reload()
-
-        agent = AGENT_REGISTRY.get(name) or AGENT_REGISTRY.get(f"{name}_agent")
-
-        if agent is None:
-            return {
-                "ok": False,
-                "error": f"Agent introuvable : {name}",
-                "available": sorted(AGENT_REGISTRY.keys()),
-            }
-
         resolved_name = name if name in AGENT_REGISTRY else f"{name}_agent"
         state = self.states.setdefault(resolved_name, AgentRuntimeState(name=resolved_name))
-
-        start = time.monotonic()
-
-        try:
-            result = await agent.execute(text=text)
-            elapsed = round((time.monotonic() - start) * 1000, 2)
-
+        result = await AgentRuntime(registry=self.registry).run_agent(name, text)
+        elapsed = result.duration_ms
+        if result.ok:
             state.runs += 1
             state.last_execution_ms = elapsed
             state.last_error = None
+            return result.to_dict()
 
-            if isinstance(result, dict):
-                response = result.get("response", str(result))
-                raw = result
-            elif hasattr(result, "content"):
-                response = result.content if getattr(result, "success", True) else f"⚠️ {result.error}"
-                raw = {
-                    "success": getattr(result, "success", True),
-                    "content": getattr(result, "content", None),
-                    "error": getattr(result, "error", None),
-                }
-            else:
-                response = str(result)
-                raw = {"response": response}
-
-            return {
-                "ok": True,
-                "agent": resolved_name,
-                "response": response,
-                "execution_time_ms": elapsed,
-                "raw": raw,
-            }
-
-        except Exception as exc:
-            elapsed = round((time.monotonic() - start) * 1000, 2)
-
-            state.runs += 1
-            state.failures += 1
-            state.last_error = str(exc)
-            state.last_execution_ms = elapsed
-
-            logger.exception("agent_runtime_failed name=%s error=%s", resolved_name, exc)
-
-            return {
-                "ok": False,
-                "agent": resolved_name,
-                "error": str(exc),
-                "execution_time_ms": elapsed,
-            }
+        state.runs += 1
+        state.failures += 1
+        state.last_error = result.error
+        state.last_execution_ms = elapsed
+        payload = result.to_dict()
+        payload["available"] = sorted(AGENT_REGISTRY.keys())
+        return payload
 
 
 _runtime_manager: AgentRuntimeManager | None = None

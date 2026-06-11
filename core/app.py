@@ -5,6 +5,8 @@ from core.api.world_model_routes import router as world_model_router
 from core.goals.routes import router as goals_router
 from core.tools.routes import router as tools_router
 from core.scheduler.routes import router as scheduler_router
+from core.agent_runtime.routes import router as agent_runtime_router
+from core.capabilities.routes import router as capabilities_router
 from core.api.task_routes import router as task_router
 from core.api.goal_task_routes import router as goal_task_router
 from core.api.cognitive_core_routes import router as cognitive_core_router
@@ -543,6 +545,8 @@ app.include_router(world_model_router)
 app.include_router(goals_router)
 app.include_router(tools_router)
 app.include_router(scheduler_router)
+app.include_router(agent_runtime_router)
+app.include_router(capabilities_router)
 app.include_router(task_router)
 app.include_router(goal_task_router)
 app.include_router(cognitive_core_router)

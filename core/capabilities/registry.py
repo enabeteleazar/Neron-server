@@ -278,6 +278,7 @@ class CapabilityRegistry:
             "monitor",
             "alerte",
             "periodique",
+            "automatiquement",
             "chaque jour",
             "maintien",
             "suivi",

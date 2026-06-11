@@ -17,9 +17,14 @@ AGENT_SPEC = {
         "filesystem": "limited",
         "network": "none_required"
     },
-    "title": "Agent durable_repond_a_agent"
+    "title": "Agent durable_repond_a_agent",
+    "tools": [
+        "neron_log_reader_tool",
+        "neron_log_error_filter_tool",
+        "neron_log_summary_tool"
+    ]
 }
-AGENT_SPEC_SIGNATURE = 'capabilities deterministic response goal creer un agent durable qui repond a cette demande analyse automatiquement les logs neron et resume les erreurs critiques inputs text kind agent name durable repond a agent outputs response safety filesystem limited network none required title agent durable repond a agent'
+AGENT_SPEC_SIGNATURE = 'capabilities deterministic response goal creer un agent durable qui repond a cette demande analyse automatiquement les logs neron et resume les erreurs critiques inputs text kind agent name durable repond a agent outputs response safety filesystem limited network none required title agent durable repond a agent tools neron log reader tool neron log error filter tool neron log summary tool'
 
 import re
 
@@ -33,7 +38,29 @@ ERROR_PATTERN = re.compile(
 class Agent:
     name = 'durable_repond_a_agent'
 
-    async def execute(self, text: str = "") -> dict:
+    async def execute(self, text: str = "", tools=None, context=None) -> dict:
+        if tools:
+            payload = dict(getattr(context, "context", {}) or {})
+            reader = await tools["neron_log_reader_tool"].execute(payload)
+            if not reader.ok:
+                raise RuntimeError(reader.error or "log_reader_failed")
+            filtered = await tools["neron_log_error_filter_tool"].execute(
+                {"logs": reader.data.get("logs", [])}
+            )
+            if not filtered.ok:
+                raise RuntimeError(filtered.error or "log_filter_failed")
+            summary = await tools["neron_log_summary_tool"].execute(
+                {"errors": filtered.data.get("errors", [])}
+            )
+            if not summary.ok:
+                raise RuntimeError(summary.error or "log_summary_failed")
+            return {
+                "status": "ok",
+                "agent": self.name,
+                "response": summary.response,
+                **summary.data,
+            }
+
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         errors = [line for line in lines if ERROR_PATTERN.search(line)]
         if not errors:

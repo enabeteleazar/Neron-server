@@ -352,7 +352,13 @@ class TaskScheduler:
             text = str(payload.get("text") or "")
             if not slug:
                 return {"ok": False, "error": "agent_slug_required"}
-            return await self._agents().run(slug, text)
+            result = await self._agents().run_agent(
+                slug,
+                text,
+                context={"scheduler_task_id": task.task_id},
+                metadata=task.metadata,
+            )
+            return result.to_dict()
         if task.kind == "goal_execution":
             objective = str(payload.get("objective") or "")
             if not objective:
@@ -520,11 +526,9 @@ class TaskScheduler:
 
     def _agents(self):
         if self._agent_runtime is None:
-            from core.runtime.agents.agent_runtime_manager import (
-                get_agent_runtime_manager,
-            )
+            from core.agent_runtime.runtime import get_agent_runtime
 
-            self._agent_runtime = get_agent_runtime_manager()
+            self._agent_runtime = get_agent_runtime()
         return self._agent_runtime
 
     def _goals(self):

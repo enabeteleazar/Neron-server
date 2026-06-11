@@ -1,4 +1,4 @@
-# Capability Resolver
+# Capability Resolver V2
 
 ## Purpose
 
@@ -29,7 +29,20 @@ and execution mechanisms.
 - `Capability`: a registry entry from a tool, agent, project, or future
   external service.
 
-`core/capabilities/router.py` applies the first deterministic heuristics.
+The V2 understanding pipeline is split into explicit components:
+
+- `rules.py`: high-confidence domain rules;
+- `domain_classifier.py`: domain classification;
+- `intent_extractor.py`: action extraction and durability detection;
+- `matcher.py`: domain-first capability scoring;
+- `decision_engine.py`: execution, creation, or conversation decision;
+- `intent_provider.py`: asynchronous provider contract and current
+  `RuleBasedIntentProvider`.
+
+`LlmIntentProvider` is reserved as a future hook. V2 does not call an LLM.
+
+`core/capabilities/router.py` remains the immediate safety and compatibility
+layer.
 
 `core/capabilities/registry.py` discovers:
 
@@ -52,6 +65,27 @@ Supported decisions are:
 - `create_agent`
 - `ask_human_validation`
 - `reject`
+
+The V2 analysis contract uses:
+
+- `execute_tool`
+- `execute_agent`
+- `create_tool`
+- `create_agent`
+- `fallback_conversation`
+
+The Resolver maps `execute_*` to the historical `use_existing_*` execution
+contract so existing transports and tests remain compatible.
+
+The authenticated debug endpoint exposes the V2 analysis without executing
+anything:
+
+```http
+POST /capabilities/analyze
+Content-Type: application/json
+
+{"text": "Analyse les sauvegardes Néron"}
+```
 
 Unknown requests are not forced through this layer. The resolver returns
 control to the existing intent and conversation pipeline when its heuristics
@@ -131,14 +165,19 @@ Technical build fields remain in authenticated status APIs and debug metadata.
 Normal user responses do not mention plan IDs, registry state, sandbox,
 Codex, or build logs.
 
-## Initial Heuristics
+## Rule-Based Understanding
 
-- date, delay, calculation, conversion, subnet: tool;
-- monitor, notify, alert, daily, periodic, follow-up: agent;
-- explicit agent/tool creation: corresponding creation type;
-- destructive or secret-related actions: human validation;
-- unclassified conversation: existing Néron pipeline.
+- domains: Christmas, Easter, weather, subnet, logs, backups, SQLite,
+  systemd, agenda, and calendar;
+- intents: analysis, summary, diagnostic, monitoring, calculation, creation,
+  search, comparison, and notification;
+- domain compatibility has more weight than generic lexical overlap;
+- a known domain mismatch caps a capability score below the execution
+  threshold;
+- operational analysis without a relevant agent creates an agent;
+- an existing agent with a missing declared tool requests tool creation;
+- destructive or secret-related actions still require human validation.
 
-These heuristics are deliberately conservative and can later be supplemented
-by an LLM classifier without changing the request, decision, or result
+This design allows a future asynchronous LLM provider to replace or augment
+the rule provider without changing matching, decision, request, or result
 contracts.

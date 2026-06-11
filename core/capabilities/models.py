@@ -84,3 +84,107 @@ class Capability:
         payload = asdict(self)
         payload.pop("executor", None)
         return payload
+
+
+@dataclass
+class RuleMatch:
+    domain: str
+    confidence: float
+    matched_terms: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DomainClassification:
+    domain: str
+    confidence: float
+    evidence: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class Intent:
+    action: str
+    confidence: float
+    durable: bool = False
+    requested_type: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class IntentUnderstanding:
+    domain: DomainClassification
+    intent: Intent
+    provider: str = "rules"
+
+    @property
+    def confidence(self) -> float:
+        return round((self.domain.confidence + self.intent.confidence) / 2, 3)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "domain": self.domain.to_dict(),
+            "intent": self.intent.to_dict(),
+            "provider": self.provider,
+            "confidence": self.confidence,
+        }
+
+
+@dataclass
+class CapabilityMatch:
+    capability: Capability
+    score: float
+    domain_score: float
+    intent_score: float
+    lexical_score: float
+    missing_tools: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "capability": self.capability.to_dict(),
+            "score": self.score,
+            "domain_score": self.domain_score,
+            "intent_score": self.intent_score,
+            "lexical_score": self.lexical_score,
+            "missing_tools": self.missing_tools,
+        }
+
+
+@dataclass
+class ResolverAnalysis:
+    text: str
+    domain: DomainClassification
+    intent: Intent
+    decision: str
+    confidence: float
+    matched_agent: str | None = None
+    matched_tool: str | None = None
+    match_score: float | None = None
+    missing_tools: list[str] = field(default_factory=list)
+    provider: str = "rules"
+    reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "text": self.text,
+            "domain": self.domain.domain,
+            "intent": self.intent.action,
+            "confidence": self.confidence,
+            "domain_confidence": self.domain.confidence,
+            "intent_confidence": self.intent.confidence,
+            "durable": self.intent.durable,
+            "matched_agent": self.matched_agent,
+            "matched_tool": self.matched_tool,
+            "match_score": self.match_score,
+            "missing_tools": self.missing_tools,
+            "decision": self.decision,
+            "provider": self.provider,
+            "reason": self.reason,
+            "evidence": self.domain.evidence,
+        }

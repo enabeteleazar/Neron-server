@@ -10,7 +10,14 @@ from core.capabilities.models import (
     CapabilityDecision,
     CapabilityRequest,
     CapabilityResult,
+    ResolverAnalysis,
 )
+from core.capabilities.decision_engine import DecisionEngine
+from core.capabilities.intent_provider import (
+    IntentProvider,
+    RuleBasedIntentProvider,
+)
+from core.capabilities.matcher import CapabilityMatcher
 from core.capabilities.registry import CapabilityRegistry
 from core.capabilities.router import CapabilityRouter, normalize_text
 
@@ -31,9 +38,15 @@ class CapabilityResolver:
         runtime_manager: Any | None = None,
         tool_creator: Any | None = None,
         task_scheduler: Any | None = None,
+        intent_provider: IntentProvider | None = None,
+        matcher: CapabilityMatcher | None = None,
+        decision_engine: DecisionEngine | None = None,
     ) -> None:
         self.registry = registry or CapabilityRegistry()
         self.router = router or CapabilityRouter()
+        self.intent_provider = intent_provider or RuleBasedIntentProvider()
+        self.matcher = matcher or CapabilityMatcher()
+        self.decision_engine = decision_engine or DecisionEngine()
         self._goal_manager = goal_manager
         self._execution_engine = execution_engine
         self._background_runner = background_runner
@@ -43,7 +56,7 @@ class CapabilityResolver:
         self._requests: dict[str, CapabilityResult] = {}
 
     async def resolve(self, request: CapabilityRequest) -> CapabilityResult | None:
-        decision = self.decide(request)
+        decision = await self.decide_async(request)
         if decision is None:
             return None
 
@@ -75,13 +88,19 @@ class CapabilityResolver:
                 ),
             )
         if decision.decision == "use_existing_tool":
-            capability = self.registry.find_matching_tool(request.text)
+            capability = self._selected_capability(
+                decision.selected_tool,
+                capability_type="tool",
+            )
             return self._remember(
                 request,
                 await self._execute_capability(request, decision, capability),
             )
         if decision.decision == "use_existing_agent":
-            capability = self.registry.find_matching_agent(request.text)
+            capability = self._selected_capability(
+                decision.selected_agent,
+                capability_type="agent",
+            )
             return self._remember(
                 request,
                 await self._execute_capability(request, decision, capability),
@@ -95,15 +114,131 @@ class CapabilityResolver:
 
     def decide(self, request: CapabilityRequest) -> CapabilityDecision | None:
         initial = self.router.classify(request.text)
-        if initial is None:
-            return None
-        if initial.decision in {
+        if initial is not None and initial.decision in {
             "ask_human_validation",
             "reject",
             "direct_answer",
         }:
             return initial
 
+        analysis = self.analyze(request.text)
+        return self._capability_decision(request, initial, analysis)
+
+    async def decide_async(
+        self,
+        request: CapabilityRequest,
+    ) -> CapabilityDecision | None:
+        initial = self.router.classify(request.text)
+        if initial is not None and initial.decision in {
+            "ask_human_validation",
+            "reject",
+            "direct_answer",
+        }:
+            return initial
+        analysis = await self.analyze_async(request.text)
+        return self._capability_decision(request, initial, analysis)
+
+    def _capability_decision(
+        self,
+        request: CapabilityRequest,
+        initial: CapabilityDecision | None,
+        analysis: ResolverAnalysis,
+    ) -> CapabilityDecision | None:
+        if analysis.decision == "execute_agent":
+            return CapabilityDecision(
+                decision="use_existing_agent",
+                confidence=analysis.confidence,
+                reason=analysis.reason,
+                capability_type="agent",
+                selected_agent=analysis.matched_agent,
+                safety_level=initial.safety_level if initial else "low",
+            )
+        if analysis.decision == "execute_tool":
+            return CapabilityDecision(
+                decision="use_existing_tool",
+                confidence=analysis.confidence,
+                reason=analysis.reason,
+                capability_type="tool",
+                selected_tool=analysis.matched_tool,
+                safety_level=initial.safety_level if initial else "low",
+            )
+        if analysis.decision in {"create_tool", "create_agent"}:
+            creation_type = analysis.decision.removeprefix("create_")
+            return CapabilityDecision(
+                decision=analysis.decision,
+                confidence=analysis.confidence,
+                reason=analysis.reason,
+                capability_type=creation_type,
+                requires_creation=True,
+                creation_type=creation_type,
+                async_required=True,
+                safety_level=(
+                    "medium" if creation_type == "agent" else "low"
+                ),
+            )
+        if initial is None:
+            return None
+        return self._legacy_decision(request, initial)
+
+    def analyze(self, text: str) -> ResolverAnalysis:
+        provider = self.intent_provider
+        if not hasattr(provider, "classify_sync"):
+            raise TypeError(
+                "The active IntentProvider must expose classify_sync until "
+                "the resolver becomes fully asynchronous"
+            )
+        understanding = provider.classify_sync(text)
+        return self._analysis_from_understanding(text, understanding)
+
+    async def analyze_async(self, text: str) -> ResolverAnalysis:
+        understanding = await self.intent_provider.classify(text)
+        return self._analysis_from_understanding(text, understanding)
+
+    def _analysis_from_understanding(
+        self,
+        text: str,
+        understanding: Any,
+    ) -> ResolverAnalysis:
+        match = self.matcher.match(
+            text,
+            understanding,
+            self.registry.list_capabilities(),
+        )
+        decision, confidence, reason = self.decision_engine.decide(
+            text,
+            understanding,
+            match,
+        )
+        capability = match.capability if match is not None else None
+        return ResolverAnalysis(
+            text=text,
+            domain=understanding.domain,
+            intent=understanding.intent,
+            decision=decision,
+            confidence=round(confidence, 3),
+            matched_agent=(
+                capability.agent_slug or capability.slug
+                if capability is not None
+                and capability.capability_type == "agent"
+                else None
+            ),
+            matched_tool=(
+                capability.tool_slug or capability.slug
+                if capability is not None
+                and capability.capability_type == "tool"
+                else None
+            ),
+            match_score=match.score if match is not None else None,
+            missing_tools=list(match.missing_tools) if match is not None else [],
+            provider=understanding.provider,
+            reason=reason,
+        )
+
+    def _legacy_decision(
+        self,
+        request: CapabilityRequest,
+        initial: CapabilityDecision,
+    ) -> CapabilityDecision:
         if initial.capability_type == "agent":
             existing = self.registry.find_matching_agent(request.text)
             if existing is not None:
@@ -126,7 +261,38 @@ class CapabilityResolver:
                     selected_tool=existing.tool_slug or existing.slug,
                     safety_level=initial.safety_level,
                 )
+            existing_agent = self.registry.find_matching_agent(request.text)
+            if existing_agent is not None:
+                return CapabilityDecision(
+                    decision="use_existing_agent",
+                    confidence=0.9,
+                    reason=f"Agent existant trouvé : {existing_agent.slug}.",
+                    capability_type="agent",
+                    selected_agent=existing_agent.agent_slug or existing_agent.slug,
+                    safety_level=initial.safety_level,
+                )
         return initial
+
+    def _selected_capability(
+        self,
+        slug: str | None,
+        *,
+        capability_type: str,
+    ) -> Capability | None:
+        if not slug:
+            return None
+        for capability in self.registry.list_capabilities():
+            selected_slug = (
+                capability.agent_slug
+                if capability_type == "agent"
+                else capability.tool_slug
+            )
+            if capability.capability_type == capability_type and slug in {
+                capability.slug,
+                selected_slug,
+            }:
+                return capability
+        return None
 
     async def get_result(self, request_id: str) -> CapabilityResult | None:
         result = self._requests.get(request_id)
@@ -154,7 +320,7 @@ class CapabilityResolver:
         result.agent_slug = status.get("agent_slug")
         if result.agent_slug:
             original_text = str(result.metadata.get("original_text") or "")
-            executed = await self._runtime().run(result.agent_slug, original_text)
+            executed = await self._run_agent(result.agent_slug, original_text)
             if executed.get("ok"):
                 result.response = str(executed.get("response") or result.response)
             else:
@@ -220,7 +386,7 @@ class CapabilityResolver:
             if capability.source == "builtin_tool":
                 response = await self._execute_builtin(capability.slug, request.text)
             else:
-                runtime_result = await self._runtime().run(
+                runtime_result = await self._run_agent(
                     capability.agent_slug or capability.slug,
                     request.text,
                 )
@@ -431,10 +597,17 @@ class CapabilityResolver:
 
     def _runtime(self):
         if self._runtime_manager is None:
-            from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+            from core.agent_runtime.runtime import get_agent_runtime
 
-            self._runtime_manager = get_agent_runtime_manager()
+            self._runtime_manager = get_agent_runtime()
         return self._runtime_manager
+
+    async def _run_agent(self, agent_slug: str, text: str) -> dict[str, Any]:
+        runtime = self._runtime()
+        if hasattr(runtime, "run_agent"):
+            result = await runtime.run_agent(agent_slug, text)
+            return result.to_dict() if hasattr(result, "to_dict") else dict(result)
+        return await runtime.run(agent_slug, text)
 
     def _tools(self):
         if self._tool_creator is None:
