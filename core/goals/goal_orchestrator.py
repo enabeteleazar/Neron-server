@@ -180,6 +180,12 @@ class GoalOrchestrator:
                 "orchestrated": True,
             }
         )
+        goal_metadata = dict(goal.get("metadata") or {})
+        if goal_metadata.get("internal_capability_request"):
+            plan["internal_capability_request"] = True
+            plan["capability_request_id"] = goal_metadata.get("capability_request_id")
+            plan["creation_type"] = goal_metadata.get("creation_type")
+            plan["capability_original_text"] = goal_metadata.get("capability_original_text")
         await self._publish_flow_event(
             "planner.plan_created",
             {"goal_id": goal.get("id"), "plan_id": plan.get("id"), "steps": len(plan.get("steps", []))},
@@ -1052,6 +1058,13 @@ class GoalOrchestrator:
                 "goal_id": plan.get("goal_id"),
                 "plan_id": plan.get("id"),
                 "agent_request_id": proposal.get("agent_request_id"),
+                "internal_capability_request": plan.get(
+                    "internal_capability_request",
+                    False,
+                ),
+                "capability_request_id": plan.get("capability_request_id"),
+                "creation_type": plan.get("creation_type"),
+                "capability_original_text": plan.get("capability_original_text"),
             },
         }
         try:

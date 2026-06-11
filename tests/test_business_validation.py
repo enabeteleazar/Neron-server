@@ -149,6 +149,84 @@ def test_generic_fallback_rejects_non_business_claims(
     assert any("generic_response_rejected" in error for error in result["errors"])
 
 
+def test_internal_capability_without_reliable_scenario_fails(tmp_path: Path):
+    agent_file = write_agent(
+        tmp_path / "generic_internal_agent.py",
+        "Réponse métier apparemment utile.",
+    )
+
+    result = BusinessValidator(project_root=tmp_path).validate(
+        {
+            "name": "generic_internal_agent",
+            "goal": "Traiter une capacité inconnue",
+        },
+        agent_file,
+        "Créer une capacité inconnue",
+        context={
+            "internal_capability_request": True,
+            "creation_type": "tool",
+            "capability_request_id": "cap-unknown",
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["status"] == "failed"
+    assert result["scenario"]["name"] == "unsupported_internal_capability"
+    assert result["scenario"]["fallback"] is False
+    assert result["errors"] == ["reliable_business_scenario_required"]
+
+
+def test_internal_log_capability_rejects_generic_response(tmp_path: Path):
+    agent_file = write_agent(
+        tmp_path / "generic_log_agent.py",
+        "Demande traitée : Analyse les logs Néron",
+    )
+
+    result = BusinessValidator(project_root=tmp_path).validate(
+        {
+            "name": "generic_log_agent",
+            "goal": "Analyser automatiquement les logs Néron",
+        },
+        agent_file,
+        "Analyse automatiquement les logs Néron et résume les erreurs critiques",
+        context={
+            "internal_capability_request": True,
+            "creation_type": "agent",
+            "capability_request_id": "cap-logs-generic",
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["scenario"]["name"] == "neron_log_analysis"
+    assert any("generic_response_rejected" in error for error in result["errors"])
+
+
+def test_internal_log_capability_accepts_specialized_response(tmp_path: Path):
+    agent_file = write_agent(
+        tmp_path / "specialized_log_agent.py",
+        "Analyse des logs Néron terminée : aucune erreur critique détectée.",
+    )
+
+    result = BusinessValidator(project_root=tmp_path).validate(
+        {
+            "name": "specialized_log_agent",
+            "goal": "Analyser automatiquement les logs Néron",
+        },
+        agent_file,
+        "Analyse automatiquement les logs Néron et résume les erreurs critiques",
+        context={
+            "internal_capability_request": True,
+            "creation_type": "agent",
+            "capability_request_id": "cap-logs-specialized",
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["status"] == "passed"
+    assert result["scenario"]["name"] == "neron_log_analysis"
+    assert result["scenario"]["fallback"] is False
+
+
 @pytest.mark.asyncio
 async def test_business_failure_after_pytest_is_not_registered(
     tmp_path: Path,
@@ -191,6 +269,32 @@ async def test_business_failure_after_pytest_is_not_registered(
     assert not (
         tmp_path / "core" / "agents" / "generated" / "donne_la_date_agent.py"
     ).exists()
+
+
+@pytest.mark.asyncio
+async def test_internal_generic_log_build_is_not_registered_or_available(
+    tmp_path: Path,
+):
+    builder = make_builder(tmp_path)
+
+    result = await builder.build_from_request(
+        "Créer un agent durable qui répond à cette demande : "
+        "Analyse automatiquement les logs Néron et résume les erreurs critiques",
+        tracking_context={
+            "internal_capability_request": True,
+            "creation_type": "agent",
+            "capability_request_id": "cap-log-build",
+        },
+    )
+
+    project = result["project"]
+    assert result["status"] == "failed"
+    assert project["current_step"] == "business_validation"
+    assert project["business_validation_status"] == "failed"
+    assert project["registry_status"] == "not_registered"
+    assert project["runtime_status"] == "not_available"
+    assert project["result"]["available"] is False
+    assert not list((tmp_path / "core" / "agents" / "generated").glob("*.py"))
 
 
 @pytest.mark.asyncio

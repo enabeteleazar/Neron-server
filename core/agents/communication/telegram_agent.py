@@ -84,10 +84,18 @@ def _normalize(text: str) -> str:
     return "".join(c for c in n if unicodedata.category(c) != "Mn")
 
 
-async def _post_text(client: httpx.AsyncClient, text: str) -> dict:
+async def _post_text(
+    client: httpx.AsyncClient,
+    text: str,
+    user_id: str | None = None,
+) -> dict:
     resp = await client.post(
         f"{NERON_CORE_URL}/input/text",
-        json={"text": text, "source_channel": "telegram"},
+        json={
+            "text": text,
+            "source_channel": "telegram",
+            "user_id": user_id,
+        },
         headers={"X-API-Key": NERON_API_KEY},
     )
     resp.raise_for_status()
@@ -836,7 +844,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     try:
         async with httpx.AsyncClient(timeout=600.0 if is_code else 300.0) as client:
-            data = await _post_text(client, user_message)
+            data = await _post_text(
+                client,
+                user_message,
+                user_id=str(update.message.chat_id),
+            )
             response = data.get("response", "❌ Pas de réponse")
             await sent.edit_text(response[:4096], parse_mode=None)
 

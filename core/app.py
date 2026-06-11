@@ -95,6 +95,8 @@ from core.agents.io.tts_agent import TTSAgent
 
 
 from core.config import settings
+from core.capabilities.models import CapabilityRequest
+from core.capabilities.resolver import CapabilityResolver
 from core.identity import get_identity
 from core.pipeline.routing.agent_router import (
     AgentRouter,
@@ -161,9 +163,25 @@ router:           IntentRouter    | None = None
 time_provider:    TimeProvider    | None = None
 obsidian_agent:   ObsidianAgent   | None = None
 autonomous_planner_agent: AutonomousPlannerAgent | None = None
+_capability_resolver: CapabilityResolver | None = None
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def get_capability_resolver() -> CapabilityResolver:
+    global _capability_resolver
+    if _capability_resolver is None:
+        _capability_resolver = CapabilityResolver()
+    return _capability_resolver
+
+
+def _capability_confidence(score: float) -> str:
+    if score >= 0.8:
+        return "high"
+    if score >= 0.5:
+        return "medium"
+    return "low"
 
 # ── Module personality ────────────────────────────────────────────────────────
 
@@ -517,6 +535,8 @@ app.add_middleware(
 class TextInput(BaseModel):
     text: str
     source_channel: str = "api"
+    user_id: Optional[str] = None
+    metadata: dict = Field(default_factory=dict)
 
 
 class CoreResponse(BaseModel):
@@ -835,6 +855,38 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
                 },
             )
 
+        capability_request = CapabilityRequest(
+            text=query,
+            source="user",
+            channel=input_data.source_channel,
+            user_id=input_data.user_id,
+            metadata=input_data.metadata,
+        )
+        capability_result = await get_capability_resolver().resolve(capability_request)
+        if capability_result is not None:
+            decision = capability_result.decision
+            selected = (
+                capability_result.tool_slug
+                or capability_result.agent_slug
+                or (decision.decision if decision else "capability_resolver")
+            )
+            return CoreResponse(
+                response=capability_result.response,
+                intent=(decision.decision if decision else "capability"),
+                agent=str(selected),
+                confidence=_capability_confidence(decision.confidence if decision else 0.0),
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
+                model=None,
+                error=capability_result.error,
+                transcription=None,
+                metadata={
+                    **metadata,
+                    "source": input_data.source_channel,
+                    "capability": capability_result.to_dict(),
+                },
+            )
+
         if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
             return await _handle_personality_feedback(query, intent_result, metadata, start)
         elif intent_result.intent == Intent.TIME_QUERY:
@@ -1029,6 +1081,17 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     finally:
         elapsed = round((time.monotonic() - start) * 1000, 2)
         metrics.record_request_end(elapsed)
+
+
+@app.get("/capabilities/requests/{request_id}")
+async def capability_request_status(
+    request_id: str,
+    _: None = Depends(verify_api_key),
+):
+    result = await get_capability_resolver().get_result(request_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Capability request not found")
+    return result.to_dict()
 
 
 @app.post("/input/stream")

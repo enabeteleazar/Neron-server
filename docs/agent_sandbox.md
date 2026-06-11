@@ -5,6 +5,11 @@
 Every generated agent must pass an isolated execution barrier before
 `RuntimeGovernor`, registry promotion, and runtime loading.
 
+This also applies to generated tools requested by the Capability Resolver.
+The resolver only classifies and queues work; it does not promote code,
+authorize execution, or bypass Business Validation, the sandbox, the Runtime
+Governor, registry checks, or runtime verification.
+
 `core/runtime/sandbox/agent_sandbox.py` is the shared entry point for:
 
 - generated-agent pytest execution;
