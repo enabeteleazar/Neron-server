@@ -156,6 +156,10 @@ class AgentBuildOrchestrator:
             and (
                 existing.get("business_validation_status") != "passed"
                 or existing.get("sandbox_status") != "passed"
+                or (
+                    metadata.get("internal_capability_request")
+                    and not self._has_strict_internal_business_validation(existing)
+                )
             )
         )
         if existing and not existing_needs_validation:
@@ -166,7 +170,7 @@ class AgentBuildOrchestrator:
 
         registered_agent = (
             None
-            if existing_needs_validation
+            if existing_needs_validation or metadata.get("internal_capability_request")
             else self._registered_agent_for_spec(spec, metadata)
         )
         if registered_agent:
@@ -203,7 +207,14 @@ class AgentBuildOrchestrator:
 
             self._goal_step_started(metadata, "code_generation")
             if mode in {"deterministic", "hybrid"}:
-                agent_file = self._write_agent(spec)
+                self._tools_ready_for_build = bool(
+                    metadata.get("tool_creation_status") == "ready"
+                    and metadata.get("required_tools")
+                )
+                try:
+                    agent_file = self._write_agent(spec)
+                finally:
+                    self._tools_ready_for_build = False
                 test_file = self._write_agent_test(spec, agent_file)
 
             if mode in {"codex", "hybrid"}:
@@ -306,6 +317,7 @@ class AgentBuildOrchestrator:
                 spec.to_dict(),
                 agent_file,
                 query,
+                context=metadata,
             )
             self.project_manager.update_project(
                 project_id,
@@ -645,6 +657,11 @@ class AgentBuildOrchestrator:
             content = self._christmas_agent_code(spec)
         elif business_scenario == "ipv4_subnet":
             content = self._ipv4_subnet_agent_code(spec)
+        elif (
+            business_scenario == "neron_log_analysis"
+            and getattr(self, "_tools_ready_for_build", False)
+        ):
+            content = self._neron_log_analysis_agent_code(spec)
         elif spec.name == "event_countdown_agent":
             content = self._wwdc_agent_code()
         elif spec.name == "weather_watch_agent":
@@ -787,6 +804,19 @@ class AgentBuildOrchestrator:
             "normalized_query": self._normalize_for_key(query),
             "spec_signature": self._spec_signature(spec),
         }
+
+    def _has_strict_internal_business_validation(
+        self,
+        project: dict[str, Any],
+    ) -> bool:
+        validation = project.get("business_validation_result") or {}
+        scenario = validation.get("scenario") or {}
+        context = validation.get("validation_context") or {}
+        return bool(
+            validation.get("ok")
+            and context.get("internal_capability_request")
+            and scenario.get("fallback") is False
+        )
 
     def _reuse_existing_project(self, project: dict[str, Any], spec: AgentSpec) -> dict[str, Any]:
         return {
@@ -1246,6 +1276,8 @@ class AgentBuildOrchestrator:
             or "reseau ipv4" in searchable
         ):
             return "ipv4_subnet"
+        if "log" in searchable or "journal" in searchable:
+            return "neron_log_analysis"
         return None
 
     def _normalize_build_mode(self, build_mode: str) -> BuildMode:
@@ -1661,6 +1693,46 @@ class Agent:
             "status": "ok",
             "agent": self.name,
             "response": f"Demande traitée : {{request}}",
+        }}
+'''
+
+    def _neron_log_analysis_agent_code(self, spec: AgentSpec) -> str:
+        return f'''from __future__ import annotations
+
+import re
+
+
+ERROR_PATTERN = re.compile(
+    r"\\b(ERROR|CRITICAL|FATAL|Traceback|Exception)\\b",
+    re.IGNORECASE,
+)
+
+
+class Agent:
+    name = {spec.name!r}
+
+    async def execute(self, text: str = "") -> dict:
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        errors = [line for line in lines if ERROR_PATTERN.search(line)]
+        if not errors:
+            response = "Analyse des logs Néron : aucune erreur critique détectée."
+        else:
+            severity = "CRITICAL" if any(
+                token in line.upper()
+                for line in errors
+                for token in ("CRITICAL", "FATAL")
+            ) else "ERROR"
+            excerpt = errors[0][:180]
+            response = (
+                f"Analyse des logs Néron : {{len(errors)}} erreur(s), "
+                f"gravité {{severity}}. Extrait : {{excerpt}}. "
+                "Recommandation : vérifier le composant concerné."
+            )
+        return {{
+            "status": "ok",
+            "agent": self.name,
+            "response": response,
+            "error_count": len(errors),
         }}
 '''
 

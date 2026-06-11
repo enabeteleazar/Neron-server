@@ -180,6 +180,18 @@ class GoalOrchestrator:
                 "orchestrated": True,
             }
         )
+        goal_metadata = dict(goal.get("metadata") or {})
+        if goal_metadata.get("internal_capability_request"):
+            plan["internal_capability_request"] = True
+            plan["capability_request_id"] = goal_metadata.get("capability_request_id")
+            plan["creation_type"] = goal_metadata.get("creation_type")
+            plan["capability_original_text"] = goal_metadata.get("capability_original_text")
+            plan["required_tools"] = list(goal_metadata.get("required_tools") or [])
+            plan["created_tools"] = list(goal_metadata.get("created_tools") or [])
+            plan["tool_creation_status"] = goal_metadata.get(
+                "tool_creation_status",
+                "not_required",
+            )
         await self._publish_flow_event(
             "planner.plan_created",
             {"goal_id": goal.get("id"), "plan_id": plan.get("id"), "steps": len(plan.get("steps", []))},
@@ -300,6 +312,7 @@ class GoalOrchestrator:
                 "agent_name": None,
                 "goal": str(plan.get("goal") or ""),
                 "required_capabilities": [],
+                "required_tools": list(plan.get("required_tools") or []),
                 "status": "pending_human_validation",
                 "human_validation_required": True,
                 "code_execution_allowed": False,
@@ -968,6 +981,39 @@ class GoalOrchestrator:
             "errors": errors,
             "steps": list((project or {}).get("steps") or []),
         }
+        goal_metadata = goal.get("metadata") or {}
+        tool_metadata_present = any(
+            key in source
+            for source in (project_metadata, plan or {}, goal_metadata)
+            for key in (
+                "required_tools",
+                "created_tools",
+                "tool_creation_status",
+            )
+        )
+        if tool_metadata_present:
+            legacy_status.update(
+                {
+                    "required_tools": list(
+                        project_metadata.get("required_tools")
+                        or (plan or {}).get("required_tools")
+                        or goal_metadata.get("required_tools")
+                        or []
+                    ),
+                    "created_tools": list(
+                        project_metadata.get("created_tools")
+                        or (plan or {}).get("created_tools")
+                        or goal_metadata.get("created_tools")
+                        or []
+                    ),
+                    "tool_creation_status": (
+                        project_metadata.get("tool_creation_status")
+                        or (plan or {}).get("tool_creation_status")
+                        or goal_metadata.get("tool_creation_status")
+                        or "not_required"
+                    ),
+                }
+            )
         if not execution_status:
             return legacy_status
         return {
@@ -1052,6 +1098,19 @@ class GoalOrchestrator:
                 "goal_id": plan.get("goal_id"),
                 "plan_id": plan.get("id"),
                 "agent_request_id": proposal.get("agent_request_id"),
+                "internal_capability_request": plan.get(
+                    "internal_capability_request",
+                    False,
+                ),
+                "capability_request_id": plan.get("capability_request_id"),
+                "creation_type": plan.get("creation_type"),
+                "capability_original_text": plan.get("capability_original_text"),
+                "required_tools": list(plan.get("required_tools") or []),
+                "created_tools": list(plan.get("created_tools") or []),
+                "tool_creation_status": plan.get(
+                    "tool_creation_status",
+                    "not_required",
+                ),
             },
         }
         try:

@@ -34,6 +34,7 @@ class AgentCreator:
         goal: str,
         plan: dict[str, Any],
         missing_capability: str | None = None,
+        required_tools: list[str] | None = None,
     ) -> dict[str, Any]:
         existing = self._find_existing_proposal(plan)
         if existing:
@@ -50,6 +51,7 @@ class AgentCreator:
             "goal": goal,
             "purpose": purpose,
             "required_capabilities": self._required_capabilities(agent_name, missing_capability),
+            "required_tools": list(required_tools or plan.get("required_tools") or []),
             "proposed_files": [
                 f"workspace/agents/{agent_name}.py",
                 f"tests/test_{agent_name}.py",

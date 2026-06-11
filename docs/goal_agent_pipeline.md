@@ -24,6 +24,18 @@ The pipeline reuses the existing Planner, Agent Creator, build orchestrator,
 Codex runner, registry, and runtime. It does not introduce parallel
 implementations.
 
+`/goal` is also the internal asynchronous build engine used by the
+transport-independent Capability Resolver. Telegram and the future voice
+interface send natural text to `/input/text`; users do not need to invoke
+`/goal` or know that a goal, project, sandbox, registry, or runtime exists.
+The public `/goal` endpoints remain available for compatibility and
+administration.
+
+Simple missing capabilities carry `creation_type=tool`; durable monitoring or
+stateful capabilities carry `creation_type=agent`. The current build contract
+may store both as generated agent modules, but the capability type is
+preserved in goal and project metadata.
+
 ## Component Responsibilities
 
 | Component | Responsibility | Must not do |
@@ -110,9 +122,15 @@ conditions are true:
 6. `RuntimeGovernor.authorize_agent_promotion` returns `True`.
 
 Reliable built-in scenarios currently cover Easter 2027, the time remaining
-before Christmas, and IPv4 subnet calculation. Other goals use a compatibility
-fallback requiring a non-empty successful response. The fallback rejects
-generic claims such as `Agent disponible pour`, `Je suis un agent`, and
+before Christmas, IPv4 subnet calculation, and Néron log analysis. Explicit
+legacy goals without a reliable scenario retain a compatibility fallback
+requiring a non-empty successful response.
+
+Internal requests from the Capability Resolver never use that fallback. If no
+reliable business scenario exists, validation fails with
+`reliable_business_scenario_required`; promotion, Registry registration, and
+runtime availability remain forbidden. Internal scenarios also reject generic
+claims such as `Demande traitée`, `Agent disponible`, `Je suis un agent`, and
 `Réponse déterministe`.
 
 The shared legacy `promote_agent` helper also consults the Runtime Governor.

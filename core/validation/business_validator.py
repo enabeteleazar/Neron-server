@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unicodedata
 from pathlib import Path
@@ -12,6 +13,11 @@ _GENERIC_RESPONSE_MARKERS = (
     "je suis un agent",
     "reponse deterministe",
 )
+_INTERNAL_GENERIC_RESPONSE_MARKERS = (
+    "demande traitee",
+    *_GENERIC_RESPONSE_MARKERS,
+)
+
 
 class BusinessValidator:
     def __init__(
@@ -37,10 +43,27 @@ class BusinessValidator:
         agent_path: str | Path,
         original_goal: str,
         scenario: dict[str, Any] | None = None,
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         spec = self._spec_dict(agent_spec)
-        selected_scenario = scenario or self.generate_scenario(spec, original_goal)
+        validation_context = dict(context or {})
+        internal_capability = bool(
+            validation_context.get("internal_capability_request")
+        )
+        selected_scenario = scenario or self.generate_scenario(
+            spec,
+            original_goal,
+            context=validation_context,
+        )
         expected = dict(selected_scenario.get("expected") or {})
+        if internal_capability:
+            expected["reject_generic_markers"] = list(
+                _INTERNAL_GENERIC_RESPONSE_MARKERS
+            )
+            selected_scenario = {
+                **selected_scenario,
+                "expected": expected,
+            }
         result = {
             "ok": False,
             "status": "failed",
@@ -48,7 +71,18 @@ class BusinessValidator:
             "actual_response": "",
             "expected": expected,
             "errors": [],
+            "validation_context": {
+                "internal_capability_request": internal_capability,
+                "creation_type": validation_context.get("creation_type"),
+                "capability_request_id": validation_context.get(
+                    "capability_request_id"
+                ),
+            },
         }
+
+        if expected.get("reliable_scenario") is False:
+            result["errors"].append("reliable_business_scenario_required")
+            return result
 
         path = Path(agent_path).resolve()
         if not path.is_file():
@@ -74,8 +108,10 @@ class BusinessValidator:
         self,
         agent_spec: dict[str, Any] | Any,
         original_goal: str,
+        context: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         spec = self._spec_dict(agent_spec)
+        validation_context = dict(context or {})
         searchable = self._normalize(
             " ".join(
                 [
@@ -116,6 +152,30 @@ class BusinessValidator:
                 "input": "Calcule le réseau de 192.168.1.42/24",
                 "expected": {
                     "contains_any": ["192.168.1.0", "réseau"],
+                },
+                "fallback": False,
+            }
+        if "log" in searchable or "journal" in searchable:
+            return {
+                "name": "neron_log_analysis",
+                "input": "Analyse les logs Néron",
+                "expected": {
+                    "contains_any": ["erreur", "aucune erreur", "log"],
+                    "reject_generic_markers": list(
+                        _INTERNAL_GENERIC_RESPONSE_MARKERS
+                    ),
+                },
+                "fallback": False,
+            }
+        if validation_context.get("internal_capability_request"):
+            return {
+                "name": "unsupported_internal_capability",
+                "input": original_goal,
+                "expected": {
+                    "reliable_scenario": False,
+                    "reject_generic_markers": list(
+                        _INTERNAL_GENERIC_RESPONSE_MARKERS
+                    ),
                 },
                 "fallback": False,
             }
