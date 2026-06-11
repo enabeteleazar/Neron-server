@@ -3,6 +3,7 @@ from core.api.self_model_context_routes import router as self_model_router
 from core.api.runtime_governor_routes import router as runtime_governor_router
 from core.api.world_model_routes import router as world_model_router
 from core.goals.routes import router as goals_router
+from core.tools.routes import router as tools_router
 from core.api.task_routes import router as task_router
 from core.api.goal_task_routes import router as goal_task_router
 from core.api.cognitive_core_routes import router as cognitive_core_router
@@ -513,6 +514,7 @@ app.include_router(self_model_router)
 app.include_router(runtime_governor_router)
 app.include_router(world_model_router)
 app.include_router(goals_router)
+app.include_router(tools_router)
 app.include_router(task_router)
 app.include_router(goal_task_router)
 app.include_router(cognitive_core_router)

@@ -29,6 +29,7 @@ class CapabilityResolver:
         execution_engine: Any | None = None,
         background_runner: Any | None = None,
         runtime_manager: Any | None = None,
+        tool_creator: Any | None = None,
     ) -> None:
         self.registry = registry or CapabilityRegistry()
         self.router = router or CapabilityRouter()
@@ -36,6 +37,7 @@ class CapabilityResolver:
         self._execution_engine = execution_engine
         self._background_runner = background_runner
         self._runtime_manager = runtime_manager
+        self._tool_creator = tool_creator
         self._requests: dict[str, CapabilityResult] = {}
 
     async def resolve(self, request: CapabilityRequest) -> CapabilityResult | None:
@@ -184,6 +186,12 @@ class CapabilityResolver:
                 metadata={
                     "creation_type": creation_type,
                     "original_text": metadata.get("capability_original_text") or "",
+                    "required_tools": list(metadata.get("required_tools") or []),
+                    "created_tools": list(metadata.get("created_tools") or []),
+                    "tool_creation_status": metadata.get(
+                        "tool_creation_status",
+                        "not_required",
+                    ),
                 },
             )
         return None
@@ -234,6 +242,7 @@ class CapabilityResolver:
     ) -> CapabilityResult:
         creation_type = decision.creation_type or "tool"
         objective = self._creation_objective(request.text, creation_type)
+        tool_preparation = self._tools().ensure_tools_for_request(request.text)
         metadata = {
             "orchestrated": True,
             "asynchronous": True,
@@ -243,6 +252,11 @@ class CapabilityResolver:
             "creation_type": creation_type,
             "source_channel": request.channel,
             "user_id": request.user_id,
+            "required_tools": list(tool_preparation.get("required_tools") or []),
+            "created_tools": list(tool_preparation.get("created_tools") or []),
+            "tool_creation_status": str(
+                tool_preparation.get("tool_creation_status") or "not_required"
+            ),
         }
         manager = self._goals()
         goal = manager.create_goal(
@@ -280,6 +294,9 @@ class CapabilityResolver:
             metadata={
                 "creation_type": creation_type,
                 "original_text": request.text,
+                "required_tools": metadata["required_tools"],
+                "created_tools": metadata["created_tools"],
+                "tool_creation_status": metadata["tool_creation_status"],
             },
         )
 
@@ -395,6 +412,13 @@ class CapabilityResolver:
 
             self._runtime_manager = get_agent_runtime_manager()
         return self._runtime_manager
+
+    def _tools(self):
+        if self._tool_creator is None:
+            from core.tools.creator import get_tool_creator
+
+            self._tool_creator = get_tool_creator()
+        return self._tool_creator
 
     def _easter_date(self, year: int) -> date:
         a = year % 19
