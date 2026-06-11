@@ -49,7 +49,82 @@ def test_agent_ok_passes_sandbox(tmp_path: Path):
 
     assert result["ok"] is True
     assert result["result"]["response"] == "sandbox ok"
-    assert result["sandbox"]["isolation"] in {"bubblewrap", "python_audit"}
+    assert result["sandbox"]["isolation"] == "python_audit"
+
+
+def test_python_backend_skips_system_backends(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def unexpected_probe(_command):
+        pytest.fail("python backend must not probe system executables")
+
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        unexpected_probe,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: pytest.fail("python backend must not probe system users"),
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.run",
+        lambda *_args, **_kwargs: pytest.fail(
+            "python backend must not run backend probes"
+        ),
+    )
+
+    diagnostics = AgentSandbox(
+        project_root=tmp_path,
+        backend="python",
+    ).diagnostics()
+
+    assert diagnostics["backend_used"] == "python"
+    assert diagnostics["isolation_level"] == "process_python_audit"
+    assert diagnostics["systemd_available"] is False
+    assert diagnostics["user_available"] is False
+    assert diagnostics["sudo_used"] is False
+    assert diagnostics["sudo_available"] is False
+    assert diagnostics["systemd_run_path"] is None
+
+
+def test_python_backend_from_environment_never_uses_bwrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    workspace = tmp_path / "workspace"
+    agent = write_agent(
+        workspace / "agents" / "mocked_agent.py",
+        ["class Agent:", "    pass"],
+    )
+    monkeypatch.setenv("NERON_SANDBOX_BACKEND", "python")
+
+    process = Mock()
+    process.communicate.return_value = (
+        '__NERON_AGENT_SANDBOX_RESULT__{"ok": true, "result": "mocked"}\n',
+        "",
+    )
+    process.returncode = 0
+    popen = Mock(return_value=process)
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.Popen",
+        popen,
+    )
+
+    sandbox = AgentSandbox(
+        project_root=tmp_path,
+        workspace=workspace,
+    )
+    result = sandbox.execute_agent(agent, "test")
+
+    command = popen.call_args.args[0]
+    assert command[0] != "bwrap"
+    assert command[0] != "systemd-run"
+    assert command[0] == sandbox.python_executable
+    assert workspace.is_dir()
+    assert (workspace / ".sandbox_tmp").is_dir()
+    assert result["sandbox"]["backend_used"] == "python"
+    assert result["sandbox"]["isolation"] == "python_audit"
 
 
 def test_agent_timeout_fails_sandbox(tmp_path: Path):
@@ -140,6 +215,34 @@ def test_auto_falls_back_when_systemd_is_unavailable(
     diagnostics = AgentSandbox(project_root=tmp_path, backend="auto").diagnostics()
 
     assert diagnostics["backend_used"] == "python"
+    assert diagnostics["fallback_reason"] == "systemd_run_unavailable"
+
+
+def test_auto_fallback_can_use_bubblewrap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.shutil.which",
+        lambda command: "/usr/bin/bwrap" if command == "bwrap" else None,
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.pwd.getpwnam",
+        lambda _user: Mock(),
+    )
+    monkeypatch.setattr(
+        "core.runtime.sandbox.agent_sandbox.subprocess.run",
+        Mock(return_value=Mock(returncode=0, stdout="", stderr="")),
+    )
+
+    diagnostics = AgentSandbox(
+        project_root=tmp_path,
+        backend="auto",
+        systemd_use_sudo="false",
+    ).diagnostics()
+
+    assert diagnostics["backend_used"] == "python"
+    assert diagnostics["isolation_level"] == "kernel_bubblewrap"
     assert diagnostics["fallback_reason"] == "systemd_run_unavailable"
 
 

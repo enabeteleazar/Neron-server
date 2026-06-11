@@ -50,14 +50,27 @@ class AgentSandbox:
                 "auto, false, true"
             )
         self._runner = Path(__file__).with_name("_runner.py").resolve()
-        self._bwrap = shutil.which("bwrap")
-        self._bwrap_available = self._probe_bwrap()
-        self._systemd_run = shutil.which("systemd-run")
-        self._systemd_available = bool(self._systemd_run)
-        self._user_available = self._probe_system_user()
-        self._sudo = shutil.which("sudo")
-        self._sudo_used = self._should_use_sudo()
-        self._sudo_available, self._sudo_error = self._probe_sudo()
+        self._bwrap: str | None = None
+        self._bwrap_available = False
+        self._systemd_run: str | None = None
+        self._systemd_available = False
+        self._user_available = False
+        self._sudo: str | None = None
+        self._sudo_used = False
+        self._sudo_available = False
+        self._sudo_error: str | None = None
+
+        if self.backend in {"auto", "systemd"}:
+            self._systemd_run = shutil.which("systemd-run")
+            self._systemd_available = bool(self._systemd_run)
+            self._user_available = self._probe_system_user()
+            self._sudo = shutil.which("sudo")
+            self._sudo_used = self._should_use_sudo()
+            self._sudo_available, self._sudo_error = self._probe_sudo()
+        if self.backend == "auto":
+            self._bwrap = shutil.which("bwrap")
+            self._bwrap_available = self._probe_bwrap()
+
         self._backend_used, self._fallback_reason = self._select_backend()
 
     def diagnostics(self) -> dict[str, Any]:
@@ -318,7 +331,7 @@ class AgentSandbox:
         return False, error
 
     def _python_isolation(self) -> str:
-        if self._bwrap_available and self._bwrap:
+        if self.backend == "auto" and self._bwrap_available and self._bwrap:
             return "bubblewrap"
         return "python_audit"
 
