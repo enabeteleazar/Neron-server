@@ -72,6 +72,24 @@ class FakeBackgroundRunner:
         self.submitted.append(kwargs)
 
 
+class FakeTaskScheduler:
+    def __init__(self) -> None:
+        self.chains = []
+
+    def enqueue_tool_chain(self, tool_slugs, **kwargs):
+        self.chains.append((tool_slugs, kwargs))
+        return [
+            type("Task", (), {"task_id": f"task-{position}"})()
+            for position, _slug in enumerate(tool_slugs)
+        ]
+
+    def enqueue_composite_task(self, **kwargs):
+        return type("Task", (), {"task_id": "task-composite"})()
+
+    def wake_worker(self):
+        return None
+
+
 def make_registry(*capabilities: Capability) -> CapabilityRegistry:
     return CapabilityRegistry(
         agent_registry=EmptyAgentRegistry(),
@@ -171,11 +189,13 @@ async def test_unknown_automatic_log_analysis_queues_agent_creation():
     goals = FakeGoalManager()
     engine = FakeExecutionEngine()
     runner = FakeBackgroundRunner()
+    scheduler = FakeTaskScheduler()
     resolver = CapabilityResolver(
         registry=make_registry(),
         goal_manager=goals,
         execution_engine=engine,
         background_runner=runner,
+        task_scheduler=scheduler,
     )
 
     result = await resolver.resolve(
@@ -192,6 +212,9 @@ async def test_unknown_automatic_log_analysis_queues_agent_creation():
     assert result.goal_id == "goal-capability-1"
     assert result.response == ASYNC_AGENT_RESPONSE
     assert engine.enqueued[0][3]["internal_capability_request"] is True
+    assert len(engine.enqueued[0][3]["scheduler_task_ids"]) == 3
+    assert engine.enqueued[0][3]["task_id"] == "task-0"
+    assert engine.enqueued[0][3]["composite_task_id"] == "task-composite"
 
 
 async def test_unknown_punctual_analysis_queues_tool_creation():

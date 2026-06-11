@@ -30,6 +30,7 @@ class CapabilityResolver:
         background_runner: Any | None = None,
         runtime_manager: Any | None = None,
         tool_creator: Any | None = None,
+        task_scheduler: Any | None = None,
     ) -> None:
         self.registry = registry or CapabilityRegistry()
         self.router = router or CapabilityRouter()
@@ -38,6 +39,7 @@ class CapabilityResolver:
         self._background_runner = background_runner
         self._runtime_manager = runtime_manager
         self._tool_creator = tool_creator
+        self._task_scheduler = task_scheduler
         self._requests: dict[str, CapabilityResult] = {}
 
     async def resolve(self, request: CapabilityRequest) -> CapabilityResult | None:
@@ -192,6 +194,11 @@ class CapabilityResolver:
                         "tool_creation_status",
                         "not_required",
                     ),
+                    "scheduler_task_ids": list(
+                        metadata.get("scheduler_task_ids") or []
+                    ),
+                    "task_id": metadata.get("task_id"),
+                    "composite_task_id": metadata.get("composite_task_id"),
                 },
             )
         return None
@@ -243,6 +250,12 @@ class CapabilityResolver:
         creation_type = decision.creation_type or "tool"
         objective = self._creation_objective(request.text, creation_type)
         tool_preparation = self._tools().ensure_tools_for_request(request.text)
+        scheduler_chain = self._enqueue_scheduler_chain(
+            request,
+            tool_preparation,
+        )
+        scheduler_tasks = list(scheduler_chain.get("tasks") or [])
+        composite_task = scheduler_chain.get("composite_task")
         metadata = {
             "orchestrated": True,
             "asynchronous": True,
@@ -256,6 +269,13 @@ class CapabilityResolver:
             "created_tools": list(tool_preparation.get("created_tools") or []),
             "tool_creation_status": str(
                 tool_preparation.get("tool_creation_status") or "not_required"
+            ),
+            "scheduler_task_ids": [
+                task.task_id for task in scheduler_tasks
+            ],
+            "task_id": scheduler_tasks[0].task_id if scheduler_tasks else None,
+            "composite_task_id": (
+                composite_task.task_id if composite_task is not None else None
             ),
         }
         manager = self._goals()
@@ -297,6 +317,9 @@ class CapabilityResolver:
                 "required_tools": metadata["required_tools"],
                 "created_tools": metadata["created_tools"],
                 "tool_creation_status": metadata["tool_creation_status"],
+                "scheduler_task_ids": metadata["scheduler_task_ids"],
+                "task_id": metadata["task_id"],
+                "composite_task_id": metadata["composite_task_id"],
             },
         )
 
@@ -419,6 +442,59 @@ class CapabilityResolver:
 
             self._tool_creator = get_tool_creator()
         return self._tool_creator
+
+    def _scheduler(self):
+        if self._task_scheduler is None:
+            from core.scheduler.scheduler import get_task_scheduler
+
+            self._task_scheduler = get_task_scheduler()
+        return self._task_scheduler
+
+    def _enqueue_scheduler_chain(
+        self,
+        request: CapabilityRequest,
+        tool_preparation: dict[str, Any],
+    ) -> dict[str, Any]:
+        required_tools = list(tool_preparation.get("required_tools") or [])
+        if required_tools != [
+            "neron_log_reader_tool",
+            "neron_log_error_filter_tool",
+            "neron_log_summary_tool",
+        ]:
+            return {"tasks": [], "composite_task": None}
+        nested_payload = request.metadata.get("payload")
+        initial_payload = (
+            dict(nested_payload)
+            if isinstance(nested_payload, dict)
+            else dict(request.metadata)
+        )
+        scheduler = self._scheduler()
+        tasks = scheduler.enqueue_tool_chain(
+            required_tools,
+            initial_payload=initial_payload,
+            title="Analyse des logs Néron",
+            priority="high" if request.channel == "telegram" else "medium",
+            metadata={
+                "capability_request_id": request.request_id,
+                "source_channel": request.channel,
+                "user_id": request.user_id,
+            },
+        )
+        composite = scheduler.enqueue_composite_task(
+            title="Résultat de l’analyse des logs Néron",
+            depends_on=[tasks[-1].task_id],
+            priority="high" if request.channel == "telegram" else "medium",
+            metadata={
+                "capability_request_id": request.request_id,
+                "source_channel": request.channel,
+                "user_id": request.user_id,
+                "chain_id": (
+                    getattr(tasks[0], "metadata", {}) or {}
+                ).get("chain_id"),
+            },
+        )
+        scheduler.wake_worker()
+        return {"tasks": tasks, "composite_task": composite}
 
     def _easter_date(self, year: int) -> date:
         a = year % 19

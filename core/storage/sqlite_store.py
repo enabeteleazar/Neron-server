@@ -137,6 +137,21 @@ class SQLiteStore:
                 CREATE INDEX IF NOT EXISTS idx_goal_events_goal_id
                     ON goal_events(goal_id, id)
             """,
+            """
+                CREATE TABLE IF NOT EXISTS scheduler_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    kind TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload_json TEXT NOT NULL
+                )
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_scheduler_tasks_status_priority
+                    ON scheduler_tasks(status, priority, created_at)
+            """,
         )
         with self._transaction() as connection:
             for statement in statements:

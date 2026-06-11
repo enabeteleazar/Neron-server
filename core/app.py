@@ -4,6 +4,7 @@ from core.api.runtime_governor_routes import router as runtime_governor_router
 from core.api.world_model_routes import router as world_model_router
 from core.goals.routes import router as goals_router
 from core.tools.routes import router as tools_router
+from core.scheduler.routes import router as scheduler_router
 from core.api.task_routes import router as task_router
 from core.api.goal_task_routes import router as goal_task_router
 from core.api.cognitive_core_routes import router as cognitive_core_router
@@ -314,6 +315,25 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.warning("GoalSystem init failed: %s", exc)
 
+        try:
+            from core.scheduler.scheduler import get_task_scheduler
+
+            task_scheduler = get_task_scheduler()
+            recovered_tasks = task_scheduler.recover_running_tasks()
+            if recovered_tasks:
+                logger.warning(
+                    "Scheduler tasks interrupted after restart: %s",
+                    ", ".join(task.task_id for task in recovered_tasks),
+                )
+            await task_scheduler.start_worker()
+            logger.info(
+                "TaskScheduler initialise worker_enabled=%s max_concurrent=%s",
+                task_scheduler.worker_enabled,
+                task_scheduler.max_concurrent_tasks,
+            )
+        except Exception as exc:
+            logger.warning("TaskScheduler init failed: %s", exc)
+
         _self_monitor_task = asyncio.create_task(get_self_monitor().start())
         logger.info("SelfMonitor demarre")
 
@@ -449,6 +469,13 @@ async def lifespan(app: FastAPI):
             logger.warning("Erreur arrêt workflows goals : %s", e)
 
         try:
+            from core.scheduler.scheduler import get_task_scheduler
+
+            await get_task_scheduler().stop_worker()
+        except Exception as e:
+            logger.warning("Erreur arrêt TaskScheduler : %s", e)
+
+        try:
             await get_self_monitor().stop()
         except Exception as e:
             logger.warning("Erreur arrêt SelfMonitor : %s", e)
@@ -515,6 +542,7 @@ app.include_router(runtime_governor_router)
 app.include_router(world_model_router)
 app.include_router(goals_router)
 app.include_router(tools_router)
+app.include_router(scheduler_router)
 app.include_router(task_router)
 app.include_router(goal_task_router)
 app.include_router(cognitive_core_router)

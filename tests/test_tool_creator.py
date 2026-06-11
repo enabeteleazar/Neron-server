@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -13,6 +14,8 @@ from core.tools.creator import LOG_TOOL_SLUGS, ToolCreator
 from core.tools.models import ToolResult, ToolSpec
 from core.tools.registry import ToolRegistry
 from core.tools.runtime import ToolRuntime
+from core.scheduler.scheduler import TaskScheduler
+from core.scheduler.store import SchedulerStore
 
 
 LOG_REQUEST = "Analyse automatiquement les logs Néron et résume les erreurs critiques"
@@ -195,6 +198,10 @@ def test_log_agent_template_is_specialized_when_tools_are_ready(tmp_path: Path):
 
 async def test_capability_resolver_prepares_tools_before_agent_goal(tmp_path: Path):
     creator = make_creator(tmp_path)
+    scheduler = TaskScheduler(
+        store=SchedulerStore(tmp_path / "scheduler.sqlite3"),
+        tool_runtime=creator.runtime,
+    )
     goals = FakeGoalManager()
     engine = FakeExecutionEngine()
     resolver = CapabilityResolver(
@@ -207,6 +214,7 @@ async def test_capability_resolver_prepares_tools_before_agent_goal(tmp_path: Pa
         execution_engine=engine,
         background_runner=FakeRunner(),
         tool_creator=creator,
+        task_scheduler=scheduler,
     )
 
     result = await resolver.resolve(
@@ -222,10 +230,24 @@ async def test_capability_resolver_prepares_tools_before_agent_goal(tmp_path: Pa
     assert metadata["tool_creation_status"] == "ready"
     assert all(creator.registry.tool_exists(slug) for slug in LOG_TOOL_SLUGS)
     assert engine.enqueued[0][3]["required_tools"] == list(LOG_TOOL_SLUGS)
+    assert len(metadata["scheduler_task_ids"]) == 3
+    assert metadata["task_id"] == metadata["scheduler_task_ids"][0]
+    assert metadata["composite_task_id"]
+    tasks = [scheduler.get_task(task_id) for task_id in metadata["scheduler_task_ids"]]
+    assert tasks[0].depends_on == []
+    assert tasks[1].depends_on == [tasks[0].task_id]
+    assert tasks[2].depends_on == [tasks[1].task_id]
+    composite = scheduler.get_task(metadata["composite_task_id"])
+    assert composite.kind == "composite"
+    assert composite.depends_on == [tasks[2].task_id]
 
 
 async def test_capability_resolver_uses_tool_creator_for_create_tool(tmp_path: Path):
     creator = make_creator(tmp_path)
+    scheduler = TaskScheduler(
+        store=SchedulerStore(tmp_path / "scheduler.sqlite3"),
+        tool_runtime=creator.runtime,
+    )
     goals = FakeGoalManager()
     resolver = CapabilityResolver(
         registry=CapabilityRegistry(
@@ -237,6 +259,7 @@ async def test_capability_resolver_uses_tool_creator_for_create_tool(tmp_path: P
         execution_engine=FakeExecutionEngine(),
         background_runner=FakeRunner(),
         tool_creator=creator,
+        task_scheduler=scheduler,
     )
 
     result = await resolver.resolve(
@@ -250,6 +273,60 @@ async def test_capability_resolver_uses_tool_creator_for_create_tool(tmp_path: P
     assert result.decision is not None
     assert result.decision.decision == "create_tool"
     assert goals.created[0]["metadata"]["required_tools"] == list(LOG_TOOL_SLUGS)
+
+
+async def test_capability_log_chain_runs_in_background_worker(tmp_path: Path):
+    creator = make_creator(tmp_path)
+    scheduler = TaskScheduler(
+        store=SchedulerStore(tmp_path / "scheduler.sqlite3"),
+        tool_runtime=creator.runtime,
+        worker_enabled=True,
+        worker_poll_interval=0.01,
+    )
+    goals = FakeGoalManager()
+    resolver = CapabilityResolver(
+        registry=CapabilityRegistry(
+            agent_registry=EmptyAgentRegistry(),
+            project_manager=EmptyProjectManager(),
+            builtins=[],
+        ),
+        goal_manager=goals,
+        execution_engine=FakeExecutionEngine(),
+        background_runner=FakeRunner(),
+        tool_creator=creator,
+        task_scheduler=scheduler,
+    )
+
+    try:
+        await scheduler.start_worker()
+        result = await resolver.resolve(
+            CapabilityRequest(
+                text=LOG_REQUEST,
+                channel="telegram",
+                metadata={
+                    "payload": {
+                        "logs": [
+                            "ERROR core failed",
+                            "CRITICAL planner timeout",
+                        ]
+                    }
+                },
+            )
+        )
+        composite_id = result.metadata["composite_task_id"]
+        for _ in range(200):
+            composite = scheduler.get_task(composite_id)
+            if composite.status == "completed":
+                break
+            await asyncio.sleep(0.01)
+    finally:
+        await scheduler.stop_worker()
+
+    assert result.async_started is True
+    assert result.metadata["task_id"]
+    assert composite.status == "completed"
+    assert composite.result["data"]["error_count"] == 2
+    assert composite.result["data"]["severity"] == "critical"
 
 
 async def test_tool_endpoints_list_get_and_execute(tmp_path: Path, monkeypatch):

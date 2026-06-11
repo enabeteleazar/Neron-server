@@ -60,6 +60,7 @@ def test_sqlite_store_uses_wal_and_idempotent_migrations(tmp_path: Path):
         "workflows",
         "workflow_steps",
         "test_results",
+        "scheduler_tasks",
     }.issubset(tables)
 
 

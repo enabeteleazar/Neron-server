@@ -37,7 +37,7 @@ def _update_task_status_or_404(task_id: str, status: str) -> dict[str, Any]:
     return task
 
 
-@router.get("")
+@router.get("/legacy")
 async def list_tasks(
     status: str | None = Query(default=None),
     priority: str | None = Query(default=None),
@@ -52,14 +52,14 @@ async def list_tasks(
     }
 
 
-@router.get("/status")
+@router.get("/legacy/status")
 async def task_status() -> dict[str, Any]:
     manager = get_task_manager()
 
     return manager.get_status_summary()
 
 
-@router.get("/running")
+@router.get("/legacy/running")
 async def running_tasks() -> dict[str, Any]:
     manager = get_task_manager()
 
@@ -68,7 +68,7 @@ async def running_tasks() -> dict[str, Any]:
     }
 
 
-@router.get("/next")
+@router.get("/legacy/next")
 async def get_next_task() -> dict[str, Any]:
     manager = get_task_manager()
 
@@ -77,7 +77,7 @@ async def get_next_task() -> dict[str, Any]:
     }
 
 
-@router.post("/next/start")
+@router.post("/legacy/next/start")
 async def start_next_task() -> dict[str, Any]:
     manager = get_task_manager()
 
@@ -110,7 +110,7 @@ async def create_task(payload: CreateTaskRequest) -> dict[str, Any]:
     }
 
 
-@router.get("/schema")
+@router.get("/legacy/schema")
 async def task_schema() -> dict[str, Any]:
     return {
         "statuses": sorted(VALID_TASK_STATUSES),
@@ -118,7 +118,7 @@ async def task_schema() -> dict[str, Any]:
     }
 
 
-@router.get("/{task_id}")
+@router.get("/legacy/{task_id}")
 async def get_task(task_id: str) -> dict[str, Any]:
     manager = get_task_manager()
 
@@ -171,7 +171,7 @@ async def fail_task(task_id: str) -> dict[str, Any]:
     }
 
 
-@router.post("/{task_id}/cancel")
+@router.post("/legacy/{task_id}/cancel")
 async def cancel_task(task_id: str) -> dict[str, Any]:
     task = _update_task_status_or_404(task_id, "cancelled")
 
