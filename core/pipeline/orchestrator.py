@@ -1,348 +1,774 @@
-# core/pipeline/orchestrator.py
-# v3 — Orchestrateur intelligent : boucle de décision, retry, LLM fallback,
-#       mémoire persistante, plan multi-étapes avec état.
 from __future__ import annotations
 
-import asyncio
-import logging
+import json
+import re
 import time
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional
+import unicodedata
+from dataclasses import asdict, dataclass, field
+from typing import Any
 
-from core.pipeline.nlp.orchestrator_plan import OrchestratorPlan, PlannedAction
-from core.pipeline.nlp.nlp_processor import NLPProcessor, NLPResult, get_processor
-from core.pipeline.intent.intent_router import Intent, IntentResult
+from core.agents.base_agent import get_logger
+from core.capabilities.models import CapabilityRequest
+from core.pipeline.intent.intent_router import Intent, IntentResult, IntentRouter
+from core.pipeline.routing.agent_router import AgentRouter
 
-logger = logging.getLogger("pipeline.orchestrator")
-
-# ── Config ────────────────────────────────────────────────────────────────────
-
-_CONFIDENCE_LLM_FALLBACK = 0.40   # en dessous → LLM fallback
-_MAX_RETRIES             = 2      # tentatives max par action
-_RETRY_DELAY             = 0.05   # s entre retries (CPU-friendly)
-_MULTI_SEP               = "\n\n---\n\n"
-_TIMEOUT_ACTION          = 30.0   # timeout par action (s)
+logger = get_logger("core.pipeline.orchestrator")
 
 
-# ── État d'une action dans le plan ────────────────────────────────────────────
+@dataclass(frozen=True)
+class OrchestratorDecision:
+    intent: str
+    selected_route: str
+    reason: str
+    complexity: str
+    requires_llm: bool = False
+    requires_timer: bool = False
+    requires_memory: bool = False
+    requires_tool: bool = False
+    requires_resolver: bool = False
+    requires_agent_factory: bool = False
+    requires_goal_pipeline: bool = False
+    requires_governor: bool = False
 
-@dataclass
-class ActionState:
-    action:    PlannedAction
-    attempts:  int   = 0
-    success:   bool  = False
-    response:  str   = ""
-    error:     str   = ""
-    elapsed_ms: float = 0.0
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
-
-# ── Résultat final ────────────────────────────────────────────────────────────
 
 @dataclass
 class OrchestratorResult:
-    response:        str
-    intent:          str
-    confidence:      float
-    nlp:             Dict[str, Any]
-    multi_responses: List[str]          = field(default_factory=list)
-    fallback_used:   bool               = False
-    retries:         int                = 0
-    elapsed_ms:      float              = 0.0
+    response: str
+    intent: str
+    confidence: float
+    nlp: dict[str, Any]
+    decision: OrchestratorDecision
+    executor: str
+    error: str | None = None
+    model: str | None = None
+    elapsed_ms: float = 0.0
+    metadata: dict[str, Any] = field(default_factory=dict)
+    multi_responses: list[str] = field(default_factory=list)
+    fallback_used: bool = False
+    retries: int = 0
 
-    def to_metadata(self) -> Dict[str, Any]:
+    def to_metadata(self) -> dict[str, Any]:
         return {
-            "intent":        self.intent,
-            "confidence":    (
-                "high"   if self.confidence >= 0.7 else
-                "medium" if self.confidence >= 0.4 else "low"
-            ),
-            "nlp":           self.nlp,
-            "multi":         len(self.multi_responses) > 1,
+            "intent": self.intent,
+            "confidence": _confidence_label(self.confidence),
+            "nlp": self.nlp,
+            "orchestrator_decision": self.decision.to_dict(),
+            "selected_route": self.decision.selected_route,
+            "executor": self.executor,
             "fallback_used": self.fallback_used,
-            "retries":       self.retries,
-            "elapsed_ms":    self.elapsed_ms,
+            "retries": self.retries,
+            "elapsed_ms": self.elapsed_ms,
+            **self.metadata,
         }
 
 
-# ── Orchestrateur v3 ──────────────────────────────────────────────────────────
-
-class NLPOrchestrator:
-    """
-    Pipeline complet :
-      1. NLP (intent + entities + context)
-      2. Détection multi-action → plan séquentiel / parallèle
-      3. Boucle de décision :
-           a. confidence ≥ seuil → agent spécialisé
-           b. confidence < seuil → LLM fallback avec contexte
-      4. Retry automatique (max 2) sur erreur transitoire
-      5. Persistance du tour dans SQLite après réponse
-    """
+class CoreOrchestrator:
+    """Unique authority for user-facing routing in Neron Core."""
 
     def __init__(
         self,
-        agent_router,
-        nlp:   Optional[NLPProcessor] = None,
-        store=None,
+        *,
+        intent_router: IntentRouter | None = None,
+        agent_router: AgentRouter | None = None,
+        capability_resolver: Any | None = None,
+        goal_orchestrator_factory: Any | None = None,
+        goal_execution_engine: Any | None = None,
+        goal_background_runner: Any | None = None,
+        runtime_governor: Any | None = None,
+        memory_engine: Any | None = None,
+        time_provider: Any | None = None,
     ) -> None:
-        self._router = agent_router
-        self._nlp    = nlp or get_processor()
-        self._store  = store  # PersistentStore | None (lazy)
+        self.intent_router = intent_router or IntentRouter()
+        self.agent_router = agent_router or AgentRouter()
+        self._capability_resolver = capability_resolver
+        self._goal_orchestrator_factory = goal_orchestrator_factory
+        self._goal_execution_engine = goal_execution_engine
+        self._goal_background_runner = goal_background_runner
+        self._runtime_governor = runtime_governor
+        self._memory_engine = memory_engine
+        self._time_provider = time_provider
 
-    def _get_store(self):
-        if self._store is None:
-            try:
-                from core.memory.persistent_store import get_store
-                self._store = get_store()
-            except Exception:
-                pass
-        return self._store
+    async def decide(
+        self,
+        query: str,
+        *,
+        explicit_route: str | None = None,
+    ) -> tuple[OrchestratorDecision, IntentResult]:
+        intent_result = await self.intent_router.route(query)
+        intent = intent_result.intent
+        normalized = _normalize(query)
+        complexity = _complexity(query)
 
-    # ── Point d'entrée ────────────────────────────────────────────────────────
+        if explicit_route == "goal_pipeline" or normalized.startswith("/goal "):
+            decision = OrchestratorDecision(
+                intent="goal",
+                selected_route="goal_pipeline",
+                reason="Commande goal explicite recue par le Core.",
+                complexity="complex",
+                requires_goal_pipeline=True,
+                requires_governor=True,
+            )
+        elif _is_timer_request(normalized):
+            decision = OrchestratorDecision(
+                intent="timer",
+                selected_route="timer_engine",
+                reason="Demande explicite de minuteur detectee.",
+                complexity="simple",
+                requires_timer=True,
+            )
+        elif intent == Intent.TIME_QUERY or _is_date_request(normalized):
+            decision = OrchestratorDecision(
+                intent=Intent.TIME_QUERY.value,
+                selected_route="timer_engine",
+                reason="Demande de date ou heure detectee.",
+                complexity="simple",
+                requires_timer=True,
+            )
+        elif _is_memory_request(normalized):
+            decision = OrchestratorDecision(
+                intent="memory",
+                selected_route="memory_engine",
+                reason="Demande explicite de memorisation ou recherche memoire.",
+                complexity="simple",
+                requires_memory=True,
+            )
+        elif intent in {Intent.AGENT_CREATION, Intent.TOOL_CREATION}:
+            decision = OrchestratorDecision(
+                intent=intent.value,
+                selected_route="agent_factory",
+                reason="Creation explicite demandee; delegation au builder canonique.",
+                complexity="complex",
+                requires_agent_factory=True,
+                requires_governor=True,
+            )
+        elif _is_agent_maintenance(normalized):
+            decision = OrchestratorDecision(
+                intent="agent_update",
+                selected_route="tool_router",
+                reason="Commande explicite de maintenance d'agent.",
+                complexity=complexity,
+                requires_tool=True,
+                requires_governor=True,
+            )
+        elif _requires_specialized_resolution(normalized):
+            decision = OrchestratorDecision(
+                intent=intent.value,
+                selected_route="resolver",
+                reason="Demande complexe ou durable necessitant une capacite specialisee.",
+                complexity="complex",
+                requires_resolver=True,
+                requires_governor=True,
+            )
+        elif (
+            intent in _TOOL_INTENTS
+            or _is_task_command(normalized)
+        ):
+            decision = OrchestratorDecision(
+                intent=intent.value,
+                selected_route="tool_router",
+                reason="Une capacite deterministe existante correspond a l'intention.",
+                complexity=complexity,
+                requires_tool=True,
+            )
+        else:
+            decision = OrchestratorDecision(
+                intent=intent.value,
+                selected_route="llm_provider",
+                reason="Conversation ou explication generale sans moteur specialise requis.",
+                complexity=complexity,
+                requires_llm=True,
+                requires_memory=True,
+            )
+
+        logger.info(
+            json.dumps(
+                {
+                    "event": "orchestrator_decision",
+                    **decision.to_dict(),
+                    "confidence": intent_result.confidence_score,
+                },
+                ensure_ascii=False,
+            )
+        )
+        logger.info(
+            json.dumps(
+                {
+                    "event": "selected_route",
+                    "selected_route": decision.selected_route,
+                    "intent": decision.intent,
+                    "reason": decision.reason,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return decision, intent_result
 
     async def handle(
         self,
-        query:      str,
+        query: str,
         session_id: str = "default",
+        *,
+        source_channel: str = "api",
+        user_id: str | None = None,
+        request_metadata: dict[str, Any] | None = None,
+        explicit_route: str | None = None,
     ) -> OrchestratorResult:
-        t0 = time.monotonic()
-
-        # ── 1. NLP ────────────────────────────────────────────────────────────
-        nlp_result = self._nlp.process(query, session_id)
-        plan       = nlp_result.plan
-
-        logger.info(
-            "[ORCH] q=%r intent=%s conf=%.2f mode=%s n=%d",
-            query[:60], nlp_result.intent, nlp_result.confidence,
-            plan.mode if plan else "single",
-            len(plan.actions) if plan else 1,
+        del session_id
+        started = time.monotonic()
+        query = query.strip()
+        decision, intent_result = await self.decide(
+            query,
+            explicit_route=explicit_route,
         )
 
-        # ── 2. Annulation ─────────────────────────────────────────────────────
-        if nlp_result.resolved and nlp_result.resolved.is_negation:
-            return self._make_result(
-                "D'accord, j'annule.", "conversation", 1.0, nlp_result,
-                t0=t0,
-            )
+        if decision.requires_governor:
+            governor = self._get_runtime_governor()
+            policy = governor.to_dict() if hasattr(governor, "to_dict") else {}
+            self._log_used("governor_used", decision, policy=policy)
 
-        # ── 3. Multi-action ───────────────────────────────────────────────────
-        if plan and plan.is_multi:
-            return await self._handle_multi(plan, nlp_result, session_id, t0)
-
-        # ── 4. Action unique ──────────────────────────────────────────────────
-        state = ActionState(action=PlannedAction(query=query, order=0))
-        await self._execute_with_retry(state, nlp_result, session_id)
-
-        result = self._make_result(
-            state.response or state.error,
-            nlp_result.intent,
-            nlp_result.confidence,
-            nlp_result,
-            fallback_used=False,
-            retries=state.attempts - 1,
-            t0=t0,
-        )
-
-        self._persist_turn(session_id, query, nlp_result, result.response)
-        return result
-
-    # ── Multi-action ──────────────────────────────────────────────────────────
-
-    async def _handle_multi(
-        self,
-        plan:       OrchestratorPlan,
-        nlp_result: NLPResult,
-        session_id: str,
-        t0:         float,
-    ) -> OrchestratorResult:
-        actions = sorted(plan.actions, key=lambda a: a.order)
-
-        if plan.mode == "parallel":
-            states = await self._run_parallel(actions, session_id)
-        else:
-            states = await self._run_sequential(actions, session_id)
-
-        responses = [s.response or s.error for s in states]
-        merged    = _MULTI_SEP.join(r for r in responses if r)
-        retries   = sum(max(0, s.attempts - 1) for s in states)
-
-        result = self._make_result(
-            merged, nlp_result.intent, nlp_result.confidence, nlp_result,
-            multi_responses=responses, retries=retries, t0=t0,
-        )
-        self._persist_turn(session_id, plan.raw_query, nlp_result, merged)
-        return result
-
-    async def _run_sequential(
-        self, actions: List[PlannedAction], session_id: str
-    ) -> List[ActionState]:
-        states = []
-        for action in actions:
-            sub_nlp = self._nlp.process(action.query, session_id)
-            state   = ActionState(action=action)
-            await self._execute_with_retry(state, sub_nlp, session_id)
-            states.append(state)
-        return states
-
-    async def _run_parallel(
-        self, actions: List[PlannedAction], session_id: str
-    ) -> List[ActionState]:
-        async def _one(action: PlannedAction) -> ActionState:
-            sub_nlp = self._nlp.process(action.query, session_id)
-            state   = ActionState(action=action)
-            await self._execute_with_retry(state, sub_nlp, session_id)
-            return state
-
-        return list(await asyncio.gather(*[_one(a) for a in actions]))
-
-    # ── Boucle de décision + retry ────────────────────────────────────────────
-
-    async def _execute_with_retry(
-        self,
-        state:      ActionState,
-        nlp_result: NLPResult,
-        session_id: str,
-    ) -> None:
-        """
-        Tente d'exécuter l'action jusqu'à _MAX_RETRIES fois.
-        Si confidence < seuil → LLM fallback immédiat (pas de retry agent).
-        """
-        for attempt in range(1, _MAX_RETRIES + 1):
-            state.attempts = attempt
-            t = time.monotonic()
-
-            try:
-                # ── Décision : agent spécialisé ou LLM fallback ───────────────
-                if nlp_result.confidence >= _CONFIDENCE_LLM_FALLBACK:
-                    response = await asyncio.wait_for(
-                        self._dispatch_agent(nlp_result, state.action.query),
-                        timeout=_TIMEOUT_ACTION,
-                    )
-                else:
-                    response = await asyncio.wait_for(
-                        self._llm_fallback(state.action.query, session_id, nlp_result),
-                        timeout=_TIMEOUT_ACTION,
-                    )
-
-                state.response  = response
-                state.success   = True
-                state.elapsed_ms = (time.monotonic() - t) * 1000
-                return
-
-            except asyncio.TimeoutError:
-                state.error = "⏱️ Timeout — réessaie dans un instant."
-                logger.warning("[ORCH] timeout attempt=%d q=%r", attempt, state.action.query[:40])
-
-            except Exception as exc:
-                state.error = f"⚠️ Erreur : {exc}"
-                logger.error("[ORCH] error attempt=%d: %s", attempt, exc)
-
-            if attempt < _MAX_RETRIES:
-                await asyncio.sleep(_RETRY_DELAY)
-
-        # Tous les essais épuisés
-        state.response = state.error or "⚠️ Impossible de traiter cette demande."
-
-    # ── Dispatch agent ────────────────────────────────────────────────────────
-
-    async def _dispatch_agent(self, nlp_result: NLPResult, query: str) -> str:
-        """Délègue à AgentRouter via IntentResult enrichi."""
-        intent_result = _nlp_to_intent_result(nlp_result)
-        return await self._router.route(intent_result, query)
-
-    # ── LLM Fallback ──────────────────────────────────────────────────────────
-
-    async def _llm_fallback(
-        self, query: str, session_id: str, nlp_result: NLPResult
-    ) -> str:
-        """
-        Appelle le LLM directement avec contexte enrichi quand
-        la confidence NLP est trop faible pour un agent spécialisé.
-        """
-        logger.info(
-            "[ORCH] LLM fallback — conf=%.2f query=%r",
-            nlp_result.confidence, query[:50],
-        )
-
-        # Construire contexte
-        context_summary = ""
         try:
-            ctx_mgr = self._nlp._ctx
-            context_summary = ctx_mgr.get_context_summary(session_id)
-        except Exception:
-            pass
-
-        augmented = query
-        if context_summary:
-            augmented = f"{context_summary}\n\nQuestion actuelle : {query}"
-
-        # Utiliser LLM via AgentRouter en mode conversation
-        from core.pipeline.intent.intent_router import IntentResult
-        fallback_intent = IntentResult(
-            intent=Intent.CONVERSATION,
-            confidence="low",
-            confidence_score=nlp_result.confidence,
-            entities=nlp_result.entities,
-        )
-        return await self._router.route(fallback_intent, augmented)
-
-    # ── Persistance ───────────────────────────────────────────────────────────
-
-    def _persist_turn(
-        self,
-        session_id: str,
-        query:      str,
-        nlp_result: NLPResult,
-        response:   str,
-    ) -> None:
-        store = self._get_store()
-        if not store:
-            return
-        try:
-            store.push_turn(
-                session_id=session_id,
-                query=query,
-                intent=nlp_result.intent,
-                entities=nlp_result.entities,
-                response=response[:500],
-                confidence=nlp_result.confidence,
+            response, executor, extra = await self._execute(
+                decision,
+                intent_result,
+                query,
+                source_channel=source_channel,
+                user_id=user_id,
+                request_metadata=request_metadata or {},
             )
+            error = extra.pop("error", None)
+            model = extra.pop("model", None)
+            response_intent = str(extra.pop("resolved_intent", decision.intent))
         except Exception as exc:
-            logger.warning("[ORCH] persist error: %s", exc)
+            logger.exception(
+                "orchestrator_execution_failed route=%s",
+                decision.selected_route,
+            )
+            response = f"Erreur d'execution: {exc}"
+            executor = decision.selected_route
+            extra = {}
+            error = str(exc)
+            model = None
+            response_intent = decision.intent
 
-    # ── Builder résultat ──────────────────────────────────────────────────────
-
-    def _make_result(
-        self,
-        response:       str,
-        intent:         str,
-        confidence:     float,
-        nlp_result:     NLPResult,
-        multi_responses: Optional[List[str]] = None,
-        fallback_used:  bool = False,
-        retries:        int  = 0,
-        t0:             float = 0.0,
-    ) -> OrchestratorResult:
         return OrchestratorResult(
             response=response,
-            intent=intent,
-            confidence=confidence,
-            nlp=nlp_result.to_dict(),
-            multi_responses=multi_responses or [],
-            fallback_used=fallback_used,
-            retries=retries,
-            elapsed_ms=round((time.monotonic() - t0) * 1000, 1),
+            intent=response_intent,
+            confidence=intent_result.confidence_score,
+            nlp=intent_result.to_nlp_dict(),
+            decision=decision,
+            executor=executor,
+            error=error,
+            model=model,
+            elapsed_ms=round((time.monotonic() - started) * 1000, 2),
+            metadata=extra,
+        )
+
+    async def run_goal(
+        self,
+        objective: str,
+        *,
+        source: str = "api",
+    ) -> dict[str, Any]:
+        decision, _ = await self.decide(
+            objective,
+            explicit_route="goal_pipeline",
+        )
+        if decision.requires_governor:
+            self._log_used("governor_used", decision)
+        self._log_used("goal_pipeline_used", decision)
+        self._log_used("planner_used", decision, usage="planning_only")
+        return await self._get_goal_orchestrator().run_goal(
+            objective.strip(),
+            source=source,
+        )
+
+    async def queue_goal(
+        self,
+        objective: str,
+        *,
+        source: str = "api",
+    ) -> dict[str, Any]:
+        decision, _ = await self.decide(
+            objective,
+            explicit_route="goal_pipeline",
+        )
+        if decision.requires_governor:
+            self._log_used("governor_used", decision)
+        self._log_used("goal_pipeline_used", decision)
+        self._log_used("planner_used", decision, usage="planning_only")
+
+        orchestrator = self._get_goal_orchestrator()
+        goal = orchestrator.queue_goal(objective.strip(), source=source)
+        goal_id = str(goal["id"])
+
+        execution_engine = self._get_goal_execution_engine()
+        background_runner = self._get_goal_background_runner()
+        execution_engine.enqueue_goal(
+            goal_id,
+            objective.strip(),
+            source,
+            dict(goal.get("metadata") or {}),
+        )
+        background_runner.submit(
+            goal_id=goal_id,
+            objective=objective.strip(),
+            source=source,
+        )
+        return goal
+
+    async def _execute(
+        self,
+        decision: OrchestratorDecision,
+        intent_result: IntentResult,
+        query: str,
+        *,
+        source_channel: str,
+        user_id: str | None,
+        request_metadata: dict[str, Any],
+    ) -> tuple[str, str, dict[str, Any]]:
+        route = decision.selected_route
+
+        if route == "timer_engine":
+            self._log_used("timer_used", decision)
+            return self._execute_timer(query, decision)
+
+        if route == "memory_engine":
+            self._log_used("memory_used", decision)
+            return await self._execute_memory(query)
+
+        if route == "resolver":
+            self._log_used("resolver_used", decision)
+            request = CapabilityRequest(
+                text=query,
+                source="user",
+                channel=source_channel,
+                user_id=user_id,
+                metadata=request_metadata,
+            )
+            result = await self._get_capability_resolver().resolve(request)
+            if result is not None:
+                if result.async_started or result.goal_id:
+                    self._log_used(
+                        "goal_pipeline_used",
+                        decision,
+                        delegated_by="resolver",
+                    )
+                selected = (
+                    result.tool_slug
+                    or result.agent_slug
+                    or (
+                        result.decision.decision
+                        if result.decision is not None
+                        else "capability_resolver"
+                    )
+                )
+                return (
+                    result.response,
+                    str(selected),
+                    {
+                        "capability": result.to_dict(),
+                        "error": result.error,
+                        "resolved_intent": (
+                            result.decision.decision
+                            if result.decision is not None
+                            else decision.intent
+                        ),
+                    },
+                )
+            fallback = OrchestratorDecision(
+                intent=decision.intent,
+                selected_route="llm_provider",
+                reason="Resolver sans resultat; fallback decide par l'Orchestrator.",
+                complexity=decision.complexity,
+                requires_llm=True,
+                requires_memory=True,
+            )
+            self._log_used("llm_provider_used", fallback)
+            response = await self.agent_router.route(intent_result, query)
+            return response, "llm_agent", {"resolver_fallback": True}
+
+        if route == "goal_pipeline":
+            self._log_used("goal_pipeline_used", decision)
+            self._log_used("planner_used", decision, usage="planning_only")
+            objective = re.sub(r"^\s*/goal\s+", "", query, flags=re.IGNORECASE)
+            result = await self._get_goal_orchestrator().run_goal(
+                objective,
+                source=source_channel,
+            )
+            return _goal_response_text(result), "goal_pipeline", {"goal": result}
+
+        if route == "agent_factory":
+            self._log_used("agent_factory_used", decision)
+            response = await self.agent_router.route(
+                intent_result,
+                query,
+                source_channel=source_channel,
+            )
+            return response, "agent_build_orchestrator", {}
+
+        if route == "tool_router":
+            self._log_used("tool_router_used", decision)
+            response = await self.agent_router.route(
+                intent_result,
+                query,
+                source_channel=source_channel,
+            )
+            if decision.intent == "agent_update":
+                return response, "agent_manager", {
+                    "resolved_intent": "agent_update",
+                    "routed_before_llm": True,
+                }
+            return response, _executor_for_intent(intent_result.intent), {}
+
+        self._log_used("llm_provider_used", decision)
+        if decision.requires_memory:
+            self._log_used("memory_used", decision, usage="context")
+        response = await self.agent_router.route(
+            intent_result,
+            query,
+            source_channel=source_channel,
+        )
+        return response, "llm_agent", {}
+
+    def _execute_timer(
+        self,
+        query: str,
+        decision: OrchestratorDecision,
+    ) -> tuple[str, str, dict[str, Any]]:
+        if decision.intent == "timer":
+            seconds = _timer_seconds(query)
+            if seconds is None:
+                return (
+                    "Je n'ai pas pu determiner la duree du minuteur.",
+                    "timer_engine",
+                    {"error": "timer_duration_missing"},
+                )
+            from core.modules.scheduler import schedule_timer
+
+            timer = schedule_timer(seconds, label=query)
+            return (
+                f"Minuteur programme pour {_human_duration(seconds)}.",
+                "timer_engine",
+                {"timer": timer},
+            )
+
+        provider = self._get_time_provider()
+        now = provider.now()
+        normalized = _normalize(query)
+        wants_date = _is_date_request(normalized)
+        wants_time = any(token in normalized for token in ("heure", "time", "il est"))
+        if wants_date and not wants_time:
+            response = now.strftime("Nous sommes le %d/%m/%Y.")
+        elif wants_time and not wants_date:
+            response = now.strftime("Il est %Hh%M.")
+        else:
+            response = now.strftime("Il est %Hh%M, le %d/%m/%Y.")
+        return response, "time_provider", {"iso": provider.iso()}
+
+    async def _execute_memory(
+        self,
+        query: str,
+    ) -> tuple[str, str, dict[str, Any]]:
+        normalized = _normalize(query)
+        memory = self._get_memory_engine()
+        if any(
+            token in normalized
+            for token in ("souviens toi", "memorise", "retiens", "retient", "note ceci")
+        ):
+            memory.store(query, "Information memorisee.", {"source": "orchestrator"})
+            return "C'est memorise.", "memory_agent", {"memory_action": "store"}
+
+        terms = re.sub(
+            r"^(cherche|recherche|retrouve).*(memoire|notes?)",
+            "",
+            query,
+            flags=re.IGNORECASE,
+        ).strip(" :")
+        entries = memory.search(terms or query, limit=5)
+        if not entries:
+            return "Je n'ai rien trouve dans la memoire.", "memory_agent", {
+                "memory_action": "search",
+                "matches": 0,
+            }
+        lines = ["Elements trouves en memoire :"]
+        lines.extend(f"- {entry['input']}: {entry['response']}" for entry in entries)
+        return "\n".join(lines), "memory_agent", {
+            "memory_action": "search",
+            "matches": len(entries),
+        }
+
+    def _get_capability_resolver(self) -> Any:
+        if self._capability_resolver is None:
+            from core.capabilities.resolver import CapabilityResolver
+
+            self._capability_resolver = CapabilityResolver()
+        return self._capability_resolver
+
+    def _get_goal_orchestrator(self) -> Any:
+        if self._goal_orchestrator_factory is None:
+            from core.goals.goal_orchestrator import get_goal_orchestrator
+
+            self._goal_orchestrator_factory = get_goal_orchestrator
+        return self._goal_orchestrator_factory()
+
+    def _get_runtime_governor(self) -> Any:
+        if self._runtime_governor is None:
+            from core.runtime.governor import get_runtime_governor
+
+            self._runtime_governor = get_runtime_governor()
+        return self._runtime_governor
+
+    def _get_goal_execution_engine(self) -> Any:
+        if self._goal_execution_engine is None:
+            from core.goals.execution_engine import get_goal_execution_engine
+
+            self._goal_execution_engine = get_goal_execution_engine()
+        return self._goal_execution_engine
+
+    def _get_goal_background_runner(self) -> Any:
+        if self._goal_background_runner is None:
+            from core.goals.background_runner import get_goal_background_runner
+
+            self._goal_background_runner = get_goal_background_runner()
+        return self._goal_background_runner
+
+    def _get_memory_engine(self) -> Any:
+        if self._memory_engine is None:
+            from core.agents.core.memory_agent import MemoryAgent, init_db
+
+            init_db()
+            self._memory_engine = MemoryAgent()
+        return self._memory_engine
+
+    def _get_time_provider(self) -> Any:
+        if self._time_provider is None:
+            from core.neron_time.time_provider import TimeProvider
+
+            self._time_provider = TimeProvider()
+        return self._time_provider
+
+    @staticmethod
+    def _log_used(
+        event: str,
+        decision: OrchestratorDecision,
+        **metadata: Any,
+    ) -> None:
+        logger.info(
+            json.dumps(
+                {
+                    "event": event,
+                    "selected_route": decision.selected_route,
+                    "intent": decision.intent,
+                    **metadata,
+                },
+                ensure_ascii=False,
+            )
         )
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Historical name retained for compatibility.
+NLPOrchestrator = CoreOrchestrator
 
-def _nlp_to_intent_result(nlp: NLPResult) -> IntentResult:
-    _MAP = {i.value: i for i in Intent}
-    intent = _MAP.get(nlp.intent, Intent.CONVERSATION)
-    score  = nlp.confidence
-    return IntentResult(
-        intent=intent,
-        confidence="high" if score >= 0.7 else ("medium" if score >= 0.4 else "low"),
-        confidence_score=score,
-        entities=nlp.entities,
+_core_orchestrator: CoreOrchestrator | None = None
+
+
+def get_core_orchestrator() -> CoreOrchestrator:
+    global _core_orchestrator
+    if _core_orchestrator is None:
+        _core_orchestrator = CoreOrchestrator()
+    return _core_orchestrator
+
+
+def set_core_orchestrator(orchestrator: CoreOrchestrator | None) -> None:
+    global _core_orchestrator
+    _core_orchestrator = orchestrator
+
+
+_TOOL_INTENTS = {
+    Intent.WEB_SEARCH,
+    Intent.HA_ACTION,
+    Intent.CODE,
+    Intent.CODE_AUDIT,
+    Intent.SYSTEM_STATUS,
+    Intent.NETWORK_STATUS,
+    Intent.SELF_STATUS,
+    Intent.NEWS_QUERY,
+    Intent.WEATHER_QUERY,
+    Intent.TODO_ACTION,
+    Intent.WIKI_QUERY,
+    Intent.PERSONALITY_FEEDBACK,
+    Intent.AGENT_LIST,
+    Intent.AGENT_RUN,
+    Intent.PROJECT_STATUS,
+    Intent.PROJECT_LIST,
+}
+
+
+def _normalize(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", text.lower())
+    normalized = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
     )
+    return " ".join(
+        normalized.replace("'", " ").replace("’", " ").replace("-", " ").split()
+    )
+
+
+def _complexity(query: str) -> str:
+    words = len(query.split())
+    if words >= 35 or query.count("\n") >= 3:
+        return "complex"
+    if words >= 12:
+        return "medium"
+    return "simple"
+
+
+def _is_timer_request(query: str) -> bool:
+    return any(token in query for token in ("minuteur", "timer", "compte a rebours"))
+
+
+def _is_date_request(query: str) -> bool:
+    return any(
+        token in query
+        for token in (
+            "quelle date",
+            "quel jour",
+            "on est le combien",
+            "date sommes",
+        )
+    )
+
+
+def _is_memory_request(query: str) -> bool:
+    return any(
+        token in query
+        for token in (
+            "souviens toi",
+            "memorise",
+            "retiens",
+            "retient",
+            "note ceci",
+            "cherche dans la memoire",
+            "recherche memoire",
+            "retrouve mes notes",
+        )
+    )
+
+
+def _requires_specialized_resolution(query: str) -> bool:
+    durable = (
+        "automatiquement",
+        "en continu",
+        "periodiquement",
+        "surveille",
+        "alerte moi",
+        "previens moi",
+    )
+    complex_request = (
+        "analyse cette demande complexe",
+        "capacite specialisee",
+        "paques",
+        "sous reseau",
+        "subnet",
+    )
+    return any(token in query for token in durable + complex_request)
+
+
+def _is_task_command(query: str) -> bool:
+    return any(
+        token in query
+        for token in (
+            "etat des taches",
+            "status des taches",
+            "prochaine tache",
+            "lance la prochaine tache",
+        )
+    )
+
+
+def _is_agent_maintenance(query: str) -> bool:
+    return any(
+        query.startswith(token)
+        for token in (
+            "mets a jour ",
+            "met a jour ",
+            "ameliore agent ",
+            "update agent ",
+            "scan agents",
+            "rescanner agents",
+            "index agents",
+            "agents invalides",
+            "valide agent ",
+            "valide l agent ",
+            "promeut agent ",
+            "active agent ",
+        )
+    )
+
+
+def _timer_seconds(query: str) -> int | None:
+    normalized = _normalize(query)
+    match = re.search(
+        r"(\d+)\s*(seconde|secondes|minute|minutes|heure|heures)",
+        normalized,
+    )
+    if not match:
+        return None
+    value = int(match.group(1))
+    unit = match.group(2)
+    if unit.startswith("heure"):
+        return value * 3600
+    if unit.startswith("minute"):
+        return value * 60
+    return value
+
+
+def _human_duration(seconds: int) -> str:
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600} heure(s)"
+    if seconds % 60 == 0:
+        return f"{seconds // 60} minute(s)"
+    return f"{seconds} seconde(s)"
+
+
+def _confidence_label(score: float) -> str:
+    if score >= 0.7:
+        return "high"
+    if score >= 0.4:
+        return "medium"
+    return "low"
+
+
+def _executor_for_intent(intent: Intent) -> str:
+    return {
+        Intent.WEB_SEARCH: "web_agent",
+        Intent.HA_ACTION: "ha_agent",
+        Intent.CODE: "code_agent",
+        Intent.CODE_AUDIT: "code_audit_agent",
+        Intent.SYSTEM_STATUS: "system_agent",
+        Intent.NETWORK_STATUS: "system_agent",
+        Intent.SELF_STATUS: "self_model",
+        Intent.NEWS_QUERY: "news_agent",
+        Intent.WEATHER_QUERY: "weather_agent",
+        Intent.TODO_ACTION: "todo_agent",
+        Intent.WIKI_QUERY: "wiki_agent",
+        Intent.PERSONALITY_FEEDBACK: "personality",
+        Intent.AGENT_LIST: "agent_registry",
+        Intent.AGENT_RUN: "agent_runtime",
+        Intent.PROJECT_STATUS: "project_manager",
+        Intent.PROJECT_LIST: "project_manager",
+    }.get(intent, "tool_router")
+
+
+def _goal_response_text(result: dict[str, Any]) -> str:
+    response = result.get("response") or result.get("message")
+    if response:
+        return str(response)
+    status = result.get("status") or "unknown"
+    plan = result.get("plan") or {}
+    plan_id = str(plan.get("id") or "")
+    suffix = f" Plan: {plan_id[:8]}." if plan_id else ""
+    return f"Objectif traite. Statut: {status}.{suffix}"

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core.api.auth import verify_api_key
+from core.tools.creator import get_tool_creator
+from core.tools.models import ToolNeed
 from core.tools.registry import get_tool_registry
 from core.tools.runtime import get_tool_runtime
 
@@ -17,10 +19,45 @@ class ToolExecuteRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class ToolNeedRequest(BaseModel):
+    text: str = Field(..., min_length=1)
+    domain: str | None = None
+    intent: str | None = None
+    required_tool_slugs: list[str] = Field(default_factory=list)
+    matched_capability: str | None = None
+
+    def to_need(self) -> ToolNeed:
+        return get_tool_creator().plan_need(
+            self.text,
+            domain=self.domain,
+            intent=self.intent,
+            required_tool_slugs=self.required_tool_slugs,
+            matched_capability=self.matched_capability,
+        )
+
+
 @router.get("")
 async def list_tools(_: None = Depends(verify_api_key)) -> dict[str, Any]:
     tools = [spec.to_dict() for spec in get_tool_registry().list_tools()]
     return {"count": len(tools), "tools": tools}
+
+
+@router.post("/plan")
+async def plan_tools(
+    request: ToolNeedRequest,
+    _: None = Depends(verify_api_key),
+) -> dict[str, Any]:
+    creator = get_tool_creator()
+    return creator.plan_from_need(request.to_need())
+
+
+@router.post("/create-from-need")
+async def create_tools_from_need(
+    request: ToolNeedRequest,
+    _: None = Depends(verify_api_key),
+) -> dict[str, Any]:
+    creator = get_tool_creator()
+    return await creator.create_from_need(request.to_need())
 
 
 @router.get("/{slug}")

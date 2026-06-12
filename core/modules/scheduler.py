@@ -1,8 +1,9 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.date import DateTrigger
 from core.config import settings
 
 logger = logging.getLogger("scheduler")
@@ -271,3 +272,46 @@ def get_jobs() -> list[dict]:
             "next_run": str(job.next_run_time) if job.next_run_time else "N/A",
         })
     return jobs
+
+
+def schedule_timer(delay_seconds: int, label: str = "Minuteur Neron") -> dict:
+    """Programme un minuteur ponctuel dans le scheduler Core existant."""
+    if delay_seconds <= 0:
+        raise ValueError("La duree du minuteur doit etre positive")
+    if not _scheduler or not _scheduler.running:
+        raise RuntimeError("Timer Engine indisponible: scheduler non demarre")
+
+    run_at = datetime.now(_scheduler.timezone) + timedelta(seconds=delay_seconds)
+    timer_id = f"timer_{int(run_at.timestamp() * 1000)}"
+
+    async def _notify_timer() -> None:
+        logger.info(
+            "timer_elapsed id=%s delay_seconds=%s label=%s",
+            timer_id,
+            delay_seconds,
+            label,
+        )
+        if _notify_fn:
+            result = _notify_fn(f"Minuteur termine : {label}", "info")
+            if asyncio.iscoroutine(result):
+                await result
+
+    _scheduler.add_job(
+        _notify_timer,
+        DateTrigger(run_date=run_at),
+        id=timer_id,
+        name=label[:80],
+        replace_existing=False,
+    )
+    logger.info(
+        "timer_scheduled id=%s delay_seconds=%s run_at=%s",
+        timer_id,
+        delay_seconds,
+        run_at.isoformat(),
+    )
+    return {
+        "id": timer_id,
+        "delay_seconds": delay_seconds,
+        "run_at": run_at.isoformat(),
+        "label": label,
+    }

@@ -137,7 +137,14 @@ async def approve_plan(plan_id: str) -> dict:
     return plan
 
 
-@router.post("/planner/execute/{plan_id}")
+@router.post(
+    "/planner/execute/{plan_id}",
+    deprecated=True,
+    description=(
+        "Legacy direct execution path. Prefer "
+        "POST /planner/execute-approved/{plan_id}."
+    ),
+)
 async def execute_plan(plan_id: str) -> dict:
     plan = storage.get(plan_id)
     if not plan:

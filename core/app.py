@@ -122,6 +122,11 @@ from core.modules.sessions import SessionStore
 from core.modules.skills import SkillRegistry
 from core.neron_time.time_provider import TimeProvider
 from core.pipeline.intent.intent_router import Intent, IntentRouter
+from core.pipeline.orchestrator import (
+    CoreOrchestrator,
+    get_core_orchestrator,
+    set_core_orchestrator,
+)
 from core.self_model.monitor import get_self_monitor
 
 from core.integrations.homeassistant.client import HomeAssistantClient
@@ -178,6 +183,22 @@ def get_capability_resolver() -> CapabilityResolver:
     if _capability_resolver is None:
         _capability_resolver = CapabilityResolver()
     return _capability_resolver
+
+
+def _active_core_orchestrator() -> CoreOrchestrator:
+    """Return the Core authority wired to the currently active app services."""
+    orchestrator = get_core_orchestrator()
+    if router is not None:
+        orchestrator.intent_router = router
+    active_agent_router = globals().get("agent_router")
+    if active_agent_router is not None:
+        orchestrator.agent_router = active_agent_router
+    orchestrator._capability_resolver = get_capability_resolver()
+    if memory_agent is not None:
+        orchestrator._memory_engine = memory_agent
+    if time_provider is not None:
+        orchestrator._time_provider = time_provider
+    return orchestrator
 
 
 def _capability_confidence(score: float) -> str:
@@ -407,6 +428,15 @@ async def lifespan(app: FastAPI):
                 skills=_skills,
                 llm_config=llm_cfg,
                 tools=_tools,
+            )
+            set_core_orchestrator(
+                CoreOrchestrator(
+                    intent_router=router,
+                    agent_router=agent_router,
+                    capability_resolver=get_capability_resolver(),
+                    memory_engine=memory_agent,
+                    time_provider=time_provider,
+                )
             )
 
             gw_config = GatewayConfig(
@@ -829,292 +859,57 @@ def _handle_task_command_from_input(query: str) -> str | None:
 @app.post("/input/text", response_model=CoreResponse)
 async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
     query = input_data.text.strip()
+    if not query:
+        raise HTTPException(status_code=422, detail="text is required")
 
-    task_command = _handle_task_command_from_input(query)
-    if task_command is not None:
-        return CoreResponse(
-            response=task_command,
-            intent="task_system",
-            agent="task_manager",
-            confidence="high",
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            execution_time_ms=0.0,
-            model=None,
-            error=None,
-            transcription=None,
-            metadata={"source": "task_system_direct_input"},
-        )
-
-    start = time.monotonic()
     metrics.record_request_start()
     logger.info(json.dumps({"event": "request_received", "query": query[:80]}))
-    await event_bus.publish(Event(type=USER_MESSAGE_RECEIVED, payload={"text": query}, source="api.input.text"))
-
-    intent_result = await router.route(query)
-    await event_bus.publish(Event(
-        type="intent.detected",
-        payload={
-            "intent": intent_result.intent.value,
-            "confidence": intent_result.confidence,
-            "entities": intent_result.entities,
-        },
-        source="core.intent_router",
-    ))
-    metrics.record_intent(intent_result.intent.value)
-
-    metadata = {
-        "intent":     intent_result.intent.value,
-        "confidence": intent_result.confidence,
-        "nlp":        intent_result.to_nlp_dict(),
-    }
-
-    try:
-        if _extract_agent_update_request(query):
-            response_text = await _update_dynamic_agent(query)
-
-            return CoreResponse(
-                response=response_text,
-                intent="agent_update",
-                agent="agent_manager",
-                confidence="high",
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata={
-                    **metadata,
-                    "source": input_data.source_channel,
-                    "routed_before_llm": True,
-                },
-            )
-
-        capability_request = CapabilityRequest(
-            text=query,
-            source="user",
-            channel=input_data.source_channel,
-            user_id=input_data.user_id,
-            metadata=input_data.metadata,
+    await event_bus.publish(
+        Event(
+            type=USER_MESSAGE_RECEIVED,
+            payload={"text": query},
+            source=f"{input_data.source_channel}.input.text",
         )
-        capability_result = await get_capability_resolver().resolve(capability_request)
-        if capability_result is not None:
-            decision = capability_result.decision
-            selected = (
-                capability_result.tool_slug
-                or capability_result.agent_slug
-                or (decision.decision if decision else "capability_resolver")
-            )
-            return CoreResponse(
-                response=capability_result.response,
-                intent=(decision.decision if decision else "capability"),
-                agent=str(selected),
-                confidence=_capability_confidence(decision.confidence if decision else 0.0),
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=capability_result.error,
-                transcription=None,
-                metadata={
-                    **metadata,
-                    "source": input_data.source_channel,
-                    "capability": capability_result.to_dict(),
-                },
-            )
+    )
 
-        if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
-            return await _handle_personality_feedback(query, intent_result, metadata, start)
-        elif intent_result.intent == Intent.TIME_QUERY:
-            return _handle_time_query(intent_result, metadata, start, query)
-        elif intent_result.intent in (Intent.SYSTEM_STATUS, Intent.NETWORK_STATUS):
-            try:
-                from core.self_model.self_model import get_self_model
+    started = time.monotonic()
+    try:
+        result = await _active_core_orchestrator().handle(
+            query,
+            source_channel=input_data.source_channel,
+            user_id=input_data.user_id,
+            request_metadata=input_data.metadata,
+        )
+        metrics.record_intent(result.intent)
+        if result.error:
+            metrics.record_error(result.executor)
+        if result.model:
+            metrics.record_model_call(result.model)
 
-                model = get_self_model()
-                model.set_last_intent(
-                    getattr(intent_result.intent, "value", str(intent_result.intent)),
-                    getattr(intent_result, "confidence", None),
-                )
-                model.set_last_agent("system_agent")
-                model.set_last_error(None)
-            except Exception:
-                pass
-
-            await _publish_agent_selected(intent_result, "system_agent")
-
-            result = await _handle_system_status(query, intent_result, metadata, start)
-
-            await _publish_agent_executed(intent_result, "system_agent", result)
-            await _publish_response_ready(intent_result, "system_agent", result)
-
-            return result
-        elif intent_result.intent in (Intent.AGENT_CREATION, Intent.TOOL_CREATION):
-            response_text = await agent_router.route(
-                intent_result,
-                query,
-                source_channel=input_data.source_channel,
-            )
-
-            return CoreResponse(
-                response=response_text,
-                intent=intent_result.intent.value,
-                agent="agent_build_orchestrator",
-                confidence=intent_result.confidence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata=metadata,
-            )
-        elif intent_result.intent in (Intent.PROJECT_STATUS, Intent.PROJECT_LIST):
-            response_text = await agent_router.route(intent_result, query)
-
-            return CoreResponse(
-                response=response_text,
-                intent=intent_result.intent.value,
-                agent="project_manager",
-                confidence=intent_result.confidence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata=metadata,
-            )
-        elif intent_result.intent == Intent.AGENT_LIST:
-            response_text = await agent_router.route(intent_result, query)
-
-            return CoreResponse(
-                response=response_text,
-                intent=intent_result.intent.value,
-                agent="agent_registry",
-                confidence=intent_result.confidence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata=metadata,
-            )
-
-        elif intent_result.intent == Intent.AGENT_RUN:
-            response_text = await agent_router.route(intent_result, query)
-
-            return CoreResponse(
-                response=response_text,
-                intent=intent_result.intent.value,
-                agent="agent_runtime",
-                confidence=intent_result.confidence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata=metadata,
-            )
-
-        elif intent_result.intent == Intent.WEB_SEARCH:
-            return await _handle_web_search(query, intent_result, metadata, start)
-        elif intent_result.intent == Intent.HA_ACTION:
-            await _publish_agent_selected(intent_result, "ha_agent")
-
-            result = await _handle_ha_action(query, intent_result, metadata, start)
-
-            await _publish_agent_executed(intent_result, "ha_agent", result)
-            await _publish_response_ready(intent_result, "ha_agent", result)
-
-            return result
-        elif intent_result.intent == Intent.CODE_AUDIT:
-            await _publish_agent_selected(intent_result, "code_audit_agent")
-
-            result = await _handle_code_audit(intent_result, metadata, start)
-
-            await _publish_agent_executed(intent_result, "code_audit_agent", result)
-            await _publish_response_ready(intent_result, "code_audit_agent", result)
-
-            return result
-        elif intent_result.intent == Intent.CODE:
-            await _publish_agent_selected(intent_result, "code_agent")
-
-            result = await _handle_code(query, intent_result, metadata, start)
-
-            await _publish_agent_executed(intent_result, "code_agent", result)
-            await _publish_response_ready(intent_result, "code_agent", result)
-
-            return result
-
-        if _is_repair_query(query):
-            return await _handle_repairs(query, intent_result, metadata, start)
-
-        if _is_memory_query(query):
-            return await _handle_memory(query, intent_result, metadata, start)
-
-        elif intent_result.intent == Intent.SELF_STATUS:
-            response_text = await agent_router.route(intent_result, query)
-
-            return CoreResponse(
-                response=response_text,
-                intent=intent_result.intent.value,
-                agent="self_model",
-                confidence=intent_result.confidence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata=metadata,
-            )
-
-        elif intent_result.intent in (
-            Intent.GREETING,
-            Intent.THANKS,
-            Intent.GOODBYE,
-            Intent.STATUS_SMALLTALK,
-        ):
-            from core.agents.conversation.conversation_agent import ConversationAgent
-
-            agent = ConversationAgent()
-
-            if intent_result.intent == Intent.GREETING:
-                response_text = await agent.greeting()
-
-            elif intent_result.intent == Intent.THANKS:
-                response_text = await agent.thanks()
-
-            elif intent_result.intent == Intent.GOODBYE:
-                response_text = await agent.goodbye()
-
-            else:
-                response_text = await agent.status_smalltalk()
-
-            return CoreResponse(
-                response=response_text,
-                intent=intent_result.intent.value,
-                agent="conversation_agent",
-                confidence=intent_result.confidence,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-                model=None,
-                error=None,
-                transcription=None,
-                metadata={
-                    **metadata,
-                    "obsidian_context_used": False,
-                },
-            )
-
-        else:
-            await _publish_agent_selected(intent_result, "llm_agent")
-
-            result = await _handle_conversation(query, intent_result, metadata, start)
-
-            await _publish_agent_executed(intent_result, "llm_agent", result)
-            await _publish_response_ready(intent_result, "llm_agent", result)
-
-            return result
+        return CoreResponse(
+            response=result.response,
+            intent=result.intent,
+            agent=result.executor,
+            confidence=(
+                "high"
+                if result.confidence >= 0.7
+                else "medium"
+                if result.confidence >= 0.4
+                else "low"
+            ),
+            timestamp=utc_now_iso(),
+            execution_time_ms=result.elapsed_ms,
+            model=result.model,
+            error=result.error,
+            metadata={
+                **result.to_metadata(),
+                "source": input_data.source_channel,
+            },
+        )
     finally:
-        elapsed = round((time.monotonic() - start) * 1000, 2)
-        metrics.record_request_end(elapsed)
+        metrics.record_request_end(
+            round((time.monotonic() - started) * 1000, 2)
+        )
 
 
 @app.get("/capabilities/requests/{request_id}")
@@ -1134,41 +929,25 @@ async def text_input_stream(input_data: TextInput, _: None = Depends(verify_api_
 
     async def generate():
         try:
-            intent_result = await router.route(query)
-            logger.debug("stream: intent=%s", intent_result.intent.value)
-
-            if intent_result.intent == Intent.PERSONALITY_FEEDBACK:
-                result = await _handle_personality_feedback(query, intent_result, {}, 0)
-                yield f"data: {json.dumps({'token': result.response, 'done': True})}\n\n"
-                return
-
-            if intent_result.intent == Intent.TIME_QUERY:
-                response = _handle_time_query(intent_result, {}, 0, query).response
-                yield f"data: {json.dumps({'token': response, 'done': True})}\n\n"
-                return
-
-            memory_context = await _get_memory_context(query)
-            full_response  = ""
-            token_count    = 0
-
-            async for token in llm_agent.stream(query, context_data=memory_context or None):
-                full_response += token
-                token_count   += 1
-                yield f"data: {json.dumps({'token': token, 'done': False})}\n\n"
-
-            logger.debug("stream: %d tokens recus", token_count)
-
-            if token_count == 0:
-                # Aucun token reçu du LLM — Ollama probablement indisponible
-                logger.warning("stream: aucun token recu — Ollama indisponible ou timeout")
-                error_msg = "⚠️ Le service LLM n'a retourné aucune réponse. Vérifie qu'Ollama est bien démarré (`systemctl status ollama`)."
-                yield f"data: {json.dumps({'token': error_msg, 'done': True, 'error': 'no_tokens'})}\n\n"
-                return
-
-            await _store_memory(query, full_response, {"intent": intent_result.intent.value})
-            yield f"data: {json.dumps({'token': '', 'done': True})}\n\n"
-            logger.debug("stream: termine")
-
+            result = await _active_core_orchestrator().handle(
+                query,
+                source_channel=input_data.source_channel,
+                user_id=input_data.user_id,
+                request_metadata=input_data.metadata,
+            )
+            yield (
+                "data: "
+                + json.dumps(
+                    {
+                        "token": result.response,
+                        "done": True,
+                        "intent": result.intent,
+                        "selected_route": result.decision.selected_route,
+                        "error": result.error,
+                    }
+                )
+                + "\n\n"
+            )
         except Exception as e:
             logger.exception("stream: exception : %s", e)
             yield f"data: {json.dumps({'token': '', 'done': True, 'error': str(e)})}\n\n"

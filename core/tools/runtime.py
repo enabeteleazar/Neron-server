@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import inspect
 import re
 import threading
@@ -58,6 +59,10 @@ class ToolRuntime:
             return ToolResult(ok=False, error="unsafe_tool_rejected")
         handler = self.handlers.get(slug)
         if handler is None:
+            handler = self._load_registered_handler(spec)
+            if handler is not None:
+                self.handlers[slug] = handler
+        if handler is None:
             return ToolResult(ok=False, error="tool_handler_not_available")
         try:
             value = handler(dict(payload or {}))
@@ -66,6 +71,22 @@ class ToolRuntime:
             return self._coerce_result(value)
         except Exception as exc:
             return ToolResult(ok=False, error=str(exc))
+
+    @staticmethod
+    def _load_registered_handler(spec):
+        path = spec.metadata.get("tool_path")
+        if not path:
+            return None
+        module_spec = importlib.util.spec_from_file_location(
+            f"registered_tool_{spec.slug}",
+            str(path),
+        )
+        if not module_spec or not module_spec.loader:
+            return None
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        handler = getattr(module, "execute", None)
+        return handler if callable(handler) else None
 
     def _read_logs(self, payload: dict[str, Any]) -> ToolResult:
         logs = payload.get("logs")

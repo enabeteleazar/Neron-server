@@ -1288,7 +1288,7 @@ async def test_conversation_agent_discovers_and_runs_matching_registered_agent(t
 
 
 @pytest.mark.asyncio
-async def test_agent_router_routes_conversation_to_registered_agent_before_llm(monkeypatch):
+async def test_agent_router_keeps_conversation_on_llm_route(monkeypatch):
     class FakeModel:
         def set_last_intent(self, *_args):
             return None
@@ -1311,19 +1311,24 @@ async def test_agent_router_routes_conversation_to_registered_agent_before_llm(m
         def set_last_error(self, *_args):
             return None
 
-    class ForbiddenLLM:
+    class FakeLLMResult:
+        success = True
+        content = "Reponse conversationnelle LLM"
+        error = None
+
+    class FakeLLM:
         async def execute(self, *_args, **_kwargs):
-            raise AssertionError("LLM fallback must not run when a registered agent matches")
+            return FakeLLMResult()
 
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
-    monkeypatch.setattr(agent_router, "_get_llm", lambda: ForbiddenLLM())
+    monkeypatch.setattr(agent_router, "_get_llm", lambda: FakeLLM())
 
     response = await agent_router.AgentRouter().route(
         IntentResult(intent=Intent.CONVERSATION, confidence="low"),
         "Combien de temps reste-t-il avant la WWDC ?",
     )
 
-    assert "Temps restant avant la WWDC" in response
+    assert response == "Reponse conversationnelle LLM"
 
 
 @pytest.mark.asyncio
@@ -2084,9 +2089,8 @@ async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch, que
 
 
 @pytest.mark.asyncio
-async def test_direct_agent_invocation_is_not_treated_as_update(monkeypatch):
+async def test_direct_agent_name_in_conversation_stays_on_llm(monkeypatch):
     from core.agent_factory import agent_manager
-    from core.agents.conversation import conversation_agent
 
     class FakeModel:
         def set_last_intent(self, *_args):
@@ -2114,24 +2118,25 @@ async def test_direct_agent_invocation_is_not_treated_as_update(monkeypatch):
         async def update_agent(self, *_args, **_kwargs):
             raise AssertionError("direct agent invocation must not call update_agent")
 
-    class FakeConversationAgent:
-        async def delegate_to_registered_agent(self, query: str):
-            return {
-                "ok": True,
-                "agent": "subnet_calculator_agent",
-                "response": f"executed:{query}",
-            }
+    class FakeLLMResult:
+        success = True
+        content = "Reponse LLM"
+        error = None
+
+    class FakeLLM:
+        async def execute(self, *_args, **_kwargs):
+            return FakeLLMResult()
 
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
     monkeypatch.setattr(agent_manager, "AgentManager", ForbiddenManager)
-    monkeypatch.setattr(conversation_agent, "ConversationAgent", FakeConversationAgent)
+    monkeypatch.setattr(agent_router, "_get_llm", lambda: FakeLLM())
 
     response = await agent_router.AgentRouter().route(
         IntentResult(intent=Intent.CONVERSATION, confidence="low"),
         "subnet_calculator_agent 2001:db8::/64",
     )
 
-    assert response == "executed:subnet_calculator_agent 2001:db8::/64"
+    assert response == "Reponse LLM"
 
 
 @pytest.mark.asyncio

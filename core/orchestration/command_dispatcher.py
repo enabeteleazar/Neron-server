@@ -11,6 +11,7 @@ from core.evolution.supervisor import (
     get_evolution_supervisor,
 )
 from core.goals.goal_orchestrator import get_goal_orchestrator
+from core.pipeline.orchestrator import CoreOrchestrator
 from core.planning.storage import PlanStorage
 
 
@@ -163,8 +164,9 @@ class NeronCommandDispatcher:
         if not title:
             return {"status": "invalid", "messages": ["Usage : /goal <objectif>"]}
 
-        orchestrator = self.goal_orchestrator_factory()
-        result = await orchestrator.run_goal(title, source=source)
+        result = await CoreOrchestrator(
+            goal_orchestrator_factory=self.goal_orchestrator_factory,
+        ).run_goal(title, source=source)
         return {
             "status": result.get("status"),
             "result": result,

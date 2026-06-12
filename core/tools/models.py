@@ -5,6 +5,22 @@ from typing import Any
 
 
 @dataclass
+class ToolNeed:
+    request_text: str
+    domain: str
+    intent: str
+    capability_goal: str
+    expected_inputs: list[str] = field(default_factory=list)
+    expected_outputs: list[str] = field(default_factory=list)
+    constraints: list[str] = field(default_factory=list)
+    safety_level: str = "low"
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class ToolSpec:
     name: str
     slug: str

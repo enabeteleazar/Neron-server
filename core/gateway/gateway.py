@@ -397,21 +397,33 @@ class NeronGateway:
             return
 
         try:
-            async for token in self.agent.chat_stream(session_id, message):
-                await self._send(
-                    client.ws,
-                    _event("agent.token", {
-                        "session_id": session_id,
-                        "token":      token,
-                    }),
-                )
+            from core.pipeline.orchestrator import get_core_orchestrator
 
-            usage = self.agent.last_usage(session_id)
+            result = await get_core_orchestrator().handle(
+                message,
+                session_id=session_id,
+                source_channel="websocket",
+                user_id=client.client_id,
+            )
+            await self._send(
+                client.ws,
+                _event(
+                    "agent.token",
+                    {
+                        "session_id": session_id,
+                        "token": result.response,
+                    },
+                ),
+            )
             await self._send(
                 client.ws,
                 _event("agent.done", {
                     "session_id": session_id,
-                    "usage":      usage or {},
+                    "usage": {
+                        "intent": result.intent,
+                        "selected_route": result.decision.selected_route,
+                        "execution_time_ms": result.elapsed_ms,
+                    },
                 }),
             )
         except Exception as e:

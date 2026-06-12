@@ -54,6 +54,7 @@ class CapabilityResolver:
         self._tool_creator = tool_creator
         self._task_scheduler = task_scheduler
         self._requests: dict[str, CapabilityResult] = {}
+        self._analyses: dict[str, ResolverAnalysis] = {}
 
     async def resolve(self, request: CapabilityRequest) -> CapabilityResult | None:
         decision = await self.decide_async(request)
@@ -108,7 +109,7 @@ class CapabilityResolver:
         if decision.decision in {"create_tool", "create_agent"}:
             return self._remember(
                 request,
-                self._queue_creation(request, decision),
+                await self._queue_creation(request, decision),
             )
         return None
 
@@ -136,6 +137,7 @@ class CapabilityResolver:
         }:
             return initial
         analysis = await self.analyze_async(request.text)
+        self._analyses[request.request_id] = analysis
         return self._capability_decision(request, initial, analysis)
 
     def _capability_decision(
@@ -408,14 +410,33 @@ class CapabilityResolver:
                 decision=decision,
             )
 
-    def _queue_creation(
+    async def _queue_creation(
         self,
         request: CapabilityRequest,
         decision: CapabilityDecision,
     ) -> CapabilityResult:
         creation_type = decision.creation_type or "tool"
         objective = self._creation_objective(request.text, creation_type)
-        tool_preparation = self._tools().ensure_tools_for_request(request.text)
+        analysis = self._analyses.get(request.request_id)
+        legacy_specs = self._tools().plan_tools_for_request(request.text)
+        if legacy_specs:
+            tool_preparation = self._tools().ensure_tools_for_request(request.text)
+        elif analysis is not None:
+            need = self._tools().plan_need(
+                request.text,
+                domain=analysis.domain.domain,
+                intent=analysis.intent.action,
+                required_tool_slugs=analysis.missing_tools,
+                matched_capability=analysis.matched_agent,
+            )
+            tool_preparation = await self._tools().create_from_need(need)
+            tool_preparation["tool_creation_status"] = (
+                "ready"
+                if tool_preparation.get("status") == "completed"
+                else "failed"
+            )
+        else:
+            tool_preparation = self._tools().ensure_tools_for_request(request.text)
         scheduler_chain = self._enqueue_scheduler_chain(
             request,
             tool_preparation,

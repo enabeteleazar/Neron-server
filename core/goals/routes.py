@@ -5,10 +5,11 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
+from core.goals.background_runner import get_goal_background_runner
 from core.goals.execution_engine import get_goal_execution_engine
 from core.goals.goal_manager import get_goal_manager
-from core.goals.background_runner import get_goal_background_runner
 from core.goals.goal_orchestrator import get_goal_orchestrator
+from core.pipeline.orchestrator import CoreOrchestrator
 
 
 router = APIRouter(tags=["goals"])
@@ -39,9 +40,12 @@ class GoalAliasRequest(BaseModel):
 
 @router.post("/goals/run")
 async def run_goal(payload: GoalRunRequest) -> dict[str, Any]:
-    orchestrator = get_goal_orchestrator()
-    result = await orchestrator.run_goal(payload.objective, source=payload.source)
-    return result
+    return await CoreOrchestrator(
+        goal_orchestrator_factory=get_goal_orchestrator,
+    ).run_goal(
+        payload.objective,
+        source=payload.source,
+    )
 
 
 @router.post("/goal", status_code=status.HTTP_202_ACCEPTED)
@@ -50,20 +54,15 @@ async def run_goal_alias(payload: GoalAliasRequest) -> dict[str, Any]:
     if not objective:
         raise HTTPException(status_code=422, detail="goal or objective is required")
 
-    orchestrator = get_goal_orchestrator()
-    goal = orchestrator.queue_goal(objective, source=payload.source)
-    goal_id = str(goal["id"])
-    get_goal_execution_engine().enqueue_goal(
-        goal_id,
+    goal = await CoreOrchestrator(
+        goal_orchestrator_factory=get_goal_orchestrator,
+        goal_execution_engine=get_goal_execution_engine(),
+        goal_background_runner=get_goal_background_runner(),
+    ).queue_goal(
         objective,
-        payload.source,
-        dict(goal.get("metadata") or {}),
-    )
-    get_goal_background_runner().submit(
-        goal_id=goal_id,
-        objective=objective,
         source=payload.source,
     )
+    goal_id = str(goal["id"])
     return {
         "accepted": True,
         "goal_id": goal_id,

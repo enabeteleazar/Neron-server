@@ -1,13 +1,23 @@
 from __future__ import annotations
 
+import importlib.util
 import re
 import threading
 import unicodedata
+from pathlib import Path
 from typing import Any
 
-from core.tools.models import ToolResult, ToolSpec
+from core.tools.code_generator import (
+    CodexToolCodeGenerator,
+    DeterministicToolCodeGenerator,
+    ToolCodeGenerator,
+    validate_generated_code,
+    validate_workspace_path,
+)
+from core.tools.models import ToolNeed, ToolResult, ToolSpec
 from core.tools.registry import ToolRegistry, get_tool_registry
 from core.tools.runtime import ToolRuntime, get_tool_runtime
+from core.tools.spec_builder import ToolSpecBuilder
 
 
 LOG_TOOL_SLUGS = (
@@ -30,10 +40,23 @@ class ToolCreator:
         self,
         registry: ToolRegistry | None = None,
         runtime: ToolRuntime | None = None,
+        *,
+        workspace: Path = Path("/etc/neron/workspace/tools"),
+        spec_builder: ToolSpecBuilder | None = None,
+        deterministic_generator: ToolCodeGenerator | None = None,
+        codex_generator: ToolCodeGenerator | None = None,
     ) -> None:
         self.registry = registry or get_tool_registry()
         self.runtime = runtime or (
             ToolRuntime(self.registry) if registry is not None else get_tool_runtime()
+        )
+        self.workspace = workspace
+        self.spec_builder = spec_builder or ToolSpecBuilder()
+        self.deterministic_generator = (
+            deterministic_generator or DeterministicToolCodeGenerator()
+        )
+        self.codex_generator = codex_generator or CodexToolCodeGenerator(
+            workspace=workspace
         )
 
     def plan_tools_for_request(self, text: str) -> list[ToolSpec]:
@@ -82,6 +105,112 @@ class ToolCreator:
             "tool_creation_status": "ready" if required else "not_required",
         }
 
+    def plan_need(
+        self,
+        text: str,
+        *,
+        domain: str | None = None,
+        intent: str | None = None,
+        required_tool_slugs: list[str] | None = None,
+        matched_capability: str | None = None,
+    ) -> ToolNeed:
+        normalized = _normalize(text)
+        resolved_domain = domain or self._infer_domain(normalized)
+        resolved_intent = self._canonical_intent(
+            intent or self._infer_intent(normalized),
+            normalized,
+        )
+        metadata: dict[str, Any] = {}
+        if required_tool_slugs:
+            metadata["required_tool_slugs"] = list(required_tool_slugs)
+        if matched_capability:
+            metadata["matched_capability"] = matched_capability
+        return ToolNeed(
+            request_text=text,
+            domain=resolved_domain,
+            intent=resolved_intent,
+            capability_goal=f"{resolved_intent} le domaine {resolved_domain}",
+            expected_outputs=["status", "summary", "issues", "recommendation"],
+            safety_level="low",
+            metadata=metadata,
+        )
+
+    def plan_from_need(self, need: ToolNeed) -> dict[str, Any]:
+        specs = self.spec_builder.build_specs_from_need(need)
+        deterministic = self.deterministic_generator.can_generate(need)
+        return {
+            "need": need.to_dict(),
+            "required_tools": [spec.slug for spec in specs],
+            "specs": [spec.to_dict() for spec in specs],
+            "creation_strategy": (
+                "deterministic" if deterministic else "codex_required"
+            ),
+        }
+
+    async def create_from_need(self, need: ToolNeed) -> dict[str, Any]:
+        plan = self.plan_from_need(need)
+        specs = self.spec_builder.build_specs_from_need(need)
+        created: list[str] = []
+        reused: list[str] = []
+        errors: list[str] = []
+        strategies: set[str] = set()
+        self.workspace.mkdir(parents=True, exist_ok=True)
+
+        for spec in specs:
+            if self.registry.tool_exists(spec.slug):
+                reused.append(spec.slug)
+                continue
+            try:
+                strategy, code, test_code = await self._generate_artifacts(spec, need)
+                strategies.add(strategy)
+                code_errors = validate_generated_code(code)
+                if code_errors:
+                    raise ValueError(",".join(code_errors))
+                tool_path = self.workspace / f"{spec.slug}.py"
+                test_path = self.workspace / "tests" / f"test_{spec.slug}.py"
+                if not validate_workspace_path(tool_path, self.workspace):
+                    raise ValueError("tool_path_outside_workspace")
+                if not validate_workspace_path(test_path, self.workspace):
+                    raise ValueError("test_path_outside_workspace")
+                test_path.parent.mkdir(parents=True, exist_ok=True)
+                tool_path.write_text(code, encoding="utf-8")
+                test_path.write_text(test_code, encoding="utf-8")
+                handler = self._load_handler(tool_path)
+                spec.metadata["tool_path"] = str(tool_path)
+                spec.metadata["test_path"] = str(test_path)
+                spec.source = (
+                    "tool_creator_deterministic"
+                    if strategy == "deterministic"
+                    else "tool_creator_codex"
+                )
+                self.runtime.register_handler(spec.slug, handler)
+                self.create_tool(spec)
+                created.append(spec.slug)
+            except Exception as exc:
+                errors.append(f"{spec.slug}:{exc}")
+
+        if errors:
+            return {
+                **plan,
+                "status": "failed",
+                "created_tools": created,
+                "reused_tools": reused,
+                "errors": errors,
+            }
+        strategy = (
+            "codex_required"
+            if "codex_required" in strategies
+            else plan["creation_strategy"]
+        )
+        return {
+            **plan,
+            "status": "completed",
+            "creation_strategy": strategy,
+            "created_tools": created,
+            "reused_tools": reused,
+            "errors": [],
+        }
+
     async def execute_tools_for_request(
         self,
         text: str,
@@ -106,6 +235,97 @@ class ToolCreator:
             "neron_log_summary_tool",
             {"errors": filtered.data.get("errors", [])},
         )
+
+    async def _generate_artifacts(
+        self,
+        spec: ToolSpec,
+        need: ToolNeed,
+    ) -> tuple[str, str, str]:
+        if self.deterministic_generator.can_generate(need):
+            try:
+                code = await self.deterministic_generator.generate_tool_code(
+                    spec, need
+                )
+                test_code = await self.deterministic_generator.generate_tests(
+                    spec, need
+                )
+                return "deterministic", code, test_code
+            except Exception:
+                pass
+        if not self.codex_generator.can_generate(need):
+            raise RuntimeError("tool_generation_unavailable")
+        code = await self.codex_generator.generate_tool_code(spec, need)
+        test_code = await self.codex_generator.generate_tests(spec, need)
+        return "codex_required", code, test_code
+
+    @staticmethod
+    def _load_handler(path: Path):
+        module_spec = importlib.util.spec_from_file_location(
+            f"generated_tool_{path.stem}",
+            path,
+        )
+        if not module_spec or not module_spec.loader:
+            raise RuntimeError("generated_tool_import_failed")
+        module = importlib.util.module_from_spec(module_spec)
+        module_spec.loader.exec_module(module)
+        handler = getattr(module, "execute", None)
+        if not callable(handler):
+            raise RuntimeError("generated_tool_execute_missing")
+        return handler
+
+    @staticmethod
+    def _infer_domain(normalized: str) -> str:
+        domains = (
+            (("sauvegarde", "backup"), "backups"),
+            (("sqlite", "base de donnees", "database"), "sqlite"),
+            (("systemd", "service"), "systemd"),
+            (("log", "journal"), "neron_logs"),
+        )
+        for aliases, domain in domains:
+            if any(alias in normalized for alias in aliases):
+                return domain
+        return "generic"
+
+    @staticmethod
+    def _infer_intent(normalized: str) -> str:
+        if any(token in normalized for token in ("combien", "compte", "nombre")):
+            return "count"
+        if any(token in normalized for token in ("diagnostic", "diagnostique")):
+            return "diagnose"
+        if any(token in normalized for token in ("surveille", "monitor")):
+            return "monitor"
+        if any(token in normalized for token in ("resume", "synthese")):
+            return "summarize"
+        if any(token in normalized for token in ("calcule", "calcul")):
+            return "calculate"
+        return "analyze"
+
+    @staticmethod
+    def _canonical_intent(intent: str, normalized: str) -> str:
+        value = _normalize(intent)
+        aliases = {
+            "analyse": "analyze",
+            "analyser": "analyze",
+            "resume": "summarize",
+            "resumer": "summarize",
+            "diagnostic": "diagnose",
+            "diagnostiquer": "diagnose",
+            "surveillance": "monitor",
+            "surveiller": "monitor",
+            "notification": "notify",
+            "notifier": "notify",
+            "calcul": "calculate",
+            "calculer": "calculate",
+            "recherche": "search",
+            "rechercher": "search",
+            "execution": "execute",
+            "executer": "execute",
+        }
+        if value == "calcul" and any(
+            token in normalized for token in ("combien", "compte", "nombre")
+        ):
+            return "count"
+        return aliases.get(value, value)
 
     def _log_tool_specs(self) -> list[ToolSpec]:
         common_safety = {

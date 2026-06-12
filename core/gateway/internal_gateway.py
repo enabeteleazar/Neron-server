@@ -8,6 +8,7 @@ import logging
 from typing import AsyncIterator
 
 from core.pipeline.intent.intent_router import IntentRouter
+from core.pipeline.orchestrator import CoreOrchestrator
 from core.pipeline.routing.agent_router import AgentRouter
 
 logger = logging.getLogger("neron.gateway.internal")
@@ -26,6 +27,10 @@ class InternalGateway:
     ) -> None:
         self.agent_router = agent_router
         self.intent_router = intent_router or IntentRouter()
+        self.orchestrator = CoreOrchestrator(
+            intent_router=self.intent_router,
+            agent_router=self.agent_router,
+        )
 
     # ─────────────────────────────────────────────
     # API PUBLIQUE
@@ -36,10 +41,12 @@ class InternalGateway:
         Traite un texte et retourne la réponse complète (non-streaming).
         Utilisé par HTTP gateway et Telegram pour les requêtes code.
         """
-        full = ""
-        async for token in self.agent_router.chat_stream(session_id, text):
-            full += token
-        return full or "❌ Pas de réponse du LLM"
+        result = await self.orchestrator.handle(
+            text,
+            session_id=session_id,
+            source_channel="internal_gateway",
+        )
+        return result.response
 
     async def stream(
         self, text: str, session_id: str = "default"
@@ -48,8 +55,12 @@ class InternalGateway:
         Streame les tokens de la réponse LLM.
         Utilisé par WebSocket gateway et Telegram pour la conversation.
         """
-        async for token in self.agent_router.chat_stream(session_id, text):
-            yield token
+        result = await self.orchestrator.handle(
+            text,
+            session_id=session_id,
+            source_channel="internal_gateway",
+        )
+        yield result.response
 
     async def run_agent(
         self, text: str, session_id: str = "default"

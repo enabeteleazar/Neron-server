@@ -829,14 +829,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_message = update.message.text
     await update.message.chat.send_action("typing")
 
-    evolution_response = await route_evolution_telegram_text(
-        user_message,
-        user_id=str(update.message.chat_id),
-    )
-    if evolution_response:
-        await update.message.reply_text(evolution_response[:4096])
-        return
-
     sent = await update.message.reply_text("⏳ Néron réfléchit...")
 
     q = _normalize(user_message)
