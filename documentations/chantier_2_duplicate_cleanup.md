@@ -25,6 +25,59 @@ Résultat:
 - dashboard compilé;
 - `neron-core` redémarré et actif.
 
+## Périmètre exécuté en Phase 2B
+
+Cette passe de nettoyage contrôlé a supprimé 1 042 lignes sans modifier les
+composants interdits ni les données persistantes:
+
+- 850 lignes dans le dépôt principal;
+- 192 lignes dans le sous-dépôt `ui_dashboard`.
+
+### Suppressions réalisées
+
+- 18 handlers et helpers historiques de `core/app.py`, devenus inaccessibles
+  depuis le raccordement de `POST /input/text` au `CoreOrchestrator`;
+- `core/pipeline/nlp/orchestrator_plan.py`, sans import ni appel;
+- `core/agents/self_model_agent.py`, doublon sans import de l'agent canonique
+  `core.agents.core.self_model_agent`;
+- cinq copies systemd byte-identiques sous `deploy/systemd/`;
+- le routeur OpenAI direct et non enregistré du dashboard, son export et son
+  ancien contrat partagé `/api/chat`;
+- deux monkeypatches de tests qui visaient le handler conversationnel supprimé;
+- imports et constantes devenus morts dans `core/app.py`.
+
+### Fusions réalisées
+
+Aucune nouvelle fusion n'a été introduite pendant la Phase 2B. La fusion Tool
+Creator v1/v2 déjà présente a été conservée et validée. Les helpers de routage
+historiques n'ont pas été déplacés: ils ont été supprimés parce qu'ils
+dupliquaient le chemin actif du `CoreOrchestrator` et n'avaient plus d'appel.
+
+### Risques évités
+
+- aucune modification du Goal Pipeline, Planner, Registry, Runtime, Workspace,
+  Self Model officiel, World Model ou Memory;
+- aucune modification de JSON, JSONL ou SQLite;
+- aucun déplacement d'arborescence et aucun nouveau module;
+- aucune suppression d'agent généré;
+- aucune suppression des gateways ou managers possiblement consommés depuis
+  l'extérieur;
+- conservation des routes publiques legacy encore couvertes ou dont l'usage
+  externe ne peut pas être exclu.
+
+### Composants laissés volontairement en place
+
+- `NeronCommandDispatcher`, utilisé par Telegram et couvert par les tests;
+- `InternalGateway`, `http_gateway` et `telegram_gateway`, initialisés par le
+  Control Plane;
+- `IntentRouter`, conservé comme classifieur sous l'autorité de
+  l'Orchestrator;
+- les managers et registries runtime sans preuve suffisante d'absence d'usage
+  externe;
+- les intégrations dashboard audio/image, encore liées à leurs dépendances et
+  hors du périmètre conversationnel supprimé;
+- toutes les surfaces Planner, Goal, Memory, Self Model et World Model.
+
 ## Méthode d'audit
 
 Les doublons ont été recherchés par:
@@ -63,7 +116,7 @@ qu'une surface canonique était déjà prouvée par le runtime et les tests.
 | Santé | HealthManager, watchdog, SelfModel health et Doctor | Élevé | Conservés: métriques, détection, synthèse cognitive et remédiation sont complémentaires |
 | Dashboard | routeur chat OpenAI Replit versus `/input/text` Core | Faible | Routeur OpenAI et contrat `/api/chat` dormants supprimés |
 | Dashboard | intégrations audio/image OpenAI Replit non montées | Moyen | Conservées et documentées; hors nettoyage chat demandé |
-| API | routes parallèles FastAPI | Moyen | Aucun couple méthode/chemin dupliqué dans les 114 chemins OpenAPI |
+| API | routes parallèles FastAPI | Moyen | Aucun couple méthode/chemin dupliqué dans les 122 routes OpenAPI |
 | Systemd | copies identiques dans `deploy/` et `deploy/systemd/` | Faible | Cinq copies secondaires supprimées |
 | Systemd | deux unités Home Assistant divergentes | Élevé | Non modifiées; utilisateurs, chemins et politiques de restart différents |
 | Systemd | `deploy/systemd/neron.service` legacy | Moyen | Conservé: statut legacy explicitement testé |
@@ -170,7 +223,24 @@ health commun.
 - erreurs `tsc` préexistantes dans audio, image, batch et le stockage chat
   historique. La compilation de production réussit.
 
-## Fichiers modifiés par la Phase 2
+## Fichiers nettoyés en Phase 2B
+
+- `core/app.py`
+- `core/agents/self_model_agent.py` (supprimé)
+- `core/pipeline/nlp/orchestrator_plan.py` (supprimé)
+- `deploy/systemd/neron-cognitive-loop.service` (supprimé)
+- `deploy/systemd/neron-core.service` (supprimé)
+- `deploy/systemd/neron-doctor.service` (supprimé)
+- `deploy/systemd/neron-llm.service` (supprimé)
+- `deploy/systemd/neron-stt.service` (supprimé)
+- `tests/test_capability_input_routing.py`
+- `tests/test_tracked_agent_workflow.py`
+- sous-dépôt `ui_dashboard`:
+  `server/replit_integrations/chat/index.ts`,
+  `server/replit_integrations/chat/routes.ts` et `shared/routes.ts`
+- documentations d'architecture et d'exploitation associées.
+
+## Périmètre cumulé de la Phase 2
 
 - `core/app.py`
 - `core/capabilities/resolver.py`
@@ -223,7 +293,7 @@ Warnings restants:
 
 ### Service
 
-- `neron-core` redémarré le 12 juin 2026 à 14:20:14 CEST;
+- `neron-core` redémarré le 12 juin 2026 à 16:06:48 CEST;
 - état final: `active (running)`;
 - startup FastAPI, Gateway WebSocket, Telegram, STT et agents terminée;
 - aucun échec de démarrage dans le journal récent;

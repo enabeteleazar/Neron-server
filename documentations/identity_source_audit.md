@@ -21,7 +21,6 @@ version de Néron. `core/identity/loader.py` relit ce document à chaque appel.
 | `core/agents/communication/telegram_agent.py` | présentation Telegram | dérivée du loader |
 | `core/gateway/telegram_gateway.py` | présentation Telegram | dérivée du loader |
 | `deploy/neron-core.service` | description « autonomous assistant » | description technique générique |
-| `deploy/systemd/neron-core.service` | description « autonomous assistant » | description technique générique |
 | `deploy/systemd/neron.service` | description legacy « autonomous assistant » | description technique générique |
 | `data/self_model.json` | ancien snapshot d'identité | cache uniquement, jamais lu comme source |
 | `data/self_model_state.json` | ancien snapshot d'identité | cache uniquement, écrasé par `SelfModel` |

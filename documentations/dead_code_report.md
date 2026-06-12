@@ -30,13 +30,17 @@ Aucune suppression n'a ete faite sans preuve d'inutilisation. Les elements ci-de
   - `core/memory/world_model/*`
   - Statut: deux surfaces differentes. La premiere gere l'etat systeme boucle/service, la seconde expose stockage/API enrichis. A documenter avant fusion.
 - SelfModel agents:
-  - `core/agents/self_model_agent.py`
   - `core/agents/core/self_model_agent.py`
-  - Statut: doublon probable d'interface, mais pas supprime faute de preuve sur les chemins d'appel.
+  - Statut: variante canonique conservée. L'ancienne variante
+    `core/agents/self_model_agent.py`, sans import, a été supprimée lors du
+    chantier 2.
 - Services deploy:
   - `deploy/*.service`
   - `deploy/systemd/*.service`
-  - Statut: duplication partielle. Les unites actives correspondent aux fichiers `deploy/` pour les services critiques. `deploy/systemd/neron.service` pointe vers `server.core.app:app`, chemin legacy a ne pas utiliser sans migration.
+  - Statut: les cinq copies byte-identiques des services critiques ont été
+    supprimées de `deploy/systemd/`. Les variantes divergentes et
+    `deploy/systemd/neron.service`, qui pointe vers `server.core.app:app`,
+    restent legacy et ne doivent pas être utilisées sans migration.
 - Backups de CodeAgent:
   - `core/agents/dev/data/code_backups/*.bak`
   - Statut: artefacts de sauvegarde. Candidat a deplacement hors package Python si leur retention n'est plus utile.
@@ -59,4 +63,3 @@ Cycles statiques detectes autour des notifications Telegram:
 - Telegram Agent <-> Goal Orchestrator
 
 Impact actuel limite, car les imports de notification sont differes dans les fonctions. Recommandation: extraire une interface `NotificationBus` ou reutiliser l'Event Bus pour decoupler les orchestrateurs de Telegram.
-

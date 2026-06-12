@@ -2173,14 +2173,10 @@ async def test_input_text_routes_agent_update_before_llm(monkeypatch):
     async def fake_publish(*_args, **_kwargs):
         return None
 
-    async def forbidden_conversation(*_args, **_kwargs):
-        raise AssertionError("/input/text update command must not reach llm_agent")
-
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(core_app, "router", FakeRouter())
     monkeypatch.setattr(core_app, "metrics", FakeMetrics())
     monkeypatch.setattr(core_app.event_bus, "publish", fake_publish)
-    monkeypatch.setattr(core_app, "_handle_conversation", forbidden_conversation)
     monkeypatch.setattr(agent_manager, "AgentManager", FakeManager)
 
     result = await core_app.text_input(

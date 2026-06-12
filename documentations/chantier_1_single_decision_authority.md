@@ -25,9 +25,8 @@ Les routes d'administration explicites (`/planner/*`, `/tasks/*`,
 | Dashboard actif | proxy `/api/neron/*` | Core appele | `/input/text` ou `/goal` | JSON Core |
 | UI vocale | proxy `/api/core` | Core appele | `/input/text` | JSON Core |
 
-Le module dashboard `replit_integrations/chat/routes.ts` contient une route
-directe OpenAI, mais aucun enregistrement runtime de `registerChatRoutes` n'a
-ete trouve.
+Le module dashboard `replit_integrations/chat/routes.ts` contenait une route
+directe OpenAI non enregistrée. Il a été supprimé lors du chantier 2.
 
 ## Decideurs concurrents avant
 
@@ -139,8 +138,8 @@ Evenements ajoutes:
   poursuite d'etapes. Elles ne doivent pas redevenir du routage general.
 - Les deux schedulers historiques (`core/modules/scheduler.py` et
   `core/scheduler/*`) restent distincts.
-- Le chat Replit dormant du dashboard contournerait le Core s'il etait
-  enregistre ulterieurement.
+- Les intégrations Replit audio/image dormantes restent présentes, mais aucune
+  route conversationnelle directe OpenAI n'est enregistrée.
 
 ## Conclusion
 

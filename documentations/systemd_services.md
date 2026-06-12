@@ -22,7 +22,9 @@ Il n'existe pas d'unite `neron-watchdog.service` sur la machine auditee. Le watc
 
 - `deploy/systemd/neron.service`: legacy. Ne pas installer. Ce fichier pointe vers `server.core.app:app`, ancien chemin non officiel.
 - `neron.service`: un lien systemd historique peut exister dans `multi-user.target.wants`, mais aucune unite chargee n'a ete trouvee par `systemctl cat neron.service` pendant l'audit.
-- `deploy/systemd/*`: copies historiques partielles. Les unites critiques officielles sont les fichiers `deploy/neron-*.service`.
+- `deploy/systemd/*`: variantes historiques restantes. Les cinq copies
+  byte-identiques des unités critiques ont été supprimées; les unités
+  officielles sont les fichiers `deploy/neron-*.service`.
 
 ## Scripts
 
@@ -43,4 +45,3 @@ journalctl -u neron-core -n 100 --no-pager
 ## Regle
 
 Le service principal a utiliser est `neron-core.service`. Toute documentation ou script pointant vers `neron.service` doit etre considere comme legacy et corrige avant usage.
-

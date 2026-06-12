@@ -149,9 +149,6 @@ async def test_unknown_durable_telegram_request_does_not_reach_conversation(monk
     async def fake_publish(*_args, **_kwargs):
         return None
 
-    async def forbidden_conversation(*_args, **_kwargs):
-        raise AssertionError("La demande durable ne doit pas atteindre le LLM conversationnel")
-
     resolver = CapabilityResolver(
         registry=CapabilityRegistry(
             agent_registry=EmptyAgents(),
@@ -165,7 +162,6 @@ async def test_unknown_durable_telegram_request_does_not_reach_conversation(monk
     monkeypatch.setattr(core_app, "router", FakeIntentRouter())
     monkeypatch.setattr(core_app, "metrics", FakeMetrics())
     monkeypatch.setattr(core_app.event_bus, "publish", fake_publish)
-    monkeypatch.setattr(core_app, "_handle_conversation", forbidden_conversation)
     monkeypatch.setattr(core_app, "get_capability_resolver", lambda: resolver)
 
     response = await core_app.text_input(

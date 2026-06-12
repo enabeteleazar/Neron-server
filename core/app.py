@@ -35,9 +35,7 @@ logger.info("Booting Néron Core...")
 import asyncio
 import json
 import os
-import re
 import time
-import unicodedata
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
@@ -45,7 +43,7 @@ from typing import Optional
 import psutil
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     REGISTRY,
@@ -61,7 +59,7 @@ from pydantic import BaseModel, Field
 # =========================
 
 from core.agents.base_agent import get_logger
-from core.api.auth import API_KEY_HEADER, verify_api_key
+from core.api.auth import verify_api_key
 
 # DEV
 from core.agents.dev.code_agent.agent import CodeAgent
@@ -82,11 +80,9 @@ from core.agents.automation.watchdog_agent import (
 # CORE
 from core.agents.core.llm_agent import LLMAgent
 from core.agents.core.memory_agent import MemoryAgent, init_db as memory_init_db
-from core.agents.core.system_agent import SystemAgent
 
 # COMMUNICATION
 from core.agents.communication.telegram_agent import (
-    send_notification,
     set_agents,
     start_bot,
     stop_bot
@@ -99,15 +95,12 @@ from core.agents.io.tts_agent import TTSAgent
 
 
 from core.config import settings
-from core.capabilities.models import CapabilityRequest
 from core.capabilities.resolver import CapabilityResolver
 from core.identity import get_identity
 from core.pipeline.routing.agent_router import (
     AgentRouter,
     LLMConfig,
     ToolRegistry,
-    _extract_agent_update_request,
-    _update_dynamic_agent,
 )
 from core.events.event import Event
 from core.events.event_bus import event_bus
@@ -121,7 +114,7 @@ from core.modules.scheduler import stop as scheduler_stop
 from core.modules.sessions import SessionStore
 from core.modules.skills import SkillRegistry
 from core.neron_time.time_provider import TimeProvider
-from core.pipeline.intent.intent_router import Intent, IntentRouter
+from core.pipeline.intent.intent_router import IntentRouter
 from core.pipeline.orchestrator import (
     CoreOrchestrator,
     get_core_orchestrator,
@@ -129,12 +122,6 @@ from core.pipeline.orchestrator import (
 )
 from core.self_model.monitor import get_self_monitor
 
-from core.integrations.homeassistant.client import HomeAssistantClient
-from core.integrations.homeassistant.registry import HARegistry
-from core.integrations.homeassistant.matcher import SmartMatcher
-from core.integrations.homeassistant.room_learner import RoomLearner
-from core.integrations.homeassistant.synonym_learner import SynonymLearner
-from core.integrations.homeassistant.sync import sync
 from core.config_loader import config
 HA_CONFIG = config.get("home_assistant", config.get("homeassistant", {}))
 BASE_URL = HA_CONFIG.get("url")
@@ -722,138 +709,6 @@ async def nlp_parse(input_data: TextInput, _: None = Depends(verify_api_key)):
     result = nlp_process(input_data.text.strip())
     return result.to_dict()
 
-
-
-async def _handle_system_status(query, intent_result, metadata, start):
-    from core.agents.core.system_agent import SystemAgent
-
-    agent = SystemAgent()
-    response = await agent.run(query)
-
-    return CoreResponse(
-        response=response,
-        intent=intent_result.intent.value,
-        agent="system_agent",
-        confidence=intent_result.confidence,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        model=None,
-        error=None,
-        transcription=None,
-        metadata=metadata,
-    )
-
-
-async def _publish_agent_selected(intent_result, agent_name: str) -> None:
-    await event_bus.publish(Event(
-        type="agent.selected",
-        payload={
-            "intent": intent_result.intent.value,
-            "agent": agent_name,
-        },
-        source="core.agent_router",
-    ))
-
-
-async def _publish_agent_executed(intent_result, agent_name: str, result) -> None:
-    await event_bus.publish(Event(
-        type="agent.executed",
-        payload={
-            "intent": intent_result.intent.value,
-            "agent": agent_name,
-            "success": getattr(result, "error", None) is None,
-            "execution_time_ms": getattr(result, "execution_time_ms", None),
-        },
-        source="core.agent_router",
-    ))
-
-
-async def _publish_response_ready(intent_result, agent_name: str, result) -> None:
-    await event_bus.publish(Event(
-        type="response.ready",
-        payload={
-            "intent": intent_result.intent.value,
-            "agent": agent_name,
-            "response_length": len(getattr(result, "response", "") or ""),
-            "execution_time_ms": getattr(result, "execution_time_ms", None),
-        },
-        source="core.response",
-    ))
-
-
-
-
-
-def _handle_task_command_from_input(query: str) -> str | None:
-    q = query.lower().strip()
-
-    if (
-        "état des tâches" in q
-        or "etat des tâches" in q
-        or "etat des taches" in q
-        or "status des tâches" in q
-        or "status des taches" in q
-    ):
-        from core.task_system.task_manager import get_task_manager
-
-        manager = get_task_manager()
-        summary = manager.get_status_summary()
-
-        return (
-            "État des tâches : "
-            f"{summary['pending']} en attente, "
-            f"{summary['running']} en cours, "
-            f"{summary['done']} terminées, "
-            f"{summary['failed']} échouées, "
-            f"{summary['cancelled']} annulées, "
-            f"{summary['total']} au total."
-        )
-
-    if (
-        "lance la prochaine tâche" in q
-        or "lance la prochaine tache" in q
-        or "démarre la prochaine tâche" in q
-        or "demarre la prochaine tache" in q
-        or "commence la prochaine tâche" in q
-        or "commence la prochaine tache" in q
-    ):
-        from core.task_system.task_manager import get_task_manager
-
-        manager = get_task_manager()
-        task = manager.start_next_task()
-
-        if not task:
-            return "Aucune tâche en attente à démarrer."
-
-        return (
-            "Tâche démarrée : "
-            f"{task['title']} "
-            f"(priorité {task['priority']})."
-        )
-
-    if (
-        "prochaine tâche" in q
-        or "prochaine tache" in q
-        or "tâche suivante" in q
-        or "tache suivante" in q
-    ):
-        from core.task_system.task_manager import get_task_manager
-
-        manager = get_task_manager()
-        task = manager.get_next_task()
-
-        if not task:
-            return "Aucune tâche en attente."
-
-        return (
-            "Prochaine tâche : "
-            f"{task['title']} "
-            f"(priorité {task['priority']}, statut {task['status']})."
-        )
-
-    return None
-
-
 # ── Routes /input ─────────────────────────────────────────────────────────────
 
 @app.post("/input/text", response_model=CoreResponse)
@@ -1029,414 +884,11 @@ async def voice_input(file: UploadFile = File(...)):
         metrics.record_request_end(round((time.monotonic() - start) * 1000, 2))
 
 
-# ── Handlers internes ─────────────────────────────────────────────────────────
-
-async def _handle_personality_feedback(query, intent_result, metadata, start) -> CoreResponse:
-    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
-    if not _personality_available():
-        return CoreResponse(
-            response="Je n'ai pas pu mettre a jour ma personnalite (module non disponible).",
-            intent="personality_feedback", agent="personality",
-            confidence=intent_result.confidence, timestamp=utc_now_iso(),
-            execution_time_ms=execution_time_ms, metadata=metadata,
-        )
-    try:
-        from personality import update_from_feedback
-        result = update_from_feedback(query)
-        if result["status"] == "updated" and result["changes"]:
-            parts    = [f"{c['field']} -> {c['new_value']}" for c in result["changes"]]
-            response = "Compris. J'ai adapte mon comportement : " + ", ".join(parts) + "."
-            logger.info(json.dumps({"event": "personality_updated", "changes": result["changes"]}))
-        else:
-            response = "Message recu, mais aucun changement de comportement n'a ete necessaire."
-        return CoreResponse(
-            response=response, intent="personality_feedback", agent="personality",
-            confidence=intent_result.confidence, timestamp=utc_now_iso(),
-            execution_time_ms=execution_time_ms,
-            metadata={**metadata, "personality_changes": result.get("changes", [])},
-        )
-    except Exception as e:
-        logger.error("personality update_from_feedback echoue : %s", e)
-        return CoreResponse(
-            response="Je n'ai pas pu appliquer ce changement de comportement.",
-            intent="personality_feedback", agent="personality",
-            confidence=intent_result.confidence, timestamp=utc_now_iso(),
-            execution_time_ms=execution_time_ms, error=str(e), metadata=metadata,
-        )
-
-
-def _handle_time_query(intent_result, metadata, start, query="") -> CoreResponse:
-    q          = query.lower()
-    heure_keys = ["heure", "time", "il est", "quelle heure"]
-    date_keys  = ["quelle date sommes", "on est quel jour", "quel jour sommes",
-                  "quel mois sommes", "donne moi la date", "c est quoi la date", "on est le combien"]
-    want_heure = any(k in q for k in heure_keys)
-    want_date  = any(k in q for k in date_keys)
-    n = time_provider.now()
-    from core.neron_time.time_provider import JOURS, MOIS
-    jour = JOURS[n.weekday()]
-    mois = MOIS[n.month - 1]
-    if want_heure and not want_date:
-        response = f"Il est {n.hour:02d}h{n.minute:02d}."
-    elif want_date and not want_heure:
-        response = f"Nous sommes {jour} {n.day} {mois} {n.year}."
-    else:
-        response = f"Il est {n.hour:02d}h{n.minute:02d}, {jour} {n.day} {mois} {n.year}."
-    return CoreResponse(
-        response=response, intent="time_query", agent="time_provider",
-        confidence=intent_result.confidence, timestamp=utc_now_iso(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        metadata={**metadata, "iso": time_provider.iso(), "timestamp": time_provider.timestamp()},
-    )
-
-
-async def _get_memory_context(query: str) -> str:
-    try:
-        recent = memory_agent.retrieve(limit=1)
-        if recent:
-            entry = recent[0]
-            return (
-                f"Echange precedent:\n"
-                f"Utilisateur: {entry['input']}\n"
-                f"Neron: {entry['response'][:120]}"
-            )
-    except Exception as e:
-        logger.warning(json.dumps({"event": "memory_context_failed", "error": str(e)}))
-    return ""
-
-
-async def _store_memory(query: str, response: str, metadata: dict) -> None:
-    try:
-        memory_agent.store(query, response, metadata)
-    except Exception as e:
-        logger.warning(json.dumps({"event": "memory_store_failed", "error": str(e)}))
-
-
-async def _handle_conversation(query, intent_result, metadata, start) -> CoreResponse:
-    from core.agents.conversation.conversation_agent import ConversationAgent
-
-    dynamic_result = await ConversationAgent().delegate_to_registered_agent(query)
-    if dynamic_result:
-        agent_name = str(dynamic_result.get("agent") or "dynamic_agent")
-        execution_time_ms = round((time.monotonic() - start) * 1000, 2)
-        if dynamic_result.get("ok"):
-            response_text = str(dynamic_result.get("response") or "")
-            await _store_memory(query, response_text, {**metadata, "agent": agent_name})
-            return CoreResponse(
-                response=response_text,
-                intent=metadata.get("intent", "conversation"),
-                agent=agent_name,
-                confidence=metadata.get("confidence", "low"),
-                timestamp=utc_now_iso(),
-                execution_time_ms=execution_time_ms,
-                model=None,
-                metadata={
-                    **metadata,
-                    "dynamic_agent_routed": True,
-                    "obsidian_context_used": False,
-                },
-            )
-
-        return CoreResponse(
-            response=f"⚠️ Erreur agent dynamique : {dynamic_result.get('error') or 'erreur inconnue'}",
-            intent=metadata.get("intent", "conversation"),
-            agent=agent_name,
-            confidence=metadata.get("confidence", "low"),
-            timestamp=utc_now_iso(),
-            execution_time_ms=execution_time_ms,
-            model=None,
-            error=dynamic_result.get("error"),
-            metadata={
-                **metadata,
-                "dynamic_agent_routed": True,
-                "obsidian_context_used": False,
-            },
-        )
-
-    memory_context = await _get_memory_context(query)
-
-    obsidian_context = ""
-    try:
-        if obsidian_agent:
-            obsidian_context = obsidian_agent.build_context(query, limit=3)
-    except Exception as e:
-        logger.warning(json.dumps({"event": "obsidian_context_failed", "error": str(e)}))
-
-    combined_context = "\n\n".join(
-        part for part in [memory_context, obsidian_context] if part
-    )
-
-    result = await llm_agent.execute(
-        query,
-        context_data=combined_context if combined_context else None
-    )
-
-    if not result.success:
-        metrics.record_error("llm_agent")
-        raise HTTPException(503, f"LLM indisponible : {result.error}")
-
-    if result.latency_ms:
-        metrics.record_latency("llm_agent", result.latency_ms)
-
-    model = result.metadata.get("model")
-    metrics.record_model_call(model)
-
-    await _store_memory(query, result.content, metadata)
-
-    return CoreResponse(
-        response=result.content,
-        intent=metadata.get("intent", "conversation"),
-        agent="llm_agent",
-        confidence=metadata.get("confidence", "low"),
-        timestamp=utc_now_iso(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        model=model,
-        metadata={
-            **metadata,
-            **result.metadata,
-            "obsidian_context_used": bool(obsidian_context),
-        },
-    )
-
-
-async def _handle_web_search(query, intent_result, metadata, start) -> CoreResponse:
-    web_result = await web_agent.execute(query)
-    if not web_result.success:
-        metrics.record_error("web_agent")
-        return await _handle_conversation(query, intent_result, metadata, start)
-    if web_result.latency_ms:
-        metrics.record_latency("web_agent", web_result.latency_ms)
-    llm_result = await llm_agent.execute(query=query, context_data=web_result.content)
-    if not llm_result.success:
-        metrics.record_error("llm_agent")
-        response_text = web_result.content
-        model         = None
-    else:
-        response_text = llm_result.content
-        model         = llm_result.metadata.get("model")
-        metrics.record_model_call(model)
-        if llm_result.latency_ms:
-            metrics.record_latency("llm_agent", llm_result.latency_ms)
-    metadata["web_sources"] = web_result.metadata.get("sources", [])
-    await _store_memory(query, response_text, metadata)
-    return CoreResponse(
-        response=response_text, intent="web_search", agent="web_agent+llm_agent",
-        confidence=intent_result.confidence, timestamp=utc_now_iso(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        model=model, metadata={**metadata, **(llm_result.metadata if llm_result.success else {})},
-    )
-
-
-async def _handle_ha_action(query, intent_result, metadata, start) -> CoreResponse:
-    result  = await ha_agent.execute(query)
-    elapsed = round((time.monotonic() - start) * 1000, 2)
-    if result.success:
-        return CoreResponse(
-            response=result.content, intent=intent_result.intent.value, agent="ha_agent",
-            confidence=intent_result.confidence, timestamp=utc_now_iso(),
-            execution_time_ms=elapsed, metadata=result.metadata,
-        )
-    return CoreResponse(
-        response=f"Je n'ai pas pu executer cette action : {result.error}",
-        intent=intent_result.intent.value, agent="ha_agent",
-        confidence=intent_result.confidence, timestamp=utc_now_iso(),
-        execution_time_ms=elapsed, error=result.error, metadata={},
-    )
-
-
-async def _handle_code_audit(intent_result, metadata, start) -> CoreResponse:
-    elapsed = round((time.monotonic() - start) * 1000, 2)
-    if not code_audit_agent:
-        return CoreResponse(
-            response="Agent d'audit non disponible.",
-            intent="code_audit", agent="code_audit_agent",
-            confidence=intent_result.confidence, timestamp=utc_now_iso(),
-            execution_time_ms=elapsed, metadata=metadata,
-        )
-    result = await code_audit_agent.execute("", action="audit_all")
-    if result.success:
-        meta    = result.metadata
-        score   = meta.get("avg_score", "?")
-        files   = meta.get("files_count", "?")
-        issues  = meta.get("total_issues", "?")
-        reports = meta.get("reports", [])
-        weak    = [
-            r for r in reports
-            if isinstance(r.get("quality_score"), (int, float)) and r["quality_score"] < 70
-        ]
-        detail = ""
-        if weak:
-            detail = "\n\nFichiers à améliorer :\n" + "\n".join(
-                f"- {r['file']} ({r.get('quality_score','?')}/100) : "
-                + ", ".join(r.get("issues", [])[:2])
-                for r in weak[:5]
-            )
-        response = (
-            f"Voici mon auto-audit :\n"
-            f"- {files} fichiers analysés\n"
-            f"- Score moyen : {score}/100\n"
-            f"- Issues détectées : {issues}"
-            f"{detail}"
-        )
-    else:
-        response = f"Erreur lors de l'auto-audit : {result.error}"
-    return CoreResponse(
-        response=response, intent="code_audit", agent="code_audit_agent",
-        confidence=intent_result.confidence, timestamp=utc_now_iso(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        metadata={**metadata, **(result.metadata if result.success else {})},
-    )
-
-
-async def _handle_code(query, intent_result, metadata, start) -> CoreResponse:
-    path_match = re.search(r"(\S+\.py)", query)
-    path       = path_match.group(1) if path_match else ""
-    if not path:
-        def _norm(t):
-            n = unicodedata.normalize("NFD", t.lower())
-            return "".join(c for c in n if unicodedata.category(c) != "Mn")
-        stop = {
-            "un", "une", "le", "la", "les", "de", "du", "des", "qui", "pour",
-            "que", "moi", "me", "genere", "cree", "ecris", "script", "fichier",
-            "module", "python", "code", "affiche", "bonjour", "donne",
-        }
-        words      = re.findall(r"[a-z0-9]+", _norm(query))
-        name_words = [w for w in words if w not in stop][:3]
-        path       = "_".join(name_words) + ".py" if name_words else "script.py"
-    result            = await code_agent.execute(query, path=path)
-    execution_time_ms = round((time.monotonic() - start) * 1000, 2)
-    if not result.success:
-        metrics.record_error("code_agent")
-        return CoreResponse(
-            response=f"Je n'ai pas pu executer cette action : {result.error}",
-            intent="code", agent="code_agent", confidence=intent_result.confidence,
-            timestamp=utc_now_iso(), execution_time_ms=execution_time_ms,
-            error=result.error, metadata={},
-        )
-    metrics.record_latency("code_agent", result.latency_ms or 0)
-    return CoreResponse(
-        response=result.content, intent="code", agent="code_agent",
-        confidence=intent_result.confidence, timestamp=utc_now_iso(),
-        execution_time_ms=execution_time_ms, metadata=result.metadata,
-    )
+# Planner autonome
+app.include_router(planner_router)
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host=settings.SERVER_HOST, port=settings.SERVER_PORT)
-
-
-# ── Handler SelfRepair ────────────────────────────────────────────────────────
-
-def _is_repair_query(query: str) -> bool:
-    q = query.lower()
-    keywords = [
-        "réparations proposées",
-        "reparations proposees",
-        "montre les réparations",
-        "montre les reparations",
-        "liste les réparations",
-        "liste les reparations",
-        "self repair",
-        "repair proposed",
-    ]
-    return any(keyword in q for keyword in keywords)
-
-
-async def _handle_repairs(query, intent_result, metadata, start) -> CoreResponse:
-    import json
-    from pathlib import Path
-
-    repair_dir = Path("/etc/neron/workspace/repairs")
-    files = sorted(
-        repair_dir.glob("*.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )[:5]
-
-    if not files:
-        response = "Aucune réparation proposée actuellement."
-    else:
-        lines = ["Réparations proposées :"]
-
-        for file in files:
-            data = json.loads(file.read_text(encoding="utf-8"))
-
-            proposal = data.get("proposal", {})
-            diagnostic = data.get("diagnostic", {})
-            alert = data.get("alert", {})
-
-            lines.append(
-                f"- {proposal.get('title', 'Sans titre')} "
-                f"[risque={proposal.get('risk', '?')}] "
-                f"agent={alert.get('agent', '?')} "
-                f"raison={alert.get('reason', '?')}\n"
-                f"  Diagnostic : {diagnostic.get('summary', 'n/a')}\n"
-                f"  Rapport : {file}"
-            )
-
-        response = "\n".join(lines)
-
-    return CoreResponse(
-        response=response,
-        intent="self_repair",
-        agent="self_repair",
-        confidence=intent_result.confidence,
-        timestamp=utc_now_iso(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        model=None,
-        error=None,
-        transcription=None,
-        metadata=metadata,
-    )
-
-
-# ── Handler Obsidian Memory ───────────────────────────────────────────────────
-
-def _is_memory_query(query: str) -> bool:
-    q = query.lower()
-    memory_keywords = [
-        "ajoute une idée",
-        "ajoute une idee",
-        "note ceci",
-        "mémorise",
-        "memorise",
-        "sauvegarde ceci",
-        "enregistre ceci",
-        "retient ceci",
-        "cherche dans obsidian",
-        "recherche mémoire",
-        "recherche memoire",
-        "cherche dans la mémoire",
-        "cherche dans la memoire",
-        "retrouve mes notes",
-        "mémoire obsidian",
-        "memoire obsidian",
-        "index vectoriel obsidian",
-        "recherche sémantique",
-        "recherche semantique",
-        "cherche sémantiquement",
-        "cherche semantiquement",
-        "semantic search",
-    ]
-    return any(keyword in q for keyword in memory_keywords)
-
-
-async def _handle_memory(query, intent_result, metadata, start) -> CoreResponse:
-    result = obsidian_agent.handle(query)
-
-    return CoreResponse(
-        response=result.get("response", ""),
-        intent=result.get("intent", "memory"),
-        agent=result.get("agent", "obsidian_agent"),
-        confidence=intent_result.confidence,
-        timestamp=utc_now_iso(),
-        execution_time_ms=round((time.monotonic() - start) * 1000, 2),
-        model=None,
-        error=result.get("error"),
-        transcription=None,
-        metadata={**metadata, "memory": result},
-    )
-
-# Planner autonome
-app.include_router(planner_router)
