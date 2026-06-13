@@ -10,6 +10,10 @@ from typing import Any
 
 import psutil
 
+from core.events import event_types
+from core.events.event import Event
+from core.events.event_bus import event_bus
+
 
 WORLD_STATE_PATH = Path("/etc/neron/data/world_model_state.json")
 
@@ -19,6 +23,14 @@ class WorldModel:
     network: dict[str, Any] = field(default_factory=dict)
     host: dict[str, Any] = field(default_factory=dict)
     external_services: dict[str, Any] = field(default_factory=dict)
+    observations: dict[str, Any] = field(
+        default_factory=lambda: {
+            "time": time.time(),
+            "agents": {},
+            "modules": {},
+            "system": {},
+        }
+    )
     environment_status: str = "unknown"
     diagnostics: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
@@ -70,11 +82,64 @@ class WorldModel:
             self.environment_status = "stable"
 
     def refresh(self) -> None:
+        previous = self._event_state()
         self.collect_host()
         self.collect_network()
         self.collect_external_services()
         self.compute_status()
         self.last_update = time.time()
+        current = self._event_state()
+        if current != previous:
+            event_bus.publish_background(Event(
+                type=event_types.WORLD_MODEL_STATE_CHANGED,
+                source="world_model",
+                payload={
+                    **current,
+                    "previous_environment_status": previous["environment_status"],
+                    "updated_at": self.last_update,
+                },
+            ))
+
+    def update(self, category: str, key: str, value: Any) -> None:
+        """Record an external observation from a runtime observer."""
+        category_state = self.observations.setdefault(category, {})
+        if not isinstance(category_state, dict):
+            category_state = {}
+            self.observations[category] = category_state
+        category_state[key] = value
+        updated_at = time.time()
+        self.observations["timestamp"] = updated_at
+        event_bus.publish_background(Event(
+            type=event_types.WORLD_MODEL_OBSERVATION_UPDATED,
+            source="world_model",
+            payload={
+                "category": category,
+                "key": key,
+                "value": value,
+                "updated_at": updated_at,
+            },
+        ))
+
+    def get_category(self, category: str) -> dict[str, Any]:
+        """Return one observer-fed category without exposing mutable internals."""
+        value = self.observations.get(category, {})
+        return value if isinstance(value, dict) else {}
+
+    def get(self) -> dict[str, Any]:
+        """Compatibility view used by the historical `/status` endpoint."""
+        return self.observations
+
+    def _event_state(self) -> dict[str, Any]:
+        return {
+            "environment_status": self.environment_status,
+            "internet_reachable": bool(self.network.get("default_gateway_reachable")),
+            "dns_reachable": bool(self.network.get("dns_reachable")),
+            "external_services": {
+                name: bool(state.get("reachable"))
+                for name, state in self.external_services.items()
+            },
+            "diagnostic_count": len(self.diagnostics),
+        }
 
     def _load_average(self) -> dict[str, float | None]:
         try:
@@ -162,6 +227,7 @@ class WorldModel:
             "host": self.host,
             "network": self.network,
             "external_services": self.external_services,
+            "observations": self.observations,
             "environment_status": self.environment_status,
             "diagnostics": self.diagnostics,
             "recommendations": self.recommendations,

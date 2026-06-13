@@ -97,7 +97,7 @@ class ActionExecutor:
 
         elif action == "restore_active_goal":
             status = "success"
-            message = "Restauration de l'objectif actif demandée via GoalSystem."
+            message = "Restauration de l'objectif actif demandée via GoalManager."
 
         elif action == "generate_task_plan":
             active_goal = (context or {}).get("active_goal")

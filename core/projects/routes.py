@@ -10,12 +10,11 @@ from core.api.auth import verify_api_key
 from core.agent_factory.agent_creator import AgentCreator
 from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
 from core.agent_factory.agent_manager import AgentManager
-from core.agent_factory.registry_scanner import AgentRegistryScanner
-from core.agent_factory.promoter import promote_agent
+from core.agent_factory.promotion import AgentPromotionService
 from core.agent_factory.validator import validate_agent
+from core.agent_runtime.runtime import get_agent_runtime
 from core.evolution.codex_runner import CodexRunner
 from core.projects.manager import get_project_manager
-from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
 
 router = APIRouter(tags=["projects"], dependencies=[Depends(verify_api_key)])
@@ -142,7 +141,7 @@ async def _approve_agent_proposal_deterministic(
         or (build_result.get("spec") or {}).get("name")
         or (build_result.get("agent") or {}).get("agent_name")
     )
-    runtime_reload = get_agent_runtime_manager().reload()
+    runtime_reload = get_agent_runtime().reload()
     errors = _build_errors(build_result)
 
     final_proposal = creator.update_proposal(
@@ -206,10 +205,12 @@ async def _approve_agent_proposal_with_codex(
                 if not validation.get("ok"):
                     errors.append(str(validation.get("error") or "validation_failed"))
                 else:
-                    runtime = get_agent_runtime_manager()
-                    promotion = promote_agent(
-                        str(agent_file),
+                    runtime = get_agent_runtime()
+                    promotion = AgentPromotionService(
                         generated_dir=_runtime_generated_dir(runtime),
+                    ).promote(
+                        agent_file,
+                        requested_by="agent_creator_codex_approval",
                     )
                     if not promotion.get("ok"):
                         errors.append(str(promotion.get("error") or "promotion_failed"))
@@ -253,24 +254,36 @@ async def _approve_agent_proposal_with_codex(
 
 @router.get("/agents")
 async def list_agents() -> dict:
-    runtime = get_agent_runtime_manager()
+    runtime = get_agent_runtime()
     agents = runtime.list_agents()
     return {"count": len(agents), "agents": agents}
 
 
 @router.get("/agents/registry/scan")
 async def scan_agent_registry_get() -> dict:
-    return await AgentRegistryScanner().scan()
+    registry = get_agent_runtime().registry
+    result = registry.scan()
+    result["runtime_reload"] = get_agent_runtime().reload()
+    result["runtime_reloaded"] = True
+    return result
 
 
 @router.post("/agents/registry/scan")
 async def scan_agent_registry_post() -> dict:
-    return await AgentRegistryScanner().scan()
+    return await scan_agent_registry_get()
 
 
 @router.get("/agents/registry/index")
 async def agent_registry_index() -> dict:
-    return AgentRegistryScanner().get_index()
+    return get_agent_runtime().registry.validation_index()
+
+@router.get("/agents/registry/diagnostics")
+async def agent_registry_diagnostics() -> dict:
+    manager = get_project_manager()
+    return get_agent_runtime().registry.diagnose_consistency(
+        projects=manager.list_projects(limit=500),
+        workspace_agents=Path("/etc/neron/workspace/agents"),
+    )
 
 
 @router.get("/agents/{agent_name}/status")

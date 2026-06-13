@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -18,6 +16,7 @@ from core.task_system.task_executor import get_task_executor
 from core.agents.communication.telegram_agent import send_notification
 from core.cognitive.critic_engine import get_critic_engine
 from core.goals.goal_orchestrator import get_goal_orchestrator
+from core.goals.goal_manager import get_goal_manager
 
 router = APIRouter(tags=["planner"], dependencies=[Depends(verify_api_key)])
 
@@ -86,7 +85,8 @@ async def planner_status() -> dict:
         "mode": "approval_required",
         "execution_enabled": True,
         "code_write_mode": "draft_only",
-        "storage": "/etc/neron/data/plans.jsonl",
+        "source_of_truth": "/etc/neron/data/neron_state.sqlite3:workflows",
+        "legacy_mirror": "/etc/neron/data/plans.jsonl",
         "routes": [
             "POST /planner/create",
             "GET /planner/status",
@@ -187,30 +187,8 @@ async def execute_approved_plan(plan_id: str) -> dict:
 
 @router.post("/planner/from-goal")
 async def planner_from_goal() -> dict:
-    candidates = [
-        Path("/etc/neron/data/goals_state.json"),
-        Path("/etc/neron/data/goals.json"),
-    ]
-
-    goal_text = None
-
-    for file in candidates:
-        if not file.exists():
-            continue
-
-        try:
-            data = json.loads(file.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-
-        if isinstance(data, dict):
-            goal_text = data.get("active_goal") or data.get("goal") or data.get("title")
-
-            if not goal_text and isinstance(data.get("active"), dict):
-                goal_text = data["active"].get("title") or data["active"].get("goal")
-
-        if goal_text:
-            break
+    active_goal = get_goal_manager().get_active_goal()
+    goal_text = active_goal.get("title") if active_goal else None
 
     if not goal_text:
         raise HTTPException(status_code=404, detail="Aucun objectif actif trouvé.")
@@ -220,7 +198,8 @@ async def planner_from_goal() -> dict:
     data["planner_called"] = True
     data["approved"] = False
     data["approval_required"] = True
-    data["source"] = "goalsystem"
+    data["goal_id"] = active_goal.get("id")
+    data["source"] = "goal_manager"
     storage.save(data)
     return data
 

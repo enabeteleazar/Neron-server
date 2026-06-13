@@ -4,13 +4,19 @@ import time
 import unicodedata
 from typing import Any
 
-from core.agent_factory.registry import AGENT_REGISTRY, DynamicAgentRegistry
+from core.agent_factory.registry import DynamicAgentRegistry
+from core.agent_runtime.runtime import AgentRuntime
 from core.self_model.self_model import get_self_model
 
 
 class ConversationAgent:
-    def __init__(self, registry: DynamicAgentRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: DynamicAgentRegistry | None = None,
+        runtime: AgentRuntime | None = None,
+    ) -> None:
         self.registry = registry or DynamicAgentRegistry()
+        self.runtime = runtime or AgentRuntime(registry=self.registry)
 
     async def delegate_to_registered_agent(self, query: str) -> dict[str, Any] | None:
         record = self.match_registered_agent(query)
@@ -18,31 +24,21 @@ class ConversationAgent:
             return None
 
         agent_name = str(record.get("module_name") or record.get("agent_name") or "")
-        agent = AGENT_REGISTRY.get(agent_name)
-        if not agent:
-            return None
-
         start = time.monotonic()
-        try:
-            if hasattr(agent, "execute"):
-                raw = await agent.execute(text=query)
-            elif hasattr(agent, "run"):
-                raw = await agent.run(query)
-            else:
-                return None
-        except Exception as exc:
+        execution = await self.runtime.run_agent(agent_name, query)
+        if not execution.ok:
             return {
                 "ok": False,
                 "agent": agent_name,
-                "error": str(exc),
+                "error": execution.error,
                 "execution_time_ms": round((time.monotonic() - start) * 1000, 2),
             }
 
         return {
             "ok": True,
             "agent": agent_name,
-            "response": self._result_to_text(raw),
-            "raw": raw,
+            "response": execution.response,
+            "raw": execution.result,
             "execution_time_ms": round((time.monotonic() - start) * 1000, 2),
         }
 

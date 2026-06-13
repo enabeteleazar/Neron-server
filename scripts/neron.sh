@@ -51,8 +51,7 @@ echo ""
 # CONFIG
 # =========================
 BASE_DIR="/etc/neron"
-SERVER_DIR="$BASE_DIR/server"
-FILE="$SERVER_DIR/neron.yaml"
+FILE="$BASE_DIR/neron.yaml"
 
 # =========================
 # GUARD

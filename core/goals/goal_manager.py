@@ -5,6 +5,9 @@ from typing import Any
 
 from core.goals.goal import Goal
 from core.goals import persistence
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import GOAL_CREATED
 from core.storage.sqlite_store import SQLiteStore, get_path_lock
 
 
@@ -27,13 +30,56 @@ class GoalManager:
     def _load_goals(self) -> list[Goal]:
         if not self._legacy_imported:
             data = persistence.load_goals_state()
+            imported: list[Goal] = []
             for item in data.get("goals", []):
                 goal_id = str(item.get("id") or "")
                 if goal_id and self.sqlite_store.get_goal(goal_id) is None:
-                    self.sqlite_store.upsert_goal(Goal.from_dict(item).to_dict())
+                    goal = Goal.from_dict(item)
+                    self.sqlite_store.upsert_goal(goal.to_dict())
+                    imported.append(goal)
+            self._import_legacy_goal_system(imported)
             self._legacy_imported = True
         stored = self.sqlite_store.list_goals()
         return [Goal.from_dict(item) for item in stored]
+
+    def _import_legacy_goal_system(self, imported: list[Goal]) -> None:
+        legacy = persistence.load_legacy_goal_system_state()
+        if not legacy:
+            return
+        known_titles = {
+            goal.title
+            for goal in [
+                *imported,
+                *(Goal.from_dict(item) for item in self.sqlite_store.list_goals()),
+            ]
+        }
+
+        candidates: list[tuple[str, str, dict[str, Any]]] = []
+        active = legacy.get("active_goal")
+        if isinstance(active, str) and active.strip():
+            candidates.append((active.strip(), "active", {"legacy_active_goal": True}))
+        for title in legacy.get("goals_history", []):
+            if isinstance(title, str) and title.strip():
+                candidates.append((title.strip(), "completed", {"legacy_history": True}))
+        for title in legacy.get("long_term_goals", []):
+            if isinstance(title, str) and title.strip():
+                candidates.append((title.strip(), "pending", {"long_term": True}))
+
+        for title, status, metadata in candidates:
+            if title in known_titles:
+                continue
+            goal = Goal.create(
+                title=title,
+                priority="low" if metadata.get("long_term") else "medium",
+                source="legacy_goal_system",
+                metadata=metadata,
+            )
+            goal.status = status
+            goal.current_step = status
+            if status == "completed":
+                goal.progress = 1.0
+            self.sqlite_store.upsert_goal(goal.to_dict())
+            known_titles.add(title)
 
     def _save_goals(self, goals: list[Goal], active_goal_id: str | None = None) -> None:
         data = persistence.load_goals_state()
@@ -120,6 +166,16 @@ class GoalManager:
 
             goals.append(goal)
             self._save_goals(goals)
+            event_bus.publish_background(Event(
+                type=GOAL_CREATED,
+                source="goal_manager",
+                payload={
+                    "goal_id": goal.id,
+                    "title": goal.title,
+                    "source": goal.source,
+                    "priority": goal.priority,
+                },
+            ))
 
             return goal.to_dict()
 

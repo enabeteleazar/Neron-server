@@ -48,10 +48,8 @@ echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━
 echo ""
 
 BASE_DIR="/etc/neron"
-SERVER_DIR="$BASE_DIR/server"
-INSTALL_DIR="$SERVER_DIR"
 LLMFIT="$BASE_DIR/scripts/llmfit/llmfit.py"
-CONFIG_FILE="$INSTALL_DIR/neron.yaml"
+CONFIG_FILE="$BASE_DIR/neron.yaml"
 
 # ------------------------------------------------------
 # [1/5] OLLAMA INSTALLATION

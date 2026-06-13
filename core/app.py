@@ -100,7 +100,7 @@ from core.identity import get_identity
 from core.pipeline.routing.agent_router import (
     AgentRouter,
     LLMConfig,
-    ToolRegistry,
+    RouterToolBindings,
 )
 from core.events.event import Event
 from core.events.event_bus import event_bus
@@ -321,9 +321,9 @@ async def lifespan(app: FastAPI):
                     "Goal executions interrupted after restart: %s",
                     ", ".join(interrupted),
                 )
-            logger.info("GoalSystem initialise")
+            logger.info("GoalManager initialise")
         except Exception as exc:
-            logger.warning("GoalSystem init failed: %s", exc)
+            logger.warning("GoalManager init failed: %s", exc)
 
         try:
             from core.scheduler.scheduler import get_task_scheduler
@@ -407,7 +407,7 @@ async def lifespan(app: FastAPI):
 
             _sessions = SessionStore()
             _skills = SkillRegistry()
-            _tools = ToolRegistry().setup_defaults()
+            _tools = RouterToolBindings().setup_defaults()
 
             global agent_router
             agent_router = AgentRouter(

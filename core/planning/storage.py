@@ -4,6 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import PLAN_CREATED
 from core.storage.sqlite_store import SQLiteStore, get_path_lock
 
 
@@ -26,11 +29,23 @@ class PlanStorage:
 
     def save(self, plan: dict[str, Any]) -> None:
         with self._lock:
+            is_new = self.sqlite_store.get_workflow(str(plan.get("id") or "")) is None
             self.sqlite_store.upsert_workflow(plan)
             plans = self._read_all()
             if not any(item.get("id") == plan.get("id") for item in plans):
                 plans.append(plan)
             self._write_legacy(plans)
+            if is_new:
+                event_bus.publish_background(Event(
+                    type=PLAN_CREATED,
+                    source="plan_storage",
+                    payload={
+                        "plan_id": plan.get("id"),
+                        "goal_id": plan.get("goal_id"),
+                        "goal": plan.get("goal"),
+                        "step_count": len(plan.get("steps") or []),
+                    },
+                ))
 
     def history(self, limit: int = 20) -> list[dict[str, Any]]:
         plans = self._read_all()

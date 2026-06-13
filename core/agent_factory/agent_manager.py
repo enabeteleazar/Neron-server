@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 from core.agent_factory.registry import DynamicAgentRegistry
-from core.agent_factory.promoter import promote_agent
+from core.agent_factory.promotion import AgentPromotionService
 from core.agent_factory.validator import validate_agent
+from core.agent_runtime.runtime import get_agent_runtime
 from core.evolution.codex_runner import CodexRunner, redact_secrets
-from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
 
 
 DEFAULT_GENERATED_AGENTS = Path("/etc/neron/core/agents/generated")
@@ -48,7 +48,7 @@ class AgentManager:
         self.backups_dir = backups_dir
         self.project_root = project_root
         self.python_executable = python_executable or sys.executable
-        self.runtime_manager = runtime_manager or get_agent_runtime_manager()
+        self.runtime_manager = runtime_manager or get_agent_runtime()
         self.codex_runner = codex_runner
 
     def list_managed_agents(self) -> dict[str, Any]:
@@ -272,7 +272,12 @@ class AgentManager:
                 "updated": False,
             }
 
-        promotion = promote_agent(str(workspace_agent), generated_dir=self.generated_agents)
+        promotion = AgentPromotionService(
+            generated_dir=self.generated_agents,
+        ).promote(
+            workspace_agent,
+            requested_by="agent_manager_update",
+        )
         if not promotion.get("ok"):
             return {
                 "status": "failed",

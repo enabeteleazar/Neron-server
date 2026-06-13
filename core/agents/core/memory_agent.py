@@ -10,6 +10,9 @@ from contextlib import contextmanager
 from typing import Dict, List, Optional
 
 from core.config import settings
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import MEMORY_UPDATED
 
 logger = logging.getLogger("memory_agent")
 
@@ -49,16 +52,6 @@ def init_db() -> None:
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_timestamp ON memory(timestamp)"
         )
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS events (
-                id        INTEGER PRIMARY KEY AUTOINCREMENT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                type      TEXT,
-                service   TEXT,
-                message   TEXT,
-                data      TEXT
-            )
-        """)
         conn.commit()
     logger.info("Memory DB prête")
 
@@ -78,8 +71,12 @@ class MemoryAgent:
             logger.error("Memory reload error : %s", e)
             return False
 
-    def store(self, input_text: str, response: str, metadata: dict | None = None) -> int:
-        """Persiste un échange en mémoire. Retourne l'id inséré ou -1."""
+    def _store_record(
+        self,
+        input_text: str,
+        response: str,
+        metadata: dict | None = None,
+    ) -> int:
         try:
             with get_db() as conn:
                 cursor = conn.execute(
@@ -91,6 +88,25 @@ class MemoryAgent:
         except Exception as e:
             logger.error("Memory store error : %s", e)
             return -1
+
+    @staticmethod
+    def _updated_event(row_id: int, metadata: dict | None) -> Event:
+        return Event(
+            type=MEMORY_UPDATED,
+            source="memory_agent",
+            payload={
+                "action": "store",
+                "record_id": row_id,
+                "metadata": dict(metadata or {}),
+            },
+        )
+
+    def store(self, input_text: str, response: str, metadata: dict | None = None) -> int:
+        """Persist an exchange and notify consumers without depending on them."""
+        row_id = self._store_record(input_text, response, metadata)
+        if row_id > 0:
+            event_bus.publish_background(self._updated_event(row_id, metadata))
+        return row_id
 
     def retrieve(self, limit: int = 3) -> List[Dict]:
         """Retourne les N derniers échanges."""
@@ -120,6 +136,30 @@ class MemoryAgent:
         except Exception as e:
             logger.error("Memory search error : %s", e)
             return []
+
+    async def get_context(self, query: str, limit: int = 3) -> str | None:
+        """Return persisted conversation matches for LLM context injection."""
+        entries = self.search(query, limit=limit)
+        if not entries:
+            return None
+
+        lines = ["Historique mémoire pertinent :"]
+        for entry in reversed(entries):
+            lines.append(f"U: {entry['input']}")
+            lines.append(f"N: {entry['response']}")
+        return "\n".join(lines)
+
+    async def save(
+        self,
+        input_text: str,
+        response: str,
+        metadata: dict | None = None,
+    ) -> int:
+        """Async compatibility adapter used by the LLM routing pipeline."""
+        row_id = self._store_record(input_text, response, metadata)
+        if row_id > 0:
+            await event_bus.publish(self._updated_event(row_id, metadata))
+        return row_id
 
     def cleanup(self, days: int = 30) -> int:
         """

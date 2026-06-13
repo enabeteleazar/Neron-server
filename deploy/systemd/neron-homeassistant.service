@@ -1,14 +1,22 @@
 [Unit]
-Description=Neron Home Assistant Core
+Description=Home Assistant
 After=network.target
 
 [Service]
+EnvironmentFile=/etc/neron/secrets.env
 Type=simple
-User=eleazar
-WorkingDirectory=/etc/neron/client/homeassistant
-ExecStart=/etc/neron/venv/bin/hass -c /etc/neron/client/homeassistant/config
-Restart=always
+User=homeassistant
+WorkingDirectory=/opt/homeassistant
+
+ExecStart=/opt/homeassistant/venv/bin/hass -c /opt/homeassistant/config
+
+Restart=on-failure
 RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

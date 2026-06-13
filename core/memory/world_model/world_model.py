@@ -1,34 +1,11 @@
-import time
-from typing import Dict, Any
+"""Deprecated import adapter for the canonical World Model.
 
-class MemoryWorldModel:
-    def __init__(self):
-        self._state: Dict[str, Any] = {
-            "time": time.time(),
-            "agents": {},
-            "modules": {},
-            "system": {}
-        }
-        self.last_updated: float = time.time()
+World state belongs to :mod:`core.world_model`. This module remains importable
+for external callers that still use the historical memory namespace.
+"""
 
-    def update(self, category: str, key: str, value: Any):
-        if category not in self._state:
-            self._state[category] = {}
+from core.world_model.world_model import WorldModel
 
-        self._state[category][key] = value
-        self._state["timestamp"] = time.time()
+MemoryWorldModel = WorldModel
 
-    def get(self):
-        return self._state
-
-    def get_category(self, category: str):
-        return self._state.get(category,{})
-
-
-
-
-# Backward compatibility:
-# Historical imports use:
-#   from core.memory.world_model.world_model import WorldModel
-# Keep this alias until watchdog_agent and legacy callers are migrated.
-WorldModel = MemoryWorldModel
+__all__ = ["MemoryWorldModel", "WorldModel"]

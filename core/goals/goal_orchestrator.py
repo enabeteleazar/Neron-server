@@ -166,7 +166,6 @@ class GoalOrchestrator:
             current_step="planning",
         )
         goal = self.goal_manager.get_goal(str(goal["id"])) or goal
-        await self._publish_flow_event("goal.created", {"goal_id": goal.get("id"), "title": title, "source": source})
 
         plan = self.planner.create_plan(title).to_dict()
         plan.update(
@@ -192,10 +191,6 @@ class GoalOrchestrator:
                 "tool_creation_status",
                 "not_required",
             )
-        await self._publish_flow_event(
-            "planner.plan_created",
-            {"goal_id": goal.get("id"), "plan_id": plan.get("id"), "steps": len(plan.get("steps", []))},
-        )
         execution_engine.mark_step_completed(
             str(goal["id"]),
             "planning",

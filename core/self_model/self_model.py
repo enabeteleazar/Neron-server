@@ -17,6 +17,7 @@ import asyncio
 
 from core.events.event import Event
 from core.events.event_bus import event_bus
+from core.events import event_types
 from core.identity import get_identity
 
 
@@ -1157,7 +1158,7 @@ class SelfModel:
                 and state_ts != last_published_state_ts
             ):
                 events.append(Event(
-                    type="self_model.state_changed",
+                    type=event_types.SELF_MODEL_STATE_CHANGED,
                     source="self_model",
                     payload=last_state_change,
                 ))
@@ -1172,7 +1173,7 @@ class SelfModel:
                 and mode_ts != last_published_mode_ts
             ):
                 events.append(Event(
-                    type="self_model.runtime_mode_changed",
+                    type=event_types.SELF_MODEL_RUNTIME_MODE_CHANGED,
                     source="self_model",
                     payload=last_mode_change,
                 ))
@@ -1604,12 +1605,6 @@ class SelfModel:
         recent_activity = data.get("recent_activity", [])
         recent_events = data.get("recent_events", [])
 
-        try:
-            from core.world_model.world_model import load_world_model_state
-            world = load_world_model_state()
-        except Exception:
-            world = {}
-
         health_global = data.get("health_global", "unknown")
         health_realtime = data.get("health_realtime", "unknown")
         health_historical = data.get("health_historical", "unknown")
@@ -1681,30 +1676,10 @@ class SelfModel:
         last_decision_text = last_decision.get("decision") if isinstance(last_decision, dict) else None
         last_reasoning_text = last_reasoning.get("reasoning") if isinstance(last_reasoning, dict) else None
 
-        world_services = world.get("external_services", {})
-        world_network = world.get("network", {})
-
-        world_internet = (
-            "accessible"
-            if world_network.get("default_gateway_reachable")
-            else "indisponible"
-        )
-
-        world_dns = (
-            "fonctionnel"
-            if world_network.get("dns_reachable")
-            else "indisponible"
-        )
-
-        def _world_service_status(name: str) -> str:
-            state = world_services.get(name, {})
-            return "actif" if state.get("reachable") else "indisponible"
-
         summary_line = (
             f"Néron est {health_global}. "
             f"CPU {cpu}%, RAM {ram}%, disque {disk}%. "
-            f"Boucle cognitive {loop_state}. "
-            f"Environnement {world.get('environment_status', 'unknown')}."
+            f"Boucle cognitive {loop_state}."
         )
 
         return f"""{summary_line}
@@ -1730,16 +1705,7 @@ class SelfModel:
 - Recommandations : {recommendations_text}
 - Dernière erreur : {last_error_text}
 
-Monde externe :
-- Environnement : {world.get("environment_status", "unknown")}
-- Internet : {world_internet}
-- DNS : {world_dns}
-- Home Assistant : {_world_service_status("home_assistant")}
-- Ollama : {_world_service_status("ollama")}
-- Néron LLM API : {_world_service_status("neron_llm_api")}
-- Néron Core API : {_world_service_status("neron_core_api")}
-
-Mémoire cognitive :
+Historique cognitif interne :
 - Objectif actif : {active_goal_title}
 - Dernière action : {last_action_text or "aucune"}
 - Dernière décision : {last_decision_text or "aucune"}

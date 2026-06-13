@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from core.goals.goal_manager import get_goal_manager
 from core.planning import AutonomousPlanner
 from core.planning.storage import PlanStorage
 
@@ -19,8 +20,6 @@ logging.basicConfig(
 logger = logging.getLogger("neron.cognitive_loop")
 
 ACTION_HISTORY_PATH = Path("/etc/neron/data/action_history.jsonl")
-GOALS_STATE_PATH = Path("/etc/neron/data/goals_state.json")
-GOALS_PATH = Path("/etc/neron/data/goals.json")
 
 
 def _json_default(value: Any) -> Any:
@@ -41,27 +40,8 @@ def _save_action(payload: dict[str, Any]) -> None:
 
 
 def _read_active_goal() -> str | None:
-    for path in [GOALS_STATE_PATH, GOALS_PATH]:
-        if not path.exists():
-            continue
-
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-
-        if not isinstance(data, dict):
-            continue
-
-        goal = data.get("active_goal") or data.get("goal") or data.get("title")
-
-        if not goal and isinstance(data.get("active"), dict):
-            goal = data["active"].get("title") or data["active"].get("goal")
-
-        if goal:
-            return str(goal)
-
-    return None
+    goal = get_goal_manager().get_active_goal()
+    return str(goal.get("title")) if goal else None
 
 
 def _recent_plan_exists(goal: str, cooldown_seconds: int = 3600) -> bool:
@@ -127,6 +107,8 @@ def _generate_plan_from_goal() -> dict[str, Any]:
     data["approved"] = False
     data["approval_required"] = True
     data["source"] = "cognitive_loop"
+    active = get_goal_manager().get_active_goal()
+    data["goal_id"] = active.get("id") if active else None
 
     storage.save(data)
 

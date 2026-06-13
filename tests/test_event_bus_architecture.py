@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+import pytest
+
+from core.events.event import Event
+from core.events.event_bus import EventBus
+
+
+@pytest.mark.asyncio
+async def test_publish_without_listener_is_a_noop():
+    bus = EventBus()
+
+    await bus.publish(Event(type="test.unobserved", payload={}))
+
+
+@pytest.mark.asyncio
+async def test_failing_listener_does_not_block_other_consumers():
+    bus = EventBus()
+    received = []
+
+    async def failing_listener(_event):
+        raise RuntimeError("listener failed")
+
+    def healthy_listener(event):
+        received.append(event.payload["value"])
+
+    bus.subscribe("test.event", failing_listener)
+    bus.subscribe("test.event", healthy_listener)
+
+    await bus.publish(Event(type="test.event", payload={"value": 42}))
+
+    assert received == [42]
+
+
+@pytest.mark.asyncio
+async def test_wildcard_listener_receives_dynamic_event_types():
+    bus = EventBus()
+    received = []
+
+    bus.subscribe("*", received.append)
+
+    await bus.publish(Event(type="watchdog.dynamic_alert", payload={"value": 1}))
+
+    assert [event.type for event in received] == ["watchdog.dynamic_alert"]
+
+
+def test_subscriptions_are_idempotent_and_removable():
+    bus = EventBus()
+
+    async def listener(_event):
+        return None
+
+    bus.subscribe("test.event", listener)
+    bus.subscribe("test.event", listener)
+
+    assert len(bus._subscribers["test.event"]) == 1
+    assert bus.unsubscribe("test.event", listener) is True
+    assert bus.unsubscribe("test.event", listener) is False
+
+
+@pytest.mark.asyncio
+async def test_memory_save_emits_update_after_persistence(monkeypatch, tmp_path):
+    from core.agents.core import memory_agent
+
+    monkeypatch.setattr(memory_agent, "DB_PATH", str(tmp_path / "memory.db"))
+    memory_agent.init_db()
+    emitted = []
+
+    async def capture(event):
+        emitted.append(event)
+
+    monkeypatch.setattr(memory_agent.event_bus, "publish", capture)
+
+    row_id = await memory_agent.MemoryAgent().save(
+        "question",
+        "response",
+        {"source": "test"},
+    )
+
+    assert row_id > 0
+    assert emitted[0].type == "memory.updated"
+    assert emitted[0].payload["record_id"] == row_id
+
+
+def test_world_model_emits_compact_observation_event(monkeypatch):
+    from core.world_model import world_model
+
+    emitted = []
+    monkeypatch.setattr(
+        world_model.event_bus,
+        "publish_background",
+        emitted.append,
+    )
+
+    model = world_model.WorldModel()
+    model.update("agents", "memory", {"status": "online"})
+
+    assert emitted[0].type == "world_model.observation_updated"
+    assert emitted[0].payload["category"] == "agents"
+    assert emitted[0].payload["key"] == "memory"

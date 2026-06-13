@@ -8,6 +8,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import PROJECT_CREATED
 from core.storage.sqlite_store import SQLiteStore, get_path_lock
 
 
@@ -78,6 +81,17 @@ class ProjectManager:
             }
             projects.append(project)
             self._save(projects)
+            event_bus.publish_background(Event(
+                type=PROJECT_CREATED,
+                source="project_manager",
+                payload={
+                    "project_id": project_id,
+                    "title": title,
+                    "project_type": project_type,
+                    "goal_id": project["metadata"].get("goal_id"),
+                    "plan_id": project["metadata"].get("plan_id"),
+                },
+            ))
             return project
 
     def update_project(

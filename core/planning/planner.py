@@ -10,7 +10,7 @@ class AutonomousPlanner:
     Objectif :
     - transformer un objectif en plan structuré ;
     - ne rien exécuter automatiquement ;
-    - préparer la future connexion au GoalSystem, TaskManager et Critic.
+    - préparer la connexion au GoalManager, TaskManager et Critic.
     """
 
     def create_plan(self, goal: str) -> Plan:

@@ -28,7 +28,10 @@ from telegram.ext import (
 
 from core.agents.base_agent import get_logger
 from core.config import settings
-from core.memory.world_model.world_model import WorldModel
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.memory.persistent_store import get_store
+from core.world_model.world_model import get_world_model
 
 # ── Logger ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +39,7 @@ logger = get_logger("watchdog_agent")
 
 # ── WorldModel — instance unique ──────────────────────────────────────────────
 
-world_model = WorldModel()
+world_model = get_world_model()
 
 # ── Executor pour I/O bloquantes (psutil interval, sqlite) ───────────────────
 
@@ -104,36 +107,31 @@ def log_event(
     message: str | None  = None,
     data:    dict | None = None,
 ) -> None:
-    """Persiste un event en DB (appelable depuis sync et async)."""
-    try:
-        with get_db() as conn:
-            conn.execute(
-                "INSERT INTO events (type, service, message, data) VALUES (?, ?, ?, ?)",
-                (type_, service, message, json.dumps(data or {})),
-            )
-            conn.commit()
-    except Exception as e:
-        logger.error("log_event error : %s", e)
+    """Publish a watchdog event; Memory owns its persistence."""
+    event_bus.publish_background(Event(
+        type=type_,
+        source="watchdog_agent",
+        payload={
+            "service": service,
+            "message": message,
+            "data": data or {},
+        },
+    ))
 
 
 def read_events(days: int = 7) -> List[Dict]:
     try:
-        with get_db() as conn:
-            rows = conn.execute(
-                "SELECT * FROM events "
-                "WHERE timestamp > datetime('now', ? || ' days') "
-                "ORDER BY timestamp ASC",
-                (f"-{days}",),
-            ).fetchall()
-            result = []
-            for r in rows:
-                d = dict(r)
-                try:
-                    d["data"] = json.loads(d["data"]) if d["data"] else {}
-                except Exception:
-                    d["data"] = {}
-                result.append(d)
-            return result
+        events = get_store().get_events_since(days=days, source="watchdog_agent")
+        return [
+            {
+                "timestamp": event["created_at"],
+                "type": event["type"],
+                "service": event["payload"].get("service"),
+                "message": event["payload"].get("message"),
+                "data": event["payload"].get("data") or {},
+            }
+            for event in events
+        ]
     except Exception as e:
         logger.error("read_events error : %s", e)
         return []
@@ -182,9 +180,7 @@ def _sqlite_ping() -> bool:
 
 def _sqlite_clear_events() -> None:
     """Efface tous les events — appelé en run_in_executor."""
-    with get_db() as conn:
-        conn.execute("DELETE FROM events")
-        conn.commit()
+    get_store().clear_events(source="watchdog_agent")
 
 
 # ── Notifications ─────────────────────────────────────────────────────────────

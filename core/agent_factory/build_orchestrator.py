@@ -13,8 +13,16 @@ from pathlib import Path
 from typing import Any, Literal
 
 from core.agent_factory.registry import DynamicAgentRegistry
+from core.agent_factory.promotion import AgentPromotionService
 from core.agent_factory.validator import validate_agent
 from core.evolution.codex_runner import CodexRunner, redact_secrets
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import (
+    AGENT_CREATED,
+    AGENT_PROMOTED,
+    AGENT_REGISTERED,
+)
 from core.goals.execution_engine import GoalExecutionEngine
 from core.projects.manager import ProjectManager, get_project_manager
 from core.runtime.sandbox.agent_sandbox import AgentSandbox
@@ -251,6 +259,13 @@ class AgentBuildOrchestrator:
                 step_status="done",
                 progress=35,
             )
+            await self._publish_agent_created(
+                agent_slug=spec.name,
+                project_id=project_id,
+                metadata=metadata,
+                destination=agent_file,
+                runtime_status="draft",
+            )
             self._goal_step_completed(
                 metadata,
                 "code_generation",
@@ -298,13 +313,27 @@ class AgentBuildOrchestrator:
                 "pytest_agent",
             )
             self._append_test_result(project_id, test_result)
-            if test_result["returncode"] != 0:
+            sandbox_payload = test_result.get("payload")
+            sandbox_test_failed = self._test_result_failed(test_result)
+            if sandbox_test_failed:
                 self.project_manager.update_project(
                     project_id,
                     {"test_status": "failed"},
                 )
                 self._sandbox_failed(metadata, project_id, test_result)
-                failed = self._fail(project_id, "tests", test_result["stdout_tail"] or test_result["stderr_tail"])
+                failure_message = (
+                    str(sandbox_payload.get("error") or "")
+                    if isinstance(sandbox_payload, dict)
+                    and sandbox_payload.get("ok") is False
+                    else ""
+                )
+                failed = self._fail(
+                    project_id,
+                    "tests",
+                    failure_message
+                    or test_result["stdout_tail"]
+                    or test_result["stderr_tail"],
+                )
                 return self._with_build_status(failed, codex_state)
             self.project_manager.update_project(
                 project_id,
@@ -358,11 +387,16 @@ class AgentBuildOrchestrator:
 
             self._goal_step_started(metadata, "runtime_governor")
             governor = self._get_runtime_governor()
-            governor_allowed = governor.authorize_agent_promotion(
-                agent_name=spec.name,
+            promotion_snapshot = self._snapshot_promotion_target(agent_file)
+            promotion = AgentPromotionService(
+                generated_dir=self.generated_agents,
+                runtime_governor=governor,
+            ).promote(
+                agent_file,
                 requested_by=requested_by,
             )
-            governor_policy = governor.to_dict()
+            governor_allowed = promotion.get("ok") is True
+            governor_policy = promotion.get("governor_policy") or governor.to_dict()
             self.project_manager.update_project(
                 project_id,
                 {
@@ -380,6 +414,8 @@ class AgentBuildOrchestrator:
                     governor_policy.get("reason") or "runtime_governor_refused",
                 )
                 return self._with_build_status(failed, codex_state)
+            destination = Path(str(promotion["destination"]))
+            promotion_destination = destination
             self._goal_step_completed(
                 metadata,
                 "runtime_governor",
@@ -388,9 +424,14 @@ class AgentBuildOrchestrator:
             )
 
             self._goal_step_started(metadata, "registry")
-            promotion_snapshot = self._snapshot_promotion_target(agent_file)
-            destination = self._register_agent(agent_file)
-            promotion_destination = destination
+            await self._publish_agent_lifecycle(
+                AGENT_PROMOTED,
+                agent_slug=spec.name,
+                project_id=project_id,
+                metadata=metadata,
+                path=destination,
+                status="promoted",
+            )
 
             registry = DynamicAgentRegistry(self.generated_agents)
             registry.load_generated_agents()
@@ -423,6 +464,14 @@ class AgentBuildOrchestrator:
                 step="registry",
                 step_status="done",
                 progress=90,
+            )
+            await self._publish_agent_lifecycle(
+                AGENT_REGISTERED,
+                agent_slug=spec.name,
+                project_id=project_id,
+                metadata=metadata,
+                path=destination,
+                status="registered",
             )
             self._goal_step_completed(
                 metadata,
@@ -751,12 +800,6 @@ class AgentBuildOrchestrator:
 
         return {"ok": True, "error": None, "result": payload}
 
-    def _register_agent(self, agent_file: Path) -> Path:
-        self.generated_agents.mkdir(parents=True, exist_ok=True)
-        destination = self.generated_agents / agent_file.name
-        shutil.copy2(agent_file, destination)
-        return destination
-
     def _snapshot_promotion_target(self, agent_file: Path) -> bytes | None:
         destination = self.generated_agents / agent_file.name
         return destination.read_bytes() if destination.exists() else None
@@ -770,13 +813,13 @@ class AgentBuildOrchestrator:
     def _reload_runtime_after_rollback(self) -> None:
         if not self.runtime_check:
             return
-        from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+        from core.agent_runtime.runtime import get_agent_runtime
 
-        manager = get_agent_runtime_manager()
-        registry = getattr(manager, "registry", None)
+        runtime = get_agent_runtime()
+        registry = runtime.registry
         if registry is not None and hasattr(registry, "generated_dir"):
             registry.generated_dir = self.generated_agents
-        manager.reload()
+        runtime.reload()
 
     def _get_runtime_governor(self) -> Any:
         if self.runtime_governor is not None:
@@ -901,6 +944,51 @@ class AgentBuildOrchestrator:
             )
         )
 
+    async def _publish_agent_created(
+        self,
+        *,
+        agent_slug: str,
+        project_id: str,
+        metadata: dict[str, Any],
+        destination: Path,
+        runtime_status: str,
+    ) -> None:
+        await event_bus.publish(Event(
+            type=AGENT_CREATED,
+            source="agent_build_orchestrator",
+            payload={
+                "agent_slug": agent_slug,
+                "project_id": project_id,
+                "goal_id": metadata.get("goal_id"),
+                "plan_id": metadata.get("plan_id"),
+                "path": str(destination),
+                "runtime_status": runtime_status,
+            },
+        ))
+
+    async def _publish_agent_lifecycle(
+        self,
+        event_type: str,
+        *,
+        agent_slug: str,
+        project_id: str,
+        metadata: dict[str, Any],
+        path: Path,
+        status: str,
+    ) -> None:
+        await event_bus.publish(Event(
+            type=event_type,
+            source="agent_build_orchestrator",
+            payload={
+                "agent_slug": agent_slug,
+                "project_id": project_id,
+                "goal_id": metadata.get("goal_id"),
+                "plan_id": metadata.get("plan_id"),
+                "path": str(path),
+                "status": status,
+            },
+        ))
+
     def _format_registered_agent_response(
         self,
         spec: AgentSpec,
@@ -929,17 +1017,18 @@ class AgentBuildOrchestrator:
     async def _verify_agent(self, spec: AgentSpec) -> dict[str, Any]:
         if not self.runtime_check:
             return {"ok": True, "skipped": True, "runtime_reload": {"ok": True, "skipped": True, "agents": [spec.name]}}
-        from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+        from core.agent_runtime.runtime import get_agent_runtime
 
-        manager = get_agent_runtime_manager()
-        registry = getattr(manager, "registry", None)
+        runtime = get_agent_runtime()
+        registry = runtime.registry
         if registry is not None and hasattr(registry, "generated_dir"):
             registry.generated_dir = self.generated_agents
-        runtime_reload = manager.reload()
-        result = await manager.run(spec.name, "combien de temps avant la WWDC ?")
-        if not result.get("ok"):
-            return {"ok": False, "error": result.get("error"), "raw": result, "runtime_reload": runtime_reload}
-        response = str(result.get("response") or "")
+        runtime_reload = runtime.reload()
+        execution = await runtime.run_agent(spec.name, "combien de temps avant la WWDC ?")
+        result = execution.to_dict()
+        if not execution.ok:
+            return {"ok": False, "error": execution.error, "raw": result, "runtime_reload": runtime_reload}
+        response = execution.response
         return {
             "ok": bool(response),
             "response": response,
@@ -969,6 +1058,17 @@ class AgentBuildOrchestrator:
             "stderr_tail": completed.stderr[-4000:],
             "ran_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    @staticmethod
+    def _test_result_failed(result: dict[str, Any]) -> bool:
+        payload = result.get("payload")
+        return bool(
+            result.get("returncode") != 0
+            or (
+                isinstance(payload, dict)
+                and payload.get("ok") is False
+            )
+        )
 
     def _sandbox_verify_agent(
         self,

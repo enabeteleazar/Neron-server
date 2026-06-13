@@ -6,7 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from core.storage.sqlite_store import get_path_lock
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import TASK_CREATED
+from core.storage.sqlite_store import SQLiteStore, get_path_lock
 
 
 TASKS_FILE = Path("/etc/neron/data/tasks.json")
@@ -34,10 +37,18 @@ def normalize_task_title(title: str | None) -> str:
 
 
 class TaskManager:
-    def __init__(self) -> None:
-        self.path = TASKS_FILE
+    def __init__(
+        self,
+        path: Path | str | None = None,
+        sqlite_store: SQLiteStore | None = None,
+    ) -> None:
+        self.path = Path(path or TASKS_FILE)
+        self.sqlite_store = sqlite_store or SQLiteStore(
+            self.path.parent / "neron_state.sqlite3"
+        )
         self._lock = get_path_lock(self.path)
         self.tasks: list[dict[str, Any]] = []
+        self._legacy_imported = False
         self._load()
 
     def _now(self) -> str:
@@ -45,17 +56,35 @@ class TaskManager:
 
     def _load(self) -> None:
         with self._lock:
-            if not self.path.exists():
-                return
+            stored = self.sqlite_store.list_workflow_tasks()
+            if not stored and not self._legacy_imported:
+                for task in self._load_legacy():
+                    if task.get("id"):
+                        self.sqlite_store.upsert_workflow_task(task)
+                self._legacy_imported = True
+                stored = self.sqlite_store.list_workflow_tasks()
+            self.tasks = stored
 
-            try:
-                data = json.loads(self.path.read_text())
-                self.tasks = data.get("tasks", [])
-            except Exception:
-                self.tasks = []
+    def _load_legacy(self) -> list[dict[str, Any]]:
+        if not self.path.exists():
+            return []
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+        if isinstance(data, dict):
+            tasks = data.get("tasks", [])
+        elif isinstance(data, list):
+            tasks = data
+        else:
+            tasks = []
+        return [task for task in tasks if isinstance(task, dict)]
 
     def save(self) -> None:
         with self._lock:
+            for task in self.tasks:
+                self.sqlite_store.upsert_workflow_task(task)
+            self.tasks = self.sqlite_store.list_workflow_tasks()
             self.path.parent.mkdir(parents=True, exist_ok=True)
             tmp = self.path.with_suffix(f"{self.path.suffix}.tmp")
             tmp.write_text(
@@ -75,8 +104,14 @@ class TaskManager:
         status: str = "active",
         source: str = "manual",
         metadata: dict[str, Any] | None = None,
+        goal_id: str | None = None,
+        plan_id: str | None = None,
+        goal: str | None = None,
+        agent: str | None = None,
+        action: str | None = None,
     ) -> dict[str, Any]:
         with self._lock:
+            self._load()
             task = {
                 "id": str(uuid.uuid4()),
                 "title": title,
@@ -90,10 +125,34 @@ class TaskManager:
                 "updated_at": self._now(),
                 "completed_at": None,
             }
+            if goal_id:
+                task["goal_id"] = goal_id
+            if plan_id:
+                task["plan_id"] = plan_id
+            if goal:
+                task["goal"] = goal
+            if agent:
+                task["agent"] = agent
+            if action:
+                task["action"] = action
 
             self.tasks.append(task)
             self.save()
-            return task
+            persisted = self.get_task(str(task["id"])) or task
+            event_bus.publish_background(Event(
+                type=TASK_CREATED,
+                source="task_manager",
+                payload={
+                    "task_id": persisted["id"],
+                    "title": persisted["title"],
+                    "source": persisted["source"],
+                    "goal_id": goal_id or persisted["metadata"].get("goal_id"),
+                    "plan_id": plan_id or persisted["metadata"].get("plan_id"),
+                    "agent": agent,
+                    "action": action,
+                },
+            ))
+            return persisted
 
     def list_tasks(
         self,
@@ -184,6 +243,7 @@ class TaskManager:
     ) -> list[dict[str, Any]]:
         with self._lock:
             goal = str(plan.get("goal") or "")
+            goal_id = str(plan.get("goal_id") or "")
             plan_id = str(plan.get("id") or "")
             created: list[dict[str, Any]] = []
 
@@ -216,19 +276,19 @@ class TaskManager:
                     priority="medium",
                     status="active",
                     source="planner",
+                    metadata={
+                        "goal_id": goal_id or None,
+                        "plan_id": plan_id or None,
+                    },
+                    goal_id=goal_id or None,
+                    plan_id=plan_id or None,
+                    goal=goal or None,
+                    agent=step.get("agent"),
+                    action=step.get("action"),
                 )
-
-                task["plan_id"] = plan_id
-                task["goal"] = goal
-                task["agent"] = step.get("agent")
-                task["action"] = step.get("action")
-                task["updated_at"] = self._now()
 
                 created.append(task)
                 existing_keys.add(key)
-
-            if created:
-                self.save()
 
             return created
 
@@ -269,6 +329,7 @@ class TaskManager:
         updates: dict[str, Any],
     ) -> dict[str, Any] | None:
         with self._lock:
+            self._load()
             task = self.get_task(task_id)
 
             if not task:
@@ -277,7 +338,7 @@ class TaskManager:
             task.update(updates)
             task["updated_at"] = self._now()
             self.save()
-            return task
+            return self.get_task(task_id)
 
     def update_status(self, task_id: str, status: str) -> dict[str, Any] | None:
         allowed_statuses = {
@@ -305,20 +366,30 @@ class TaskManager:
 
     def delete_task(self, task_id: str) -> bool:
         with self._lock:
+            self._load()
             before = len(self.tasks)
             self.tasks = [task for task in self.tasks if task.get("id") != task_id]
             deleted = len(self.tasks) != before
             if deleted:
+                self.sqlite_store.delete_workflow_task(task_id)
                 self.save()
             return deleted
 
     def clear_done(self) -> int:
         with self._lock:
+            self._load()
             done_statuses = {"done", "completed"}
             before = len(self.tasks)
+            removed_ids = [
+                str(task.get("id"))
+                for task in self.tasks
+                if task.get("status") in done_statuses and task.get("id")
+            ]
             self.tasks = [task for task in self.tasks if task.get("status") not in done_statuses]
             removed = before - len(self.tasks)
             if removed:
+                for task_id in removed_ids:
+                    self.sqlite_store.delete_workflow_task(task_id)
                 self.save()
             return removed
 
@@ -338,6 +409,7 @@ class TaskManager:
 
     def complete_task(self, task_id: str) -> bool:
         with self._lock:
+            self._load()
             for task in self.tasks:
                 if task.get("id") == task_id:
                     task["status"] = "completed"

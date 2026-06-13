@@ -60,17 +60,11 @@ async def log_event(event: Event) -> None:
     )
 
 
-_SUBSCRIBERS_REGISTERED = False
-
-
 def register_default_subscribers() -> None:
-    global _SUBSCRIBERS_REGISTERED
-
-    if _SUBSCRIBERS_REGISTERED:
-        logger.info("default_event_subscribers_already_registered")
-        return
-
     logger.info("default_event_subscribers_registering")
+
+    event_bus.subscribe("*", log_event)
+    event_bus.subscribe("*", persist_event)
 
     for event_type in (
         event_types.USER_MESSAGE_RECEIVED,
@@ -80,10 +74,7 @@ def register_default_subscribers() -> None:
         event_types.AGENT_CONSULTED,
         event_types.RESPONSE_READY,
         event_types.SYSTEM_ALERT,
-        event_types.MEMORY_UPDATED,
     ):
-        event_bus.subscribe(event_type, log_event)
-        event_bus.subscribe(event_type, persist_event)
         event_bus.subscribe(event_type, analyze_event)
         event_bus.subscribe(event_type, update_self_model_from_event)
 
@@ -91,11 +82,17 @@ def register_default_subscribers() -> None:
             event_bus.subscribe(event_type, notify_system_alert)
             event_bus.subscribe(event_type, handle_system_alert_for_repair)
 
-    event_bus.subscribe("self_model.state_changed", log_event)
-    event_bus.subscribe("self_model.state_changed", handle_self_model_governor_event)
+    for event_type in (
+        event_types.MEMORY_UPDATED,
+        event_types.WORLD_MODEL_STATE_CHANGED,
+        event_types.WORLD_MODEL_OBSERVATION_UPDATED,
+    ):
+        event_bus.subscribe(event_type, update_self_model_from_event)
 
-    event_bus.subscribe("self_model.runtime_mode_changed", log_event)
-    event_bus.subscribe("self_model.runtime_mode_changed", handle_self_model_governor_event)
+    for event_type in (
+        event_types.SELF_MODEL_STATE_CHANGED,
+        event_types.SELF_MODEL_RUNTIME_MODE_CHANGED,
+    ):
+        event_bus.subscribe(event_type, handle_self_model_governor_event)
 
-    _SUBSCRIBERS_REGISTERED = True
     logger.info("default_event_subscribers_registered")

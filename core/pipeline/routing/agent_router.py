@@ -26,7 +26,6 @@ _news: Optional[object] = None
 _weather: Optional[object] = None
 _todo: Optional[object] = None
 _wiki: Optional[object] = None
-_agent_factory: Optional[object] = None
 
 AGENT_LIST_QUERIES = {
     "quels agents sont disponibles",
@@ -162,14 +161,6 @@ def _get_wiki():
     return _wiki
 
 
-def _get_agent_factory():
-    global _agent_factory
-    if _agent_factory is None:
-        from core.agent_factory.factory_agent import AgentFactoryAgent
-        _agent_factory = AgentFactoryAgent()
-    return _agent_factory
-
-
 def _get_self_model():
     from core.self_model.self_model import get_self_model
     return get_self_model()
@@ -209,25 +200,26 @@ def _is_registry_invalid_query(query: str) -> bool:
 
 
 async def _scan_agent_registry_text() -> str:
-    from core.agent_factory.registry_scanner import AgentRegistryScanner
+    from core.agent_runtime.runtime import get_agent_runtime
 
-    result = await AgentRegistryScanner().scan()
-    runtime = "OK" if result.get("runtime_reloaded") else "non"
+    runtime = get_agent_runtime()
+    result = runtime.registry.scan()
+    runtime.reload()
     return "\n".join(
         [
             "Scan agents terminé.",
             f"Agents scannés : {result.get('scanned', 0)}.",
             f"Actifs : {result.get('active', 0)}.",
             f"Invalides : {result.get('invalid', 0)}.",
-            f"Runtime rechargé : {runtime}.",
+            "Runtime rechargé : OK.",
         ]
     )
 
 
 def _agent_registry_records() -> list[dict[str, Any]]:
-    from core.agent_factory.registry_scanner import AgentRegistryScanner
+    from core.agent_factory.registry import DynamicAgentRegistry
 
-    index = AgentRegistryScanner().get_index()
+    index = DynamicAgentRegistry().validation_index()
     agents = index.get("agents") if isinstance(index, dict) else {}
     if not isinstance(agents, dict):
         return []
@@ -403,25 +395,25 @@ async def _update_dynamic_agent(query: str) -> str:
 
 
 async def _run_dynamic_agent(query: str) -> str:
-    from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+    from core.agent_runtime.runtime import get_agent_runtime
 
-    manager = get_agent_runtime_manager()
+    runtime = get_agent_runtime()
     agent_name = _extract_agent_name_for_run(query)
 
     if not agent_name:
         return "Nom d’agent introuvable. Exemple : lance l agent meteo"
 
-    result = await manager.run(agent_name, query)
+    execution = await runtime.run_agent(agent_name, query)
 
-    if not result["ok"]:
-        available = ", ".join(result.get("available", [])) or "aucun"
+    if not execution.ok:
+        available = ", ".join(runtime.list_agents()) or "aucun"
         return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
 
-    return result["response"]
+    return execution.response
 
 
 async def _promote_dynamic_agent(query: str) -> str:
-    from core.agent_factory.promoter import promote_agent
+    from core.agent_factory.promotion import AgentPromotionService
     from core.agent_factory.validator import validate_agent
 
     agent_name = _extract_agent_name_for_promote(query)
@@ -446,11 +438,17 @@ async def _promote_dynamic_agent(query: str) -> str:
         return f"Validation échouée : {validation['error']}"
 
     test_result = _run_agent_promotion_test(source)
+    if test_result is None:
+        return "Promotion refusée : aucun test associé au brouillon."
+
     if test_result and test_result["returncode"] != 0:
         error = test_result["stdout_tail"] or test_result["stderr_tail"] or "pytest_failed"
         return f"Tests échoués : {error}"
 
-    result = promote_agent(str(source))
+    result = AgentPromotionService().promote(
+        source,
+        requested_by="agent_router_text_promotion",
+    )
 
     if not result["ok"]:
         return f"Promotion échouée : {result['error']}"
@@ -542,9 +540,9 @@ class AgentRouter:
             return await _promote_dynamic_agent(query)
 
         if intent == Intent.SELF_STATUS:
-            from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+            from core.agent_runtime.runtime import get_agent_runtime
 
-            runtime = get_agent_runtime_manager()
+            runtime = get_agent_runtime()
             runtime.reload()
 
             model.set_agents_available(runtime.list_agents())
@@ -708,13 +706,13 @@ class LLMConfig:
     temperature: float = 0.7
 
 
-class ToolRegistry:
+class RouterToolBindings:
     def __init__(self):
         self._tools: Dict[str, Any] = {}
 
-    def setup_defaults(self) -> "ToolRegistry":
+    def setup_defaults(self) -> "RouterToolBindings":
         return self
 
-    def register(self, name: str, tool: Any) -> "ToolRegistry":
+    def register(self, name: str, tool: Any) -> "RouterToolBindings":
         self._tools[name] = tool
         return self

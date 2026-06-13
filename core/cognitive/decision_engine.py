@@ -44,7 +44,7 @@ class DecisionEngine:
 
         elif strategy == "restore_goal":
             action = "restore_active_goal"
-            target = "goal_system"
+            target = "goal_manager"
 
         elif strategy == "create_tasks":
             action = "generate_task_plan"

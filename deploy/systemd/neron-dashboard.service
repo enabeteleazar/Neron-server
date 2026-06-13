@@ -1,0 +1,21 @@
+[Unit]
+Description=Néron UI Dashboard
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=neron
+Group=neron
+WorkingDirectory=/etc/neron/ui_dashboard
+Environment=NODE_ENV=production
+Environment=PORT=5000
+Environment=DATABASE_URL=postgresql://neron:neron@localhost:5432/neron_dashboard
+Environment=NERON_API_URL=http://localhost:8010
+EnvironmentFile=-/etc/neron/neron-dashboard.env
+ExecStart=/usr/bin/node /etc/neron/ui_dashboard/dist/index.cjs
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import shutil
+import subprocess
+import sys
 import threading
 import unicodedata
 from pathlib import Path
@@ -14,6 +17,9 @@ from core.tools.code_generator import (
     validate_generated_code,
     validate_workspace_path,
 )
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import TOOL_CREATED
 from core.tools.models import ToolNeed, ToolResult, ToolSpec
 from core.tools.registry import ToolRegistry, get_tool_registry
 from core.tools.runtime import ToolRuntime, get_tool_runtime
@@ -42,6 +48,7 @@ class ToolCreator:
         runtime: ToolRuntime | None = None,
         *,
         workspace: Path = Path("/etc/neron/workspace/tools"),
+        generated_tools: Path | None = None,
         spec_builder: ToolSpecBuilder | None = None,
         deterministic_generator: ToolCodeGenerator | None = None,
         codex_generator: ToolCodeGenerator | None = None,
@@ -51,6 +58,9 @@ class ToolCreator:
             ToolRuntime(self.registry) if registry is not None else get_tool_runtime()
         )
         self.workspace = workspace
+        self.generated_tools = generated_tools or (
+            workspace.parent.parent / "core" / "tools" / "generated"
+        )
         self.spec_builder = spec_builder or ToolSpecBuilder()
         self.deterministic_generator = (
             deterministic_generator or DeterministicToolCodeGenerator()
@@ -161,13 +171,14 @@ class ToolCreator:
                 reused.append(spec.slug)
                 continue
             try:
+                tool_path = self.workspace / f"{spec.slug}.py"
+                test_path = self.workspace / "tests" / f"test_{spec.slug}.py"
+                need.metadata["tool_path"] = str(tool_path)
                 strategy, code, test_code = await self._generate_artifacts(spec, need)
                 strategies.add(strategy)
                 code_errors = validate_generated_code(code)
                 if code_errors:
                     raise ValueError(",".join(code_errors))
-                tool_path = self.workspace / f"{spec.slug}.py"
-                test_path = self.workspace / "tests" / f"test_{spec.slug}.py"
                 if not validate_workspace_path(tool_path, self.workspace):
                     raise ValueError("tool_path_outside_workspace")
                 if not validate_workspace_path(test_path, self.workspace):
@@ -175,9 +186,26 @@ class ToolCreator:
                 test_path.parent.mkdir(parents=True, exist_ok=True)
                 tool_path.write_text(code, encoding="utf-8")
                 test_path.write_text(test_code, encoding="utf-8")
-                handler = self._load_handler(tool_path)
-                spec.metadata["tool_path"] = str(tool_path)
+                await event_bus.publish(Event(
+                    type=TOOL_CREATED,
+                    source="tool_creator",
+                    payload={
+                        "tool_slug": spec.slug,
+                        "path": str(tool_path),
+                        "test_path": str(test_path),
+                        "status": "draft",
+                    },
+                ))
+                self._validate_generated_tool(test_path)
+                self.generated_tools.mkdir(parents=True, exist_ok=True)
+                promoted_path = self.generated_tools / tool_path.name
+                shutil.copy2(tool_path, promoted_path)
+                handler = self._load_handler(promoted_path)
+                spec.metadata["workspace_tool_path"] = str(tool_path)
+                spec.metadata["tool_path"] = str(promoted_path)
+                spec.metadata["handler_path"] = str(promoted_path)
                 spec.metadata["test_path"] = str(test_path)
+                spec.metadata["validated_generated_tool"] = True
                 spec.source = (
                     "tool_creator_deterministic"
                     if strategy == "deterministic"
@@ -272,6 +300,18 @@ class ToolCreator:
         if not callable(handler):
             raise RuntimeError("generated_tool_execute_missing")
         return handler
+
+    @staticmethod
+    def _validate_generated_tool(test_path: Path) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", str(test_path)],
+            text=True,
+            capture_output=True,
+            timeout=120,
+        )
+        if completed.returncode != 0:
+            error = completed.stdout[-2000:] or completed.stderr[-2000:]
+            raise RuntimeError(f"tool_tests_failed:{error}")
 
     @staticmethod
     def _infer_domain(normalized: str) -> str:

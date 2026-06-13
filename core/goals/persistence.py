@@ -35,3 +35,15 @@ def save_goals_state(data: dict[str, Any]) -> None:
             encoding="utf-8",
         )
         tmp.replace(GOALS_PATH)
+
+
+def load_legacy_goal_system_state() -> dict[str, Any]:
+    legacy_path = GOALS_PATH.with_name("goals.json")
+    with get_path_lock(legacy_path):
+        if legacy_path.exists():
+            try:
+                data = json.loads(legacy_path.read_text(encoding="utf-8"))
+                return data if isinstance(data, dict) else {}
+            except Exception:
+                pass
+    return {}

@@ -22,6 +22,14 @@ _DB_PATH = settings.MEMORY_DB_PATH
 _MAX_TURNS_PER_SESSION = 100
 _MAX_FACTS_PER_SESSION = 50
 _SESSION_TTL_DAYS = 30
+_EVENT_COLUMNS = {
+    "event_id",
+    "type",
+    "source",
+    "payload_json",
+    "created_at",
+    "ts",
+}
 
 # ── DDL ───────────────────────────────────────────────────────────────────────
 
@@ -108,10 +116,26 @@ class PersistentStore:
     def _init(self) -> None:
         try:
             with _conn() as c:
+                self._preserve_legacy_events_table(c)
                 c.executescript(_DDL)
             logger.info("[PersistentStore] DB initialisée : %s", _DB_PATH)
         except Exception as exc:
             logger.error("[PersistentStore] Échec init DB : %s", exc)
+
+    @staticmethod
+    def _preserve_legacy_events_table(c: sqlite3.Connection) -> None:
+        rows = c.execute("PRAGMA table_info(events)").fetchall()
+        columns = {row["name"] for row in rows}
+        if not columns or _EVENT_COLUMNS.issubset(columns):
+            return
+
+        suffix = int(time.time())
+        backup_name = f"watchdog_events_legacy_{suffix}"
+        c.execute(f'ALTER TABLE events RENAME TO "{backup_name}"')
+        logger.warning(
+            "[PersistentStore] Legacy events table preserved as %s",
+            backup_name,
+        )
 
     # ── Sessions ──────────────────────────────────────────────────────────────
 
@@ -306,6 +330,50 @@ class PersistentStore:
             result.append(item)
 
         return result
+
+    def get_events_since(
+        self,
+        *,
+        days: int,
+        source: Optional[str] = None,
+        limit: int = 5000,
+    ) -> List[Dict[str, Any]]:
+        """Return persisted events newer than the requested age."""
+        cutoff = time.time() - max(0, days) * 86400
+        limit = min(max(1, limit), 10_000)
+        query = """
+            SELECT event_id, type, source, payload_json, created_at, ts
+            FROM events
+            WHERE ts >= ?
+        """
+        params: list[Any] = [cutoff]
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        query += " ORDER BY ts ASC LIMIT ?"
+        params.append(limit)
+
+        with _conn() as c:
+            rows = c.execute(query, params).fetchall()
+
+        result = []
+        for row in rows:
+            item = dict(row)
+            try:
+                item["payload"] = json.loads(item.pop("payload_json"))
+            except (json.JSONDecodeError, TypeError):
+                item["payload"] = {}
+            result.append(item)
+        return result
+
+    def clear_events(self, *, source: Optional[str] = None) -> int:
+        """Delete persisted event history owned by Memory."""
+        with self._lock, _conn() as c:
+            if source:
+                cursor = c.execute("DELETE FROM events WHERE source = ?", (source,))
+            else:
+                cursor = c.execute("DELETE FROM events")
+            return cursor.rowcount
 
     # ── GC ───────────────────────────────────────────────────────────────────
 

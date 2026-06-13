@@ -30,7 +30,7 @@ def _find_existing_goal_task(goal_id: str) -> dict[str, Any] | None:
 
 def create_task_from_goal(goal: Any) -> dict[str, Any]:
     """
-    Convertit un objectif GoalSystem en tâche persistante.
+    Convertit un objectif canonique en tâche persistante.
     Empêche les doublons actifs pour un même goal_id.
     """
 
@@ -60,6 +60,8 @@ def create_task_from_goal(goal: Any) -> dict[str, Any]:
         title=f"Objectif: {title}",
         description=description,
         priority=priority if priority in {"low", "normal", "high", "critical"} else "high",
+        source="goal_system",
+        goal_id=str(goal_id) if goal_id else None,
         metadata={
             "source": "goal_system",
             "goal_id": goal_id,

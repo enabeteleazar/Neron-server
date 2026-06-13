@@ -41,6 +41,10 @@ async def list_tools(_: None = Depends(verify_api_key)) -> dict[str, Any]:
     tools = [spec.to_dict() for spec in get_tool_registry().list_tools()]
     return {"count": len(tools), "tools": tools}
 
+@router.get("/diagnostics")
+async def tool_diagnostics(_: None = Depends(verify_api_key)) -> dict[str, Any]:
+    return get_tool_registry().diagnose_consistency()
+
 
 @router.post("/plan")
 async def plan_tools(

@@ -4,8 +4,8 @@ from fastapi import APIRouter
 
 from core.cognitive.reporter import get_cognitive_reporter
 from core.cognitive_core.core import CognitiveCore
+from core.goals.goal_manager import get_goal_manager
 from core.self_model.self_model import get_self_model
-from core.goal_system.goal_system import get_goal_system
 from core.task_system.task_manager import get_task_manager
 from core.world_model.world_model import get_world_model
 
@@ -17,7 +17,7 @@ async def cognitive_report() -> dict:
     self_model = get_self_model()
     self_model.collect_runtime()
 
-    goal_system = get_goal_system()
+    goal_system = get_goal_manager()
     task_manager = get_task_manager()
     world_model = get_world_model()
 

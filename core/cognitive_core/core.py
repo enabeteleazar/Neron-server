@@ -348,39 +348,14 @@ class CognitiveCore:
             if goal:
                 return str(goal)
 
-        # Fallback 1 : GoalSystem persistant récent
-        goals_state_path = Path("/etc/neron/data/goals_state.json")
-        if goals_state_path.exists():
-            try:
-                data = json.loads(goals_state_path.read_text(encoding="utf-8"))
-                active_goal_id = data.get("active_goal_id")
-                goals = data.get("goals", [])
+        try:
+            from core.goals.goal_manager import get_goal_manager
 
-                if active_goal_id and isinstance(goals, list):
-                    for goal in goals:
-                        if goal.get("id") == active_goal_id:
-                            return goal.get("title") or goal.get("name")
-
-                for goal in goals:
-                    if goal.get("status") == "active":
-                        return goal.get("title") or goal.get("name")
-            except Exception:
-                pass
-
-        # Fallback 2 : ancien fichier goals.json
-        goals_path = Path("/etc/neron/data/goals.json")
-        if goals_path.exists():
-            try:
-                data = json.loads(goals_path.read_text(encoding="utf-8"))
-                goal = data.get("active_goal")
-
-                if isinstance(goal, dict):
-                    return goal.get("title") or goal.get("name")
-
-                if goal:
-                    return str(goal)
-            except Exception:
-                pass
+            goal = get_goal_manager().get_active_goal()
+            if goal:
+                return goal.get("title") or goal.get("name")
+        except Exception:
+            pass
 
         return None
 
@@ -396,19 +371,11 @@ class CognitiveCore:
 
                 return tasks if isinstance(tasks, list) else []
 
-        tasks_path = Path("/etc/neron/data/tasks.json")
-        if tasks_path.exists():
-            try:
-                data = json.loads(tasks_path.read_text(encoding="utf-8"))
-                tasks = data.get("tasks", [])
+        try:
+            from core.task_system.task_manager import get_task_manager
 
-                if isinstance(tasks, list):
-                    return [
-                        task
-                        for task in tasks
-                        if task.get("status") in {"pending", "active", "todo", "in_progress"}
-                    ]
-            except Exception:
-                pass
+            return get_task_manager().list_active_tasks()
+        except Exception:
+            pass
 
         return []

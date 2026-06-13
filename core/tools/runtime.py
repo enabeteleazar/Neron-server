@@ -6,8 +6,15 @@ import re
 import threading
 from collections import Counter
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 from typing import Any
 
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import (
+    TOOL_EXECUTION_COMPLETED,
+    TOOL_EXECUTION_STARTED,
+)
 from core.tools.models import ToolResult
 from core.tools.registry import ToolRegistry, get_tool_registry
 
@@ -57,29 +64,58 @@ class ToolRuntime:
             return ToolResult(ok=False, error="tool_not_found")
         if spec.safety.get("allow_system_commands"):
             return ToolResult(ok=False, error="unsafe_tool_rejected")
+        declared_path = self._registered_handler_path(spec)
+        if declared_path is not None:
+            if "workspace" in declared_path.parts:
+                return ToolResult(ok=False, error="tool_workspace_handler_rejected")
+            if not declared_path.is_file():
+                return ToolResult(ok=False, error="tool_handler_not_available")
         handler = self.handlers.get(slug)
         if handler is None:
-            handler = self._load_registered_handler(spec)
+            try:
+                handler = self._load_registered_handler(spec)
+            except Exception:
+                return ToolResult(ok=False, error="tool_handler_not_available")
             if handler is not None:
                 self.handlers[slug] = handler
         if handler is None:
             return ToolResult(ok=False, error="tool_handler_not_available")
+        event_bus.publish_background(Event(
+            type=TOOL_EXECUTION_STARTED,
+            source="tool_runtime",
+            payload={"tool_slug": slug},
+        ))
         try:
             value = handler(dict(payload or {}))
             if inspect.isawaitable(value):
                 value = await value
-            return self._coerce_result(value)
+            result = self._coerce_result(value)
         except Exception as exc:
-            return ToolResult(ok=False, error=str(exc))
+            result = ToolResult(ok=False, error=str(exc))
+        event_bus.publish_background(Event(
+            type=TOOL_EXECUTION_COMPLETED,
+            source="tool_runtime",
+            payload={
+                "tool_slug": slug,
+                "status": "completed" if result.ok else "failed",
+                "error": result.error,
+            },
+        ))
+        return result
 
     @staticmethod
-    def _load_registered_handler(spec):
-        path = spec.metadata.get("tool_path")
-        if not path:
+    def _registered_handler_path(spec) -> Path | None:
+        path = spec.metadata.get("handler_path") or spec.metadata.get("tool_path")
+        return Path(str(path)) if path else None
+
+    @classmethod
+    def _load_registered_handler(cls, spec):
+        path = cls._registered_handler_path(spec)
+        if path is None or not path.is_file():
             return None
         module_spec = importlib.util.spec_from_file_location(
             f"registered_tool_{spec.slug}",
-            str(path),
+            path,
         )
         if not module_spec or not module_spec.loader:
             return None

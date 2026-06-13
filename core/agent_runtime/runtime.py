@@ -16,6 +16,12 @@ from core.agent_runtime.models import (
     utc_now_iso,
 )
 from core.agent_runtime.store import AgentRuntimeStore
+from core.events.event import Event
+from core.events.event_bus import event_bus
+from core.events.event_types import (
+    AGENT_EXECUTION_COMPLETED,
+    AGENT_EXECUTION_STARTED,
+)
 from core.tools.registry import ToolRegistry, get_tool_registry
 from core.tools.runtime import ToolRuntime, get_tool_runtime
 
@@ -49,6 +55,33 @@ class AgentRuntime:
         )
         self.store = store or AgentRuntimeStore()
         self._loaded: dict[str, AgentInstance] = {}
+        self._states: dict[str, dict[str, Any]] = {}
+
+    def reload(self) -> dict[str, Any]:
+        agents = self.registry.load_generated_agents()
+        loaded_at = time.time()
+        for name in agents:
+            self._states.setdefault(
+                name,
+                {
+                    "name": name,
+                    "loaded_at": loaded_at,
+                    "runs": 0,
+                    "failures": 0,
+                    "last_error": None,
+                    "last_execution_ms": None,
+                },
+            )
+        for name in set(self._states) - set(agents):
+            self._states.pop(name, None)
+        return {"ok": True, "count": len(agents), "agents": sorted(agents)}
+
+    def list_agents(self) -> list[str]:
+        return list(self.reload()["agents"])
+
+    def get_state(self, name: str) -> dict[str, Any] | None:
+        state = self._states.get(name)
+        return dict(state) if state is not None else None
 
     def load_agent(self, agent_slug: str) -> AgentInstance:
         slug = str(agent_slug or "").strip()
@@ -104,11 +137,22 @@ class AgentRuntime:
         )
         self.store.save_execution(result, request=execution_context.request)
         self._log("agent_runtime_started", result, duration_ms=None)
+        execution_started = False
 
         try:
             instance = self.load_agent(agent_slug)
             result.agent_slug = instance.agent_slug
             execution_context.tools = instance.tools
+            event_bus.publish_background(Event(
+                type=AGENT_EXECUTION_STARTED,
+                source="agent_runtime",
+                payload={
+                    "execution_id": result.execution_id,
+                    "agent_slug": result.agent_slug,
+                    "request_metadata": execution_context.metadata,
+                },
+            ))
+            execution_started = True
             raw = await self._execute_agent(instance, execution_context)
             result.response, result.result = self._coerce_result(raw)
             result.status = "completed"
@@ -124,10 +168,41 @@ class AgentRuntime:
             result,
             duration_ms=result.duration_ms,
         )
+        if execution_started:
+            event_bus.publish_background(Event(
+                type=AGENT_EXECUTION_COMPLETED,
+                source="agent_runtime",
+                payload={
+                    "execution_id": result.execution_id,
+                    "agent_slug": result.agent_slug,
+                    "status": result.status,
+                    "duration_ms": result.duration_ms,
+                    "error": result.error,
+                },
+            ))
+        state = self._states.setdefault(
+            result.agent_slug,
+            {
+                "name": result.agent_slug,
+                "loaded_at": time.time(),
+                "runs": 0,
+                "failures": 0,
+                "last_error": None,
+                "last_execution_ms": None,
+            },
+        )
+        state["runs"] += 1
+        state["failures"] += 0 if result.ok else 1
+        state["last_error"] = result.error
+        state["last_execution_ms"] = result.duration_ms
         return result
 
     async def run(self, name: str, text: str = "") -> dict[str, Any]:
-        return (await self.run_agent(name, text)).to_dict()
+        result = await self.run_agent(name, text)
+        payload = result.to_dict()
+        if not result.ok:
+            payload["available"] = self.list_agents()
+        return payload
 
     def list_loaded_agents(self) -> list[str]:
         return sorted(self._loaded)

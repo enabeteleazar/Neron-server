@@ -57,8 +57,8 @@ class AgentCreator:
                 f"tests/test_{agent_name}.py",
             ],
             "endpoints_or_hooks": [
-                "core.runtime.agents.agent_runtime_manager",
-                "core.agent_factory.promoter",
+                "core.agent_runtime.runtime",
+                "core.agent_factory.promotion.AgentPromotionService",
             ],
             "tests_to_create": [
                 f"tests/test_{agent_name}.py",
