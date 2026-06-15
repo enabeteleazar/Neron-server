@@ -1,7 +1,7 @@
 # core/gateway/telegram_gateway.py
 # Compatibility Telegram gateway for the control-plane stack.
 #
-# The main neron-core runtime starts `core.agents.communication.telegram_agent`.
+# The main neron-core runtime starts `agents.builtin.communication.telegram_agent`.
 # This gateway is retained for `core.control_plane.core.NeronCore` and should
 # not be started concurrently with the main Telegram bot.
 
@@ -25,7 +25,7 @@ from telegram.ext import (
 
 from core.config import settings
 from core.constants import CODE_KEYWORDS
-from core.agents.automation.watchdog_agent import get_anomalies, get_health_score, get_status
+from agents.builtin.automation.watchdog_agent import get_anomalies, get_health_score, get_status
 
 logger = logging.getLogger("neron.gateway.telegram")
 
@@ -267,7 +267,7 @@ class TelegramGateway:
             uptime_min = st.get("uptime_s", 0) // 60
             health     = get_health_score()
             score      = health.get("score", "N/A")
-            from core.modules.scheduler import get_jobs
+            from modules.scheduler import get_jobs
             jobs      = get_jobs()
             jobs_text = (
                 "\n".join(f"  • {j['name']} — {j['next_run']}" for j in jobs)
@@ -336,7 +336,7 @@ class TelegramGateway:
         message = " ".join(context.args) if context.args else "Appel depuis Néron."
         sent    = await update.message.reply_text("📞 Appel en cours...")
         try:
-            from core.agents.communication.twilio_agent import call as twilio_call
+            from agents.builtin.communication.twilio_agent import call as twilio_call
             result = twilio_call(message)
             await sent.edit_text(f"✅ Appel passé : {result}")
         except Exception as e:
@@ -438,7 +438,7 @@ class TelegramGateway:
 
         # Signal d'activité pour le watchdog
         try:
-            from core.agents.automation import watchdog_agent as _wdog
+            from agents.builtin.automation import watchdog_agent as _wdog
             _wdog._last_conversation = time.monotonic()
         except Exception:
             pass

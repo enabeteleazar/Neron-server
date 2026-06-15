@@ -7,14 +7,14 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI
 
-from core.goals.execution_engine import GoalExecutionEngine
-from core.scheduler.scheduler import TaskScheduler
-from core.scheduler.store import SchedulerStore
+from goal.goals.execution_engine import GoalExecutionEngine
+from modules.scheduler.scheduler import TaskScheduler
+from modules.scheduler.store import SchedulerStore
 from core.storage.sqlite_store import SQLiteStore
-from core.tools.creator import LOG_TOOL_SLUGS, ToolCreator
-from core.tools.models import ToolResult, ToolSpec
-from core.tools.registry import ToolRegistry
-from core.tools.runtime import ToolRuntime
+from tools.creator import LOG_TOOL_SLUGS, ToolCreator
+from tools.models import ToolResult, ToolSpec
+from tools.registry import ToolRegistry
+from tools.runtime import ToolRuntime
 
 
 LOGS = [

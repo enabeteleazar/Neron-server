@@ -11,12 +11,12 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from core.goals import goal_manager, goal_orchestrator, persistence, routes
-from core.goals.background_runner import GoalBackgroundRunner
-from core.goals.execution_engine import GoalExecutionEngine
-from core.goals.goal_orchestrator import GoalOrchestrator
-from core.planning.storage import PlanStorage
-from core.projects.manager import ProjectManager
+from goal.goals import goal_manager, goal_orchestrator, persistence, routes
+from goal.goals.background_runner import GoalBackgroundRunner
+from goal.goals.execution_engine import GoalExecutionEngine
+from goal.goals.goal_orchestrator import GoalOrchestrator
+from goal.planning.storage import PlanStorage
+from goal.projects.manager import ProjectManager
 from core.storage.sqlite_store import SQLiteStore
 
 

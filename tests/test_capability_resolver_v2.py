@@ -4,14 +4,14 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from core.capabilities.domain_classifier import DomainClassifier
-from core.capabilities.intent_extractor import IntentExtractor
-from core.capabilities.intent_provider import RuleBasedIntentProvider
-from core.capabilities.matcher import CapabilityMatcher
-from core.capabilities.models import Capability
-from core.capabilities.registry import CapabilityRegistry
-from core.capabilities.resolver import CapabilityResolver
-from core.tools.registry import ToolRegistry
+from modules.capabilities.domain_classifier import DomainClassifier
+from modules.capabilities.intent_extractor import IntentExtractor
+from modules.capabilities.intent_provider import RuleBasedIntentProvider
+from modules.capabilities.matcher import CapabilityMatcher
+from modules.capabilities.models import Capability
+from modules.capabilities.registry import CapabilityRegistry
+from modules.capabilities.resolver import CapabilityResolver
+from tools.registry import ToolRegistry
 
 
 class EmptyAgentRegistry:
@@ -212,7 +212,7 @@ async def test_future_intent_provider_contract_is_async():
 
 @pytest.mark.asyncio
 async def test_capability_analyze_api(monkeypatch, tmp_path):
-    from core.capabilities import routes
+    from modules.capabilities import routes
 
     resolver = CapabilityResolver(
         registry=make_registry(),

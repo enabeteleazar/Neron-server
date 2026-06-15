@@ -5,11 +5,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.goals.execution_engine import GoalExecutionEngine
-from core.projects.manager import ProjectManager
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from goal.goals.execution_engine import GoalExecutionEngine
+from goal.projects.manager import ProjectManager
 from core.runtime.sandbox.agent_sandbox import AgentSandbox
-from core.validation.business_validator import BusinessValidator
+from modules.validation.business_validator import BusinessValidator
 
 
 class AllowGovernor:
@@ -123,6 +123,7 @@ def test_python_backend_from_environment_never_uses_bwrap(
     assert command[0] == sandbox.python_executable
     assert workspace.is_dir()
     assert (workspace / ".sandbox_tmp").is_dir()
+    assert (workspace / ".sandbox_tmp").stat().st_mode & 0o7777 == 0o1777
     assert result["sandbox"]["backend_used"] == "python"
     assert result["sandbox"]["isolation"] == "python_audit"
 
@@ -300,6 +301,9 @@ def test_systemd_command_contains_required_isolation_properties(
         "--property=ProtectHome=yes",
         f"--property=ReadWritePaths={tmp_path / 'workspace'}",
         f"--property=WorkingDirectory={tmp_path / 'workspace'}",
+        f"--setenv=HOME={tmp_path / 'workspace'}",
+        f"--setenv=TMPDIR={tmp_path / 'workspace' / '.sandbox_tmp'}",
+        "--setenv=PYTHONDONTWRITEBYTECODE=1",
         "--property=MemoryMax=256M",
         "--property=CPUQuota=50%",
         "--property=RuntimeMaxSec=30",
@@ -627,9 +631,8 @@ async def test_registry_not_reached_when_sandbox_fails(
         execution_engine=engine,
     )
     monkeypatch.setattr(
-        builder,
-        "_register_agent",
-        lambda *_args: pytest.fail("registry must not be reached"),
+        "agents.factory.promotion.AgentPromotionService.promote",
+        lambda *_args, **_kwargs: pytest.fail("promotion must not be reached"),
     )
 
     result = await builder.build_from_request(

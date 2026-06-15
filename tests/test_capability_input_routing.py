@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.capabilities.models import CapabilityDecision, CapabilityResult
+from modules.capabilities.models import CapabilityDecision, CapabilityResult
 from core.pipeline.intent.intent_router import Intent, IntentResult
 
 
@@ -120,8 +120,8 @@ async def test_natural_telegram_creation_returns_short_async_response(monkeypatc
 
 async def test_unknown_durable_telegram_request_does_not_reach_conversation(monkeypatch):
     from core import app as core_app
-    from core.capabilities.registry import CapabilityRegistry
-    from core.capabilities.resolver import CapabilityResolver
+    from modules.capabilities.registry import CapabilityRegistry
+    from modules.capabilities.resolver import CapabilityResolver
 
     class EmptyAgents:
         def list_agent_records(self):
@@ -149,9 +149,6 @@ async def test_unknown_durable_telegram_request_does_not_reach_conversation(monk
     async def fake_publish(*_args, **_kwargs):
         return None
 
-    async def forbidden_conversation(*_args, **_kwargs):
-        raise AssertionError("La demande durable ne doit pas atteindre le LLM conversationnel")
-
     resolver = CapabilityResolver(
         registry=CapabilityRegistry(
             agent_registry=EmptyAgents(),
@@ -165,7 +162,6 @@ async def test_unknown_durable_telegram_request_does_not_reach_conversation(monk
     monkeypatch.setattr(core_app, "router", FakeIntentRouter())
     monkeypatch.setattr(core_app, "metrics", FakeMetrics())
     monkeypatch.setattr(core_app.event_bus, "publish", fake_publish)
-    monkeypatch.setattr(core_app, "_handle_conversation", forbidden_conversation)
     monkeypatch.setattr(core_app, "get_capability_resolver", lambda: resolver)
 
     response = await core_app.text_input(

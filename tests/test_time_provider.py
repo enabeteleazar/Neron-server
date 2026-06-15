@@ -5,7 +5,7 @@ import pytest
 from unittest.mock import patch
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from core.neron_time.time_provider import TimeProvider, JOURS, MOIS
+from modules.neron_time.time_provider import TimeProvider, JOURS, MOIS
 
 
 class TestTimeProvider:

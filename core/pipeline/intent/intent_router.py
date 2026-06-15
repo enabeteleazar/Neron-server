@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict
 
-from core.agents.base_agent import get_logger
+from agents.builtin.base_agent import get_logger
 
 logger = get_logger(__name__)
 
@@ -417,7 +417,7 @@ class IntentRouter:
         )
 
         try:
-            from core.self_model.self_model import get_self_model
+            from modules.self_model.self_model import get_self_model
 
             model = get_self_model()
             model.set_last_intent(

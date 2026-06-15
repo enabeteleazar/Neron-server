@@ -26,7 +26,6 @@ _news: Optional[object] = None
 _weather: Optional[object] = None
 _todo: Optional[object] = None
 _wiki: Optional[object] = None
-_agent_factory: Optional[object] = None
 
 AGENT_LIST_QUERIES = {
     "quels agents sont disponibles",
@@ -93,7 +92,7 @@ def _result_to_text(result: Any) -> str:
 def _get_llm():
     global _llm
     if _llm is None:
-        from core.agents.core.llm_agent import LLMAgent
+        from agents.builtin.core.llm_agent import LLMAgent
         _llm = LLMAgent()
     return _llm
 
@@ -101,7 +100,7 @@ def _get_llm():
 def _get_memory():
     global _memory
     if _memory is None:
-        from core.agents.core.memory_agent import MemoryAgent
+        from agents.builtin.core.memory_agent import MemoryAgent
         _memory = MemoryAgent()
     return _memory
 
@@ -109,7 +108,7 @@ def _get_memory():
 def _get_system():
     global _system
     if _system is None:
-        from core.agents.core.system_agent import SystemAgent
+        from agents.builtin.core.system_agent import SystemAgent
         _system = SystemAgent()
     return _system
 
@@ -117,7 +116,7 @@ def _get_system():
 def _get_ha():
     global _ha
     if _ha is None:
-        from core.agents.automation.ha_agent import HAAgent
+        from agents.builtin.automation.ha_agent import HAAgent
         _ha = HAAgent()
     return _ha
 
@@ -125,7 +124,7 @@ def _get_ha():
 def _get_web():
     global _web
     if _web is None:
-        from core.agents.communication.web_agent import WebAgent
+        from agents.builtin.communication.web_agent import WebAgent
         _web = WebAgent()
     return _web
 
@@ -133,7 +132,7 @@ def _get_web():
 def _get_news():
     global _news
     if _news is None:
-        from core.agents.io.news_agent import NewsAgent
+        from agents.builtin.io.news_agent import NewsAgent
         _news = NewsAgent()
     return _news
 
@@ -141,7 +140,7 @@ def _get_news():
 def _get_weather():
     global _weather
     if _weather is None:
-        from core.agents.io.weather_agent import WeatherAgent
+        from agents.builtin.io.weather_agent import WeatherAgent
         _weather = WeatherAgent()
     return _weather
 
@@ -149,7 +148,7 @@ def _get_weather():
 def _get_todo():
     global _todo
     if _todo is None:
-        from core.agents.core.todo_agent import TodoAgent
+        from agents.builtin.core.todo_agent import TodoAgent
         _todo = TodoAgent()
     return _todo
 
@@ -157,26 +156,18 @@ def _get_todo():
 def _get_wiki():
     global _wiki
     if _wiki is None:
-        from core.agents.io.wiki_agent import WikiAgent
+        from agents.builtin.io.wiki_agent import WikiAgent
         _wiki = WikiAgent()
     return _wiki
 
 
-def _get_agent_factory():
-    global _agent_factory
-    if _agent_factory is None:
-        from core.agent_factory.factory_agent import AgentFactoryAgent
-        _agent_factory = AgentFactoryAgent()
-    return _agent_factory
-
-
 def _get_self_model():
-    from core.self_model.self_model import get_self_model
+    from modules.self_model.self_model import get_self_model
     return get_self_model()
 
 
 def _list_dynamic_agents() -> str:
-    from core.agent_factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
+    from agents.factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
 
     registry = DynamicAgentRegistry()
     registry.load_generated_agents()
@@ -209,25 +200,26 @@ def _is_registry_invalid_query(query: str) -> bool:
 
 
 async def _scan_agent_registry_text() -> str:
-    from core.agent_factory.registry_scanner import AgentRegistryScanner
+    from agents.runtime.runtime import get_agent_runtime
 
-    result = await AgentRegistryScanner().scan()
-    runtime = "OK" if result.get("runtime_reloaded") else "non"
+    runtime = get_agent_runtime()
+    result = runtime.registry.scan()
+    runtime.reload()
     return "\n".join(
         [
             "Scan agents terminé.",
             f"Agents scannés : {result.get('scanned', 0)}.",
             f"Actifs : {result.get('active', 0)}.",
             f"Invalides : {result.get('invalid', 0)}.",
-            f"Runtime rechargé : {runtime}.",
+            "Runtime rechargé : OK.",
         ]
     )
 
 
 def _agent_registry_records() -> list[dict[str, Any]]:
-    from core.agent_factory.registry_scanner import AgentRegistryScanner
+    from agents.factory.registry import DynamicAgentRegistry
 
-    index = AgentRegistryScanner().get_index()
+    index = DynamicAgentRegistry().validation_index()
     agents = index.get("agents") if isinstance(index, dict) else {}
     if not isinstance(agents, dict):
         return []
@@ -264,8 +256,8 @@ def _invalid_agent_registry_text() -> str:
 
 
 def _project_status_text(query: str) -> str:
-    from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-    from core.projects.manager import get_project_manager
+    from agents.factory.build_orchestrator import AgentBuildOrchestrator
+    from goal.projects.manager import get_project_manager
 
     manager = get_project_manager()
     matches = manager.find_project_by_query(query, limit=1)
@@ -274,7 +266,7 @@ def _project_status_text(query: str) -> str:
 
 
 def _project_list_text() -> str:
-    from core.projects.manager import get_project_manager
+    from goal.projects.manager import get_project_manager
 
     projects = get_project_manager().list_projects(limit=20)
     if not projects:
@@ -290,7 +282,7 @@ def _project_list_text() -> str:
 
 
 async def _build_tracked_agent(query: str, source_channel: str = "api") -> str:
-    from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+    from agents.factory.build_orchestrator import AgentBuildOrchestrator
 
     orchestrator = AgentBuildOrchestrator()
     result = await orchestrator.build_from_request(
@@ -377,7 +369,7 @@ def _extract_agent_update_request(query: str) -> tuple[str, str] | None:
 
 
 async def _update_dynamic_agent(query: str) -> str:
-    from core.agent_factory.agent_manager import AgentManager
+    from agents.factory.agent_manager import AgentManager
 
     parsed = _extract_agent_update_request(query)
     if not parsed:
@@ -403,26 +395,26 @@ async def _update_dynamic_agent(query: str) -> str:
 
 
 async def _run_dynamic_agent(query: str) -> str:
-    from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+    from agents.runtime.runtime import get_agent_runtime
 
-    manager = get_agent_runtime_manager()
+    runtime = get_agent_runtime()
     agent_name = _extract_agent_name_for_run(query)
 
     if not agent_name:
         return "Nom d’agent introuvable. Exemple : lance l agent meteo"
 
-    result = await manager.run(agent_name, query)
+    execution = await runtime.run_agent(agent_name, query)
 
-    if not result["ok"]:
-        available = ", ".join(result.get("available", [])) or "aucun"
+    if not execution.ok:
+        available = ", ".join(runtime.list_agents()) or "aucun"
         return f"Agent introuvable : {agent_name}. Agents disponibles : {available}"
 
-    return result["response"]
+    return execution.response
 
 
 async def _promote_dynamic_agent(query: str) -> str:
-    from core.agent_factory.promoter import promote_agent
-    from core.agent_factory.validator import validate_agent
+    from agents.factory.promotion import AgentPromotionService
+    from agents.factory.validator import validate_agent
 
     agent_name = _extract_agent_name_for_promote(query)
 
@@ -446,11 +438,17 @@ async def _promote_dynamic_agent(query: str) -> str:
         return f"Validation échouée : {validation['error']}"
 
     test_result = _run_agent_promotion_test(source)
+    if test_result is None:
+        return "Promotion refusée : aucun test associé au brouillon."
+
     if test_result and test_result["returncode"] != 0:
         error = test_result["stdout_tail"] or test_result["stderr_tail"] or "pytest_failed"
         return f"Tests échoués : {error}"
 
-    result = promote_agent(str(source))
+    result = AgentPromotionService().promote(
+        source,
+        requested_by="agent_router_text_promotion",
+    )
 
     if not result["ok"]:
         return f"Promotion échouée : {result['error']}"
@@ -542,9 +540,9 @@ class AgentRouter:
             return await _promote_dynamic_agent(query)
 
         if intent == Intent.SELF_STATUS:
-            from core.runtime.agents.agent_runtime_manager import get_agent_runtime_manager
+            from agents.runtime.runtime import get_agent_runtime
 
-            runtime = get_agent_runtime_manager()
+            runtime = get_agent_runtime()
             runtime.reload()
 
             model.set_agents_available(runtime.list_agents())
@@ -600,7 +598,7 @@ class AgentRouter:
                 or "status des tâches" in q
                 or "status des taches" in q
             ):
-                from core.task_system.task_manager import get_task_manager
+                from goal.system.task_manager import get_task_manager
 
                 manager = get_task_manager()
                 summary = manager.get_status_summary()
@@ -621,7 +619,7 @@ class AgentRouter:
                 or "tâche suivante" in q
                 or "tache suivante" in q
             ):
-                from core.task_system.task_manager import get_task_manager
+                from goal.system.task_manager import get_task_manager
 
                 manager = get_task_manager()
                 task = manager.get_next_task()
@@ -643,7 +641,7 @@ class AgentRouter:
                 or "commence la prochaine tâche" in q
                 or "commence la prochaine tache" in q
             ):
-                from core.task_system.task_manager import get_task_manager
+                from goal.system.task_manager import get_task_manager
 
                 manager = get_task_manager()
                 task = manager.start_next_task()
@@ -665,7 +663,7 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent == Intent.TIME_QUERY:
-            from core.neron_time.time_provider import get_formatted_time
+            from modules.neron_time.time_provider import get_formatted_time
             return get_formatted_time()
 
         if intent == Intent.HA_ACTION:
@@ -677,7 +675,7 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent in (Intent.CODE, Intent.CODE_AUDIT):
-            from core.agents.dev.code_audit_agent import CodeAuditAgent
+            from agents.builtin.dev.code_audit_agent import CodeAuditAgent
             agent = CodeAuditAgent()
             result = await agent.execute(query)
             return _result_to_text(result)
@@ -686,32 +684,6 @@ class AgentRouter:
             from core.personality.updater import apply_feedback
             apply_feedback(query)
             return "⚙️ Ajustement de comportement pris en compte."
-
-        if intent == Intent.GREETING:
-            model.set_last_agent("conversation_agent")
-            model.set_last_action("salutation utilisateur")
-            model.set_last_decision("répondre localement sans LLM")
-            model.set_last_reasoning("les salutations simples ne nécessitent pas de raisonnement LLM")
-            model.add_recent_activity("conversation_agent exécuté")
-            model.set_last_error(None)
-
-            return "Salut, je suis là. Que veux-tu faire ?"
-
-        from core.agents.conversation.conversation_agent import ConversationAgent
-
-        dynamic_result = await ConversationAgent().delegate_to_registered_agent(query)
-        if dynamic_result:
-            agent_name = str(dynamic_result.get("agent") or "dynamic_agent")
-            model.set_last_agent(agent_name)
-            model.set_last_action("agent dynamique exécuté")
-            model.set_last_decision("router vers un agent enregistré compatible")
-            model.set_last_reasoning("un agent dynamique enregistré correspond à l'intention utilisateur")
-            model.add_recent_activity(f"{agent_name} exécuté")
-            model.set_last_error(dynamic_result.get("error"))
-
-            if dynamic_result.get("ok"):
-                return str(dynamic_result.get("response") or "")
-            return f"⚠️ Erreur agent dynamique : {dynamic_result.get('error') or 'erreur inconnue'}"
 
         memory = _get_memory()
         context = await memory.get_context(query) if hasattr(memory, "get_context") else None
@@ -734,13 +706,13 @@ class LLMConfig:
     temperature: float = 0.7
 
 
-class ToolRegistry:
+class RouterToolBindings:
     def __init__(self):
         self._tools: Dict[str, Any] = {}
 
-    def setup_defaults(self) -> "ToolRegistry":
+    def setup_defaults(self) -> "RouterToolBindings":
         return self
 
-    def register(self, name: str, tool: Any) -> "ToolRegistry":
+    def register(self, name: str, tool: Any) -> "RouterToolBindings":
         self._tools[name] = tool
         return self

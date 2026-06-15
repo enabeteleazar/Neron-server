@@ -6,16 +6,16 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI
 
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.capabilities.models import CapabilityRequest
-from core.capabilities.registry import CapabilityRegistry
-from core.capabilities.resolver import CapabilityResolver
-from core.tools.creator import LOG_TOOL_SLUGS, ToolCreator
-from core.tools.models import ToolResult, ToolSpec
-from core.tools.registry import ToolRegistry
-from core.tools.runtime import ToolRuntime
-from core.scheduler.scheduler import TaskScheduler
-from core.scheduler.store import SchedulerStore
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from modules.capabilities.models import CapabilityRequest
+from modules.capabilities.registry import CapabilityRegistry
+from modules.capabilities.resolver import CapabilityResolver
+from tools.creator import LOG_TOOL_SLUGS, ToolCreator
+from tools.models import ToolResult, ToolSpec
+from tools.registry import ToolRegistry
+from tools.runtime import ToolRuntime
+from modules.scheduler.scheduler import TaskScheduler
+from modules.scheduler.store import SchedulerStore
 
 
 LOG_REQUEST = "Analyse automatiquement les logs Néron et résume les erreurs critiques"

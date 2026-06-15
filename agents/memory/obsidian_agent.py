@@ -1,8 +1,8 @@
-from memory.obsidian.client import ObsidianMemory
-from memory.obsidian.tagger import extract_tags, classify_folder
-from memory.obsidian.indexer import ObsidianIndexer
-from memory.obsidian.context_builder import ObsidianContextBuilder
-from memory.obsidian.semantic_search import ObsidianSemanticSearch
+from oblivia.memory_legacy.obsidian.client import ObsidianMemory
+from oblivia.memory_legacy.obsidian.tagger import extract_tags, classify_folder
+from oblivia.memory_legacy.obsidian.indexer import ObsidianIndexer
+from oblivia.memory_legacy.obsidian.context_builder import ObsidianContextBuilder
+from oblivia.memory_legacy.obsidian.semantic_search import ObsidianSemanticSearch
 
 
 class ObsidianAgent:

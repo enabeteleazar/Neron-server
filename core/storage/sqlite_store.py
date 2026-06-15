@@ -153,6 +153,30 @@ class SQLiteStore:
                     ON scheduler_tasks(status, priority, created_at)
             """,
             """
+                CREATE TABLE IF NOT EXISTS workflow_tasks (
+                    task_id TEXT PRIMARY KEY,
+                    goal_id TEXT,
+                    plan_id TEXT,
+                    status TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    payload TEXT NOT NULL
+                )
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_workflow_tasks_plan_id
+                    ON workflow_tasks(plan_id)
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_workflow_tasks_goal_id
+                    ON workflow_tasks(goal_id)
+            """,
+            """
+                CREATE INDEX IF NOT EXISTS idx_workflow_tasks_status
+                    ON workflow_tasks(status)
+            """,
+            """
                 CREATE TABLE IF NOT EXISTS agent_runtime_executions (
                     execution_id TEXT PRIMARY KEY,
                     agent_slug TEXT NOT NULL,
@@ -363,6 +387,69 @@ class SQLiteStore:
         return self._fetch_payloads(
             "SELECT payload FROM workflows ORDER BY updated_at ASC"
         )
+
+    def upsert_workflow_task(self, task: dict[str, Any]) -> None:
+        task_id = str(task["id"])
+        metadata = task.get("metadata") or {}
+        with self._transaction() as connection:
+            connection.execute(
+                """
+                INSERT INTO workflow_tasks (
+                    task_id, goal_id, plan_id, status, priority,
+                    created_at, updated_at, payload
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(task_id) DO UPDATE SET
+                    goal_id = excluded.goal_id,
+                    plan_id = excluded.plan_id,
+                    status = excluded.status,
+                    priority = excluded.priority,
+                    updated_at = excluded.updated_at,
+                    payload = excluded.payload
+                """,
+                (
+                    task_id,
+                    self._optional_text(task.get("goal_id") or metadata.get("goal_id")),
+                    self._optional_text(task.get("plan_id") or metadata.get("plan_id")),
+                    str(task.get("status") or "pending"),
+                    str(task.get("priority") or "medium"),
+                    str(task.get("created_at") or ""),
+                    str(task.get("updated_at") or task.get("created_at") or ""),
+                    self._dump(task),
+                ),
+            )
+
+    def get_workflow_task(self, task_id: str) -> dict[str, Any] | None:
+        return self._fetch_payload(
+            "SELECT payload FROM workflow_tasks WHERE task_id = ?",
+            (task_id,),
+        )
+
+    def list_workflow_tasks(self) -> list[dict[str, Any]]:
+        return self._fetch_payloads(
+            "SELECT payload FROM workflow_tasks ORDER BY created_at ASC"
+        )
+
+    def delete_workflow_task(self, task_id: str) -> bool:
+        with self._transaction() as connection:
+            cursor = connection.execute(
+                "DELETE FROM workflow_tasks WHERE task_id = ?",
+                (task_id,),
+            )
+            return cursor.rowcount > 0
+
+    def replace_workflow_tasks(self, tasks: list[dict[str, Any]]) -> None:
+        task_ids = [str(task["id"]) for task in tasks if task.get("id")]
+        with self._transaction() as connection:
+            if task_ids:
+                placeholders = ",".join("?" for _ in task_ids)
+                connection.execute(
+                    f"DELETE FROM workflow_tasks WHERE task_id NOT IN ({placeholders})",
+                    task_ids,
+                )
+            else:
+                connection.execute("DELETE FROM workflow_tasks")
+        for task in tasks:
+            self.upsert_workflow_task(task)
 
     def workflow_steps(
         self,

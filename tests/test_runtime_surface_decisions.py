@@ -3,7 +3,7 @@ from __future__ import annotations
 
 def test_core_app_uses_official_world_model_router_and_main_telegram_surface():
     import core.app as app
-    from core.agents.communication import telegram_agent
+    from agents.builtin.communication import telegram_agent
     from core.api import world_model_routes
 
     route_paths = {route.path for route in app.app.routes}
@@ -15,7 +15,7 @@ def test_core_app_uses_official_world_model_router_and_main_telegram_surface():
 
 def test_legacy_world_model_api_is_not_registered_in_core_app():
     import core.app as app
-    from core.memory.world_model.api import world_model_router as legacy_world_model_router
+    from modules.memory.world_model.api import world_model_router as legacy_world_model_router
 
     active_route_names = {getattr(route, "name", "") for route in app.app.routes}
     legacy_route_names = {getattr(route, "name", "") for route in legacy_world_model_router.routes}

@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from core.identity import get_identity
-from core.self_model.self_model import SelfModel
+from modules.self_model.self_model import SelfModel
 
 
 def _write_identity(path: Path, *, name: str = "Atlas", version: str = "9.4") -> None:

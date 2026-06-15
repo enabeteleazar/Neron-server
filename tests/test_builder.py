@@ -6,7 +6,7 @@ Couvre : _status, _anomaly_severity, _compute_global_score,
 """
 
 import pytest
-from core.memory.world_model.builder import (
+from modules.memory.world_model.builder import (
     _status,
     _anomaly_severity,
     _compute_global_score,

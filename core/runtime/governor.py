@@ -5,7 +5,7 @@ import time
 from dataclasses import dataclass, asdict
 from typing import Any
 
-from core.events.event import Event
+from modules.events.event import Event
 
 logger = logging.getLogger("neron.runtime.governor")
 

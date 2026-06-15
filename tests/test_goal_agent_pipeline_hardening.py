@@ -7,13 +7,13 @@ import pytest
 from fastapi import HTTPException
 
 from core.agent_factory import build_orchestrator as build_module
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.agent_factory.promoter import promote_agent
-from core.goals import goal_manager, persistence, routes
-from core.goals.goal_orchestrator import GoalOrchestrator
-from core.planning.storage import PlanStorage
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from agents.factory.promotion import AgentPromotionService
+from goal.goals import goal_manager, persistence, routes
+from goal.goals.goal_orchestrator import GoalOrchestrator
+from goal.planning.storage import PlanStorage
 from core.pipeline.routing import agent_router
-from core.projects.manager import ProjectManager
+from goal.projects.manager import ProjectManager
 from core.runtime.governor import RuntimeGovernor
 
 
@@ -145,16 +145,15 @@ async def test_runtime_failure_restores_previous_agent_bytes(tmp_path: Path, mon
     assert destination.read_bytes() == previous
 
 
-def test_legacy_promoter_obeys_runtime_governor(tmp_path: Path):
+def test_canonical_promotion_obeys_runtime_governor(tmp_path: Path):
     source = tmp_path / "workspace" / "legacy_agent.py"
     source.parent.mkdir(parents=True)
     source.write_text("class Agent:\n    pass\n", encoding="utf-8")
 
-    result = promote_agent(
-        str(source),
+    result = AgentPromotionService(
         generated_dir=tmp_path / "generated",
         runtime_governor=FakeGovernor(False),
-    )
+    ).promote(source, requested_by="test")
 
     assert result["ok"] is False
     assert result["error"] == "runtime_governor_refused"
@@ -203,7 +202,7 @@ async def test_legacy_router_does_not_promote_when_associated_test_fails(
 
     monkeypatch.setattr(agent_router, "WORKSPACE_AGENTS_DIR", workspace_agents)
     monkeypatch.setattr(
-        "core.agent_factory.promoter.promote_agent",
+        "agents.factory.promotion.AgentPromotionService.promote",
         forbidden_promotion,
     )
 
@@ -212,6 +211,36 @@ async def test_legacy_router_does_not_promote_when_associated_test_fails(
     )
 
     assert "Tests échoués" in response
+
+
+@pytest.mark.asyncio
+async def test_legacy_router_does_not_promote_without_associated_test(
+    tmp_path: Path,
+    monkeypatch,
+):
+    workspace_agents = tmp_path / "workspace" / "agents"
+    workspace_agents.mkdir(parents=True)
+    source = workspace_agents / "legacy_untested_agent.py"
+    source.write_text(
+        "class Agent:\n"
+        "    name = 'legacy_untested_agent'\n"
+        "    async def execute(self, text=''):\n"
+        "        return {'response': text}\n",
+        encoding="utf-8",
+    )
+
+    def forbidden_promotion(*args, **kwargs):
+        pytest.fail("promotion must not run without an associated test")
+
+    monkeypatch.setattr(agent_router, "WORKSPACE_AGENTS_DIR", workspace_agents)
+    monkeypatch.setattr(
+        "agents.factory.promotion.AgentPromotionService.promote",
+        forbidden_promotion,
+    )
+
+    response = await agent_router._promote_dynamic_agent("valide l agent legacy_untested")
+
+    assert "aucun test associé" in response
 
 
 @pytest.mark.asyncio

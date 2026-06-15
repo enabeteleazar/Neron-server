@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.goals.execution_engine import GoalExecutionEngine
-from core.projects.manager import ProjectManager
-from core.validation.business_validator import BusinessValidator
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from goal.goals.execution_engine import GoalExecutionEngine
+from goal.projects.manager import ProjectManager
+from modules.validation.business_validator import BusinessValidator
 
 
 class AllowGovernor:

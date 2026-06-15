@@ -11,8 +11,8 @@ INSTALL_SCRIPT = ROOT / "scripts" / "install_systemd.sh"
 
 CRITICAL_UNITS = {
     "neron-core.service": "core.app:app",
-    "neron-self-model-loop.service": "-m core.self_model.self_model_loop",
-    "neron-world-model-loop.service": "-m core.world_model.world_model_loop",
+    "neron-self-model-loop.service": "-m modules.self_model.self_model_loop",
+    "neron-world-model-loop.service": "-m modules.world_model.world_model_loop",
     "neron-cognitive-loop.service": "core/autonomous/run_cognitive_loop.py",
 }
 

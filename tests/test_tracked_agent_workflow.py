@@ -9,21 +9,20 @@ import pytest
 from pydantic import ValidationError
 
 from core.agent_factory import build_orchestrator
-from core.agent_factory.agent_creator import AgentCreator
-from core.agent_factory.agent_manager import AgentManager
-from core.agent_factory.factory_agent import AgentFactoryAgent
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.agent_factory.registry import DynamicAgentRegistry
-from core.agent_factory.registry_scanner import AgentRegistryScanner
-from core.agents.conversation.conversation_agent import ConversationAgent
-from core.events import event_types
-from core.events.event_bus import event_bus
-from core.evolution.models import CommandResult
+from agents.factory.agent_creator import AgentCreator
+from agents.factory.agent_manager import AgentManager
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from agents.factory.registry import DynamicAgentRegistry
+from agents.runtime.runtime import AgentRuntime
+from agents.runtime.store import AgentRuntimeStore
+from agents.builtin.conversation.conversation_agent import ConversationAgent
+from modules.events import event_types
+from modules.events.event_bus import event_bus
+from modules.evolution.models import CommandResult
 from core.pipeline.routing import agent_router
 from core.pipeline.intent.intent_router import Intent, IntentRouter
 from core.pipeline.intent.intent_router import IntentResult
-from core.projects.manager import ProjectManager
-from core.runtime.agents.agent_runtime_manager import AgentRuntimeManager
+from goal.projects.manager import ProjectManager
 
 
 class FakeCodexRunner:
@@ -676,42 +675,32 @@ def test_dynamic_agent_registry_finds_registered_agent_by_spec(tmp_path: Path):
     assert match["path"] == str(registered_agent)
 
 
-@pytest.mark.asyncio
-async def test_agent_registry_scanner_registers_valid_agent_and_reloads_runtime(tmp_path: Path):
+def test_dynamic_registry_index_exposes_valid_agent(tmp_path: Path):
     generated = tmp_path / "core" / "agents" / "generated"
     generated.mkdir(parents=True)
     agent_file = generated / "scan_valid_agent.py"
     agent_file.write_text(_valid_agent_code("scan_valid_agent"), encoding="utf-8")
-    runtime = FakeRuntimeManager(generated)
-    scanner = AgentRegistryScanner(
-        generated_agents=generated,
-        index_path=tmp_path / "data" / "agent_registry_index.json",
-        runtime_manager=runtime,
-    )
-
-    result = await scanner.scan()
-    index = scanner.get_index()
+    registry = DynamicAgentRegistry(generated)
+    result = registry.scan()
+    index = registry.validation_index()
     entry = index["agents"]["scan_valid_agent"]
 
     assert result["status"] == "ok"
     assert result["scanned"] == 1
     assert result["active"] == 1
     assert result["invalid"] == 0
-    assert result["runtime_reloaded"] is True
-    assert runtime.reload_calls == 1
-    assert result["runtime_reload"]["agents"] == ["scan_valid_agent"]
+    assert result["source"] == "dynamic_registry"
     assert entry["agent_name"] == "scan_valid_agent"
     assert entry["path"] == str(agent_file)
     assert entry["status"] == "active"
     assert entry["validation_ok"] is True
     assert entry["error"] is None
-    assert entry["source"] == "generated_scan"
+    assert entry["source"] == "dynamic_registry"
     assert entry["checksum"]
     assert entry["last_scanned_at"]
 
 
-@pytest.mark.asyncio
-async def test_agent_registry_scanner_marks_invalid_agent_without_runtime_reload(tmp_path: Path):
+def test_dynamic_registry_index_marks_invalid_agent(tmp_path: Path):
     generated = tmp_path / "core" / "agents" / "generated"
     generated.mkdir(parents=True)
     invalid = generated / "scan_invalid_agent.py"
@@ -722,23 +711,14 @@ async def test_agent_registry_scanner_marks_invalid_agent_without_runtime_reload
         "        return {'status': 'ok'}\n",
         encoding="utf-8",
     )
-    runtime = FakeRuntimeManager(generated)
-    scanner = AgentRegistryScanner(
-        generated_agents=generated,
-        index_path=tmp_path / "data" / "agent_registry_index.json",
-        runtime_manager=runtime,
-    )
-
-    result = await scanner.scan()
-    index = scanner.get_index()
+    registry = DynamicAgentRegistry(generated)
+    result = registry.scan()
+    index = registry.validation_index()
     entry = index["agents"]["scan_invalid_agent"]
 
     assert result["status"] == "ok"
     assert result["active"] == 0
     assert result["invalid"] == 1
-    assert result["runtime_reloaded"] is False
-    assert result["runtime_reload"] is None
-    assert runtime.reload_calls == 0
     assert entry["status"] == "invalid"
     assert entry["validation_ok"] is False
     assert "execute" in entry["error"]
@@ -989,12 +969,14 @@ async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monk
         generated_agents=generated_agents,
         runtime_check=False,
     )
-    runtime = AgentRuntimeManager()
-    runtime.registry = DynamicAgentRegistry(generated_agents)
+    runtime = AgentRuntime(
+        registry=DynamicAgentRegistry(generated_agents),
+        store=AgentRuntimeStore(data_dir / "runtime.sqlite3"),
+    )
 
     monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
     monkeypatch.setattr(routes, "AgentBuildOrchestrator", lambda: orchestrator)
-    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+    monkeypatch.setattr(routes, "get_agent_runtime", lambda: runtime)
 
     result = await routes.approve_agent_proposal(proposal["agent_request_id"])
 
@@ -1042,12 +1024,14 @@ async def test_agent_proposal_approval_accepts_explicit_deterministic_mode(monke
         generated_agents=generated_agents,
         runtime_check=False,
     )
-    runtime = AgentRuntimeManager()
-    runtime.registry = DynamicAgentRegistry(generated_agents)
+    runtime = AgentRuntime(
+        registry=DynamicAgentRegistry(generated_agents),
+        store=AgentRuntimeStore(data_dir / "runtime.sqlite3"),
+    )
 
     monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
     monkeypatch.setattr(routes, "AgentBuildOrchestrator", lambda: orchestrator)
-    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+    monkeypatch.setattr(routes, "get_agent_runtime", lambda: runtime)
 
     result = await routes.approve_agent_proposal(
         proposal["agent_request_id"],
@@ -1079,12 +1063,14 @@ async def test_agent_proposal_approval_codex_mode_calls_codex_runner(monkeypatch
         agent_file=project_root / "workspace" / "agents" / "demo_agent.py",
         agent_name="demo_agent",
     )
-    runtime = AgentRuntimeManager()
-    runtime.registry = DynamicAgentRegistry(generated_agents)
+    runtime = AgentRuntime(
+        registry=DynamicAgentRegistry(generated_agents),
+        store=AgentRuntimeStore(data_dir / "runtime.sqlite3"),
+    )
 
     monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
     monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
-    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+    monkeypatch.setattr(routes, "get_agent_runtime", lambda: runtime)
 
     result = await routes.approve_agent_proposal(
         proposal["agent_request_id"],
@@ -1146,12 +1132,14 @@ async def test_agent_proposal_approval_codex_mode_does_not_promote_on_codex_or_t
         codex_returncode=codex_returncode,
         tests_returncode=tests_returncode,
     )
-    runtime = AgentRuntimeManager()
-    runtime.registry = DynamicAgentRegistry(generated_agents)
+    runtime = AgentRuntime(
+        registry=DynamicAgentRegistry(generated_agents),
+        store=AgentRuntimeStore(data_dir / "runtime.sqlite3"),
+    )
 
     monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
     monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
-    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+    monkeypatch.setattr(routes, "get_agent_runtime", lambda: runtime)
 
     result = await routes.approve_agent_proposal(
         proposal["agent_request_id"],
@@ -1206,12 +1194,14 @@ async def test_agent_proposal_approval_codex_mode_does_not_promote_missing_or_in
         agent_name="demo_agent",
         agent_code=agent_code,
     )
-    runtime = AgentRuntimeManager()
-    runtime.registry = DynamicAgentRegistry(generated_agents)
+    runtime = AgentRuntime(
+        registry=DynamicAgentRegistry(generated_agents),
+        store=AgentRuntimeStore(data_dir / "runtime.sqlite3"),
+    )
 
     monkeypatch.setattr(routes, "AgentCreator", lambda: creator)
     monkeypatch.setattr(routes, "CodexRunner", lambda: runner)
-    monkeypatch.setattr(routes, "get_agent_runtime_manager", lambda: runtime)
+    monkeypatch.setattr(routes, "get_agent_runtime", lambda: runtime)
 
     result = await routes.approve_agent_proposal(
         proposal["agent_request_id"],
@@ -1288,7 +1278,7 @@ async def test_conversation_agent_discovers_and_runs_matching_registered_agent(t
 
 
 @pytest.mark.asyncio
-async def test_agent_router_routes_conversation_to_registered_agent_before_llm(monkeypatch):
+async def test_agent_router_keeps_conversation_on_llm_route(monkeypatch):
     class FakeModel:
         def set_last_intent(self, *_args):
             return None
@@ -1311,19 +1301,24 @@ async def test_agent_router_routes_conversation_to_registered_agent_before_llm(m
         def set_last_error(self, *_args):
             return None
 
-    class ForbiddenLLM:
+    class FakeLLMResult:
+        success = True
+        content = "Reponse conversationnelle LLM"
+        error = None
+
+    class FakeLLM:
         async def execute(self, *_args, **_kwargs):
-            raise AssertionError("LLM fallback must not run when a registered agent matches")
+            return FakeLLMResult()
 
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
-    monkeypatch.setattr(agent_router, "_get_llm", lambda: ForbiddenLLM())
+    monkeypatch.setattr(agent_router, "_get_llm", lambda: FakeLLM())
 
     response = await agent_router.AgentRouter().route(
         IntentResult(intent=Intent.CONVERSATION, confidence="low"),
         "Combien de temps reste-t-il avant la WWDC ?",
     )
 
-    assert "Temps restant avant la WWDC" in response
+    assert response == "Reponse conversationnelle LLM"
 
 
 @pytest.mark.asyncio
@@ -1359,7 +1354,10 @@ async def test_registered_agent_is_reused_without_reconstruction(monkeypatch, tm
 
     monkeypatch.setattr(orchestrator, "_write_agent", lambda *_args, **_kwargs: pytest.fail("agent rewritten"))
     monkeypatch.setattr(orchestrator, "_write_agent_test", lambda *_args, **_kwargs: pytest.fail("test rewritten"))
-    monkeypatch.setattr(orchestrator, "_register_agent", lambda *_args, **_kwargs: pytest.fail("agent re-registered"))
+    monkeypatch.setattr(
+        "agents.factory.promotion.AgentPromotionService.promote",
+        lambda *_args, **_kwargs: pytest.fail("agent re-registered"),
+    )
     monkeypatch.setattr(event_bus, "publish", fake_publish)
 
     result = await orchestrator.build_from_request(
@@ -1686,7 +1684,7 @@ def test_build_orchestrator_has_no_obsidian_dependency():
 
 
 def test_planner_produces_specs_without_execution_side_effects():
-    from core.planning.planner import AutonomousPlanner
+    from goal.planning.planner import AutonomousPlanner
 
     plan = AutonomousPlanner().create_plan("Créer un agent météo")
     data = plan.to_dict()
@@ -1732,12 +1730,8 @@ async def test_agent_creation_dispatch_uses_build_orchestrator(monkeypatch):
         def format_project_response(self, project):
             return "formatted"
 
-    async def forbidden_factory(*_args, **_kwargs):
-        raise AssertionError("legacy AgentFactoryAgent must not handle agent_creation")
-
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
     monkeypatch.setattr(build_orchestrator, "AgentBuildOrchestrator", FakeOrchestrator)
-    monkeypatch.setattr(AgentFactoryAgent, "execute", forbidden_factory)
 
     result = await agent_router.AgentRouter().route(
         type("IntentLike", (), {"intent": Intent.AGENT_CREATION, "confidence": "high"})(),
@@ -1795,7 +1789,7 @@ async def test_agent_router_default_creation_path_uses_hybrid_build_mode(monkeyp
 
 @pytest.mark.asyncio
 async def test_telegram_goal_agent_creation_uses_hybrid_build_mode():
-    from core.goals.goal_orchestrator import GoalOrchestrator
+    from goal.goals.goal_orchestrator import GoalOrchestrator
 
     calls: list[tuple[str, str, str, str]] = []
 
@@ -1941,9 +1935,7 @@ async def test_agent_list_variants_use_same_registry_action(monkeypatch, query):
 
 
 @pytest.mark.asyncio
-async def test_agent_registry_telegram_commands_use_scanner(monkeypatch):
-    from core.agent_factory import registry_scanner
-
+async def test_agent_registry_telegram_commands_use_canonical_registry(monkeypatch):
     class FakeModel:
         def set_last_intent(self, *_args):
             return None
@@ -1953,37 +1945,50 @@ async def test_agent_registry_telegram_commands_use_scanner(monkeypatch):
 
     calls: list[str] = []
 
-    class FakeScanner:
-        async def scan(self):
+    class FakeRegistry:
+        def scan(self):
             calls.append("scan")
             return {
                 "status": "ok",
                 "scanned": 2,
                 "active": 1,
                 "invalid": 1,
-                "runtime_reloaded": True,
             }
 
-        def get_index(self):
+        def validation_index(self):
             calls.append("index")
             return {
                 "agents": {
                     "active_scan_agent": {
                         "agent_name": "active_scan_agent",
                         "status": "active",
-                        "source": "generated_scan",
+                        "source": "dynamic_registry",
                     },
                     "invalid_scan_agent": {
                         "agent_name": "invalid_scan_agent",
                         "status": "invalid",
                         "error": "méthode async execute manquante",
-                        "source": "generated_scan",
+                        "source": "dynamic_registry",
                     },
                 }
             }
 
+    class FakeRuntime:
+        registry = FakeRegistry()
+
+        def reload(self):
+            calls.append("reload")
+            return {"ok": True}
+
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
-    monkeypatch.setattr(registry_scanner, "AgentRegistryScanner", FakeScanner)
+    monkeypatch.setattr(
+        "agents.runtime.runtime.get_agent_runtime",
+        lambda: FakeRuntime(),
+    )
+    monkeypatch.setattr(
+        "agents.factory.registry.DynamicAgentRegistry",
+        FakeRegistry,
+    )
 
     scan_response = await agent_router.AgentRouter().route(
         IntentResult(intent=Intent.CONVERSATION, confidence="low"),
@@ -2005,7 +2010,7 @@ async def test_agent_registry_telegram_commands_use_scanner(monkeypatch):
     assert "méthode async execute manquante" in invalid_response
     assert "- active_scan_agent | active" in index_response
     assert "- invalid_scan_agent | invalid" in index_response
-    assert calls == ["scan", "index", "index"]
+    assert calls == ["scan", "reload", "index", "index"]
 
 
 @pytest.mark.asyncio
@@ -2084,9 +2089,8 @@ async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch, que
 
 
 @pytest.mark.asyncio
-async def test_direct_agent_invocation_is_not_treated_as_update(monkeypatch):
+async def test_direct_agent_name_in_conversation_stays_on_llm(monkeypatch):
     from core.agent_factory import agent_manager
-    from core.agents.conversation import conversation_agent
 
     class FakeModel:
         def set_last_intent(self, *_args):
@@ -2114,24 +2118,25 @@ async def test_direct_agent_invocation_is_not_treated_as_update(monkeypatch):
         async def update_agent(self, *_args, **_kwargs):
             raise AssertionError("direct agent invocation must not call update_agent")
 
-    class FakeConversationAgent:
-        async def delegate_to_registered_agent(self, query: str):
-            return {
-                "ok": True,
-                "agent": "subnet_calculator_agent",
-                "response": f"executed:{query}",
-            }
+    class FakeLLMResult:
+        success = True
+        content = "Reponse LLM"
+        error = None
+
+    class FakeLLM:
+        async def execute(self, *_args, **_kwargs):
+            return FakeLLMResult()
 
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
     monkeypatch.setattr(agent_manager, "AgentManager", ForbiddenManager)
-    monkeypatch.setattr(conversation_agent, "ConversationAgent", FakeConversationAgent)
+    monkeypatch.setattr(agent_router, "_get_llm", lambda: FakeLLM())
 
     response = await agent_router.AgentRouter().route(
         IntentResult(intent=Intent.CONVERSATION, confidence="low"),
         "subnet_calculator_agent 2001:db8::/64",
     )
 
-    assert response == "executed:subnet_calculator_agent 2001:db8::/64"
+    assert response == "Reponse LLM"
 
 
 @pytest.mark.asyncio
@@ -2168,14 +2173,10 @@ async def test_input_text_routes_agent_update_before_llm(monkeypatch):
     async def fake_publish(*_args, **_kwargs):
         return None
 
-    async def forbidden_conversation(*_args, **_kwargs):
-        raise AssertionError("/input/text update command must not reach llm_agent")
-
     calls: list[tuple[str, str]] = []
     monkeypatch.setattr(core_app, "router", FakeRouter())
     monkeypatch.setattr(core_app, "metrics", FakeMetrics())
     monkeypatch.setattr(core_app.event_bus, "publish", fake_publish)
-    monkeypatch.setattr(core_app, "_handle_conversation", forbidden_conversation)
     monkeypatch.setattr(agent_manager, "AgentManager", FakeManager)
 
     result = await core_app.text_input(
@@ -2192,33 +2193,6 @@ async def test_input_text_routes_agent_update_before_llm(monkeypatch):
     assert result.metadata["routed_before_llm"] is True
     assert result.metadata["source"] == "telegram"
     assert calls == [("subnet_calculator_agent", "Ajoute une ligne Type IPv4/IPv6")]
-
-
-@pytest.mark.asyncio
-async def test_legacy_agent_factory_delegates_to_build_orchestrator(monkeypatch):
-    from core.agent_factory import factory_agent
-
-    class FakeOrchestrator:
-        async def build_from_request(self, query: str, *, requested_by: str, source_channel: str):
-            return {
-                "status": "completed",
-                "response": f"built:{query}",
-                "project": {
-                    "project_id": "project-1",
-                    "status": "completed",
-                    "registry_status": "registered",
-                    "created_files": ["core/agents/generated/test_agent.py"],
-                },
-            }
-
-    monkeypatch.setattr(factory_agent, "AgentBuildOrchestrator", FakeOrchestrator)
-
-    result = await AgentFactoryAgent().execute("Créer un agent de test")
-
-    assert result.success is True
-    assert result.content == "built:Créer un agent de test"
-    assert result.metadata["compatibility_facade"] is True
-    assert result.metadata["orchestrator"] == "AgentBuildOrchestrator"
 
 
 @pytest.mark.asyncio
@@ -2317,29 +2291,37 @@ async def test_agent_manager_routes_expose_status_inspect_delete(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_registry_scanner_routes_expose_scan_and_index(monkeypatch):
+async def test_agent_registry_routes_use_canonical_registry(monkeypatch):
     from core.projects import routes
 
     calls: list[str] = []
 
-    class FakeScanner:
-        async def scan(self):
+    class FakeRegistry:
+        def scan(self):
             calls.append("scan")
-            return {"status": "ok", "scanned": 1, "runtime_reloaded": True}
+            return {"status": "ok", "scanned": 1}
 
-        def get_index(self):
+        def validation_index(self):
             calls.append("index")
             return {
                 "agents": {
                     "route_scan_agent": {
                         "agent_name": "route_scan_agent",
                         "status": "active",
-                        "source": "generated_scan",
+                        "source": "dynamic_registry",
                     }
                 }
             }
 
-    monkeypatch.setattr(routes, "AgentRegistryScanner", FakeScanner)
+    class FakeRuntime:
+        registry = FakeRegistry()
+
+        def reload(self):
+            calls.append("reload")
+            return {"ok": True}
+
+    runtime = FakeRuntime()
+    monkeypatch.setattr(routes, "get_agent_runtime", lambda: runtime)
 
     scan_get = await routes.scan_agent_registry_get()
     scan_post = await routes.scan_agent_registry_post()
@@ -2347,8 +2329,8 @@ async def test_agent_registry_scanner_routes_expose_scan_and_index(monkeypatch):
 
     assert scan_get["status"] == "ok"
     assert scan_post["runtime_reloaded"] is True
-    assert index["agents"]["route_scan_agent"]["source"] == "generated_scan"
-    assert calls == ["scan", "scan", "index"]
+    assert index["agents"]["route_scan_agent"]["source"] == "dynamic_registry"
+    assert calls == ["scan", "reload", "scan", "reload", "index"]
 
 
 @pytest.mark.asyncio

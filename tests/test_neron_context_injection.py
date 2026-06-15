@@ -1,4 +1,4 @@
-from core.agents.core import llm_agent
+from agents.builtin.core import llm_agent
 
 
 def test_build_prompt_injects_global_neron_context(monkeypatch):

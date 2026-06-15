@@ -47,7 +47,7 @@ echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━
 echo ""
 
 BASE_DIR="/etc/neron"
-YAML_FILE="$BASE_DIR/server/neron.yaml"
+YAML_FILE="$BASE_DIR/neron.yaml"
 
 read -p "  Voulez-vous utiliser Telegram ? [O/n] " USE_TG
 if [ "$USE_TG" = "n" ]; then

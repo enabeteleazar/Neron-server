@@ -4,8 +4,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from core.goals.goal_manager import get_goal_manager
-from core.task_system.goal_task_bridge import create_task_from_goal
+from goal.goals.goal_manager import get_goal_manager
+from goal.system.goal_task_bridge import create_task_from_goal
 
 router = APIRouter(prefix="/goals", tags=["goal-tasks"])
 

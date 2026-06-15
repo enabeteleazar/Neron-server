@@ -1,23 +1,35 @@
 # core/control_plane/events.py
 
-from collections import defaultdict
-from typing import Callable, Any
+import inspect
+from typing import Any, Callable
+
+from modules.events.event import Event
+from modules.events.event_bus import event_bus
 
 
 class EventBus:
-    """
-    Bus d'événements interne simple (sync).
-    """
+    """Synchronous compatibility facade over the canonical Event Bus."""
 
     def __init__(self) -> None:
-        self._listeners: dict[str, list[Callable]] = defaultdict(list)
+        self._wrappers: dict[tuple[str, Callable], Callable] = {}
 
     def on(self, event: str, callback: Callable) -> None:
-        self._listeners[event].append(callback)
+        key = (event, callback)
+        if key in self._wrappers:
+            return
+
+        async def wrapper(message: Event) -> None:
+            value = message.payload.get("data")
+            result = callback(value)
+            if inspect.isawaitable(result):
+                await result
+
+        self._wrappers[key] = wrapper
+        event_bus.subscribe(event, wrapper)
 
     def emit(self, event: str, data: Any = None) -> None:
-        for cb in self._listeners.get(event, []):
-            try:
-                cb(data)
-            except Exception:
-                pass
+        event_bus.publish_background(Event(
+            type=event,
+            source="control_plane",
+            payload={"data": data},
+        ))

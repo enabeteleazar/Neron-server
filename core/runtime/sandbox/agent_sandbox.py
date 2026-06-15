@@ -150,6 +150,7 @@ class AgentSandbox:
         self.workspace.mkdir(parents=True, exist_ok=True)
         sandbox_tmp = self.workspace / ".sandbox_tmp"
         sandbox_tmp.mkdir(parents=True, exist_ok=True)
+        sandbox_tmp.chmod(0o1777)
         effective_timeout = max(1, int(timeout or self.timeout))
         payload = {
             **config,
@@ -431,6 +432,9 @@ class AgentSandbox:
             "--property=ProtectHome=yes",
             f"--property=ReadWritePaths={self.workspace}",
             f"--property=WorkingDirectory={self.workspace}",
+            f"--setenv=HOME={self.workspace}",
+            f"--setenv=TMPDIR={self.workspace / '.sandbox_tmp'}",
+            "--setenv=PYTHONDONTWRITEBYTECODE=1",
             "--property=MemoryMax=256M",
             "--property=CPUQuota=50%",
             f"--property=RuntimeMaxSec={min(effective_timeout, 30)}",

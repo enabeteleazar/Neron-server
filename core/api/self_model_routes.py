@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from core.self_model.self_model import get_self_model
+from modules.self_model.self_model import get_self_model
 
 router = APIRouter(
     prefix="/self-model",

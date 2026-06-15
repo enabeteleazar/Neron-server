@@ -87,7 +87,7 @@ class ContextManager:
     def _get_store(self):
         if self._store is None:
             try:
-                from core.memory.persistent_store import get_store
+                from modules.memory.persistent_store import get_store
                 self._store = get_store()
             except Exception:
                 pass

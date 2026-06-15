@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from core.capabilities.models import Capability, CapabilityRequest
-from core.capabilities.registry import CapabilityRegistry
-from core.capabilities.resolver import (
+from modules.capabilities.models import Capability, CapabilityRequest
+from modules.capabilities.registry import CapabilityRegistry
+from modules.capabilities.resolver import (
     ASYNC_AGENT_RESPONSE,
     ASYNC_RESPONSE,
     CapabilityResolver,

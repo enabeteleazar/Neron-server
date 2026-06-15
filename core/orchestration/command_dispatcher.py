@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import json
 import unicodedata
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from core.evolution.supervisor import (
+from modules.evolution.supervisor import (
     format_proposals_for_telegram,
     get_evolution_supervisor,
 )
-from core.goals.goal_orchestrator import get_goal_orchestrator
-from core.planning.storage import PlanStorage
+from goal.goals.goal_manager import get_goal_manager
+from goal.goals.goal_orchestrator import get_goal_orchestrator
+from core.pipeline.orchestrator import CoreOrchestrator
+from goal.planning.storage import PlanStorage
 
 
 def _normalize(text: str) -> str:
@@ -27,11 +27,14 @@ class NeronCommandDispatcher:
         evolution_supervisor_factory=get_evolution_supervisor,
         plan_storage_factory=PlanStorage,
         goals_state_path: Path = Path("/etc/neron/data/goals_state.json"),
+        goal_manager_factory=get_goal_manager,
     ) -> None:
         self.goal_orchestrator_factory = goal_orchestrator_factory
         self.evolution_supervisor_factory = evolution_supervisor_factory
         self.plan_storage_factory = plan_storage_factory
+        # Retained for constructor compatibility; GoalManager is authoritative.
         self.goals_state_path = goals_state_path
+        self.goal_manager_factory = goal_manager_factory
 
     async def dispatch(self, command: dict[str, Any]) -> dict[str, Any]:
         command_type = str(command.get("type") or "")
@@ -163,8 +166,9 @@ class NeronCommandDispatcher:
         if not title:
             return {"status": "invalid", "messages": ["Usage : /goal <objectif>"]}
 
-        orchestrator = self.goal_orchestrator_factory()
-        result = await orchestrator.run_goal(title, source=source)
+        result = await CoreOrchestrator(
+            goal_orchestrator_factory=self.goal_orchestrator_factory,
+        ).run_goal(title, source=source)
         return {
             "status": result.get("status"),
             "result": result,
@@ -208,24 +212,14 @@ class NeronCommandDispatcher:
         return {"status": result.get("status"), "result": result, "messages": [self._format_execute_result(result, plan)]}
 
     def _active_goal(self) -> dict[str, Any]:
-        path = self.goals_state_path
-        if not path.exists():
-            return {"status": "not_found", "messages": ["Aucun objectif actif trouvé."]}
-
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            return {"status": "error", "messages": ["Erreur lecture GoalSystem."]}
-
-        active_id = data.get("active_goal_id")
-        for goal in data.get("goals", []):
-            if goal.get("id") == active_id or goal.get("status") == "active":
-                return {
-                    "status": "ok",
-                    "messages": [
-                        f"🎯 Objectif actif\n\nID : {goal.get('id')}\nTitre : {goal.get('title')}\nPriorité : {goal.get('priority')}"
-                    ],
-                }
+        goal = self.goal_manager_factory().get_active_goal()
+        if goal:
+            return {
+                "status": "ok",
+                "messages": [
+                    f"🎯 Objectif actif\n\nID : {goal.get('id')}\nTitre : {goal.get('title')}\nPriorité : {goal.get('priority')}"
+                ],
+            }
 
         return {"status": "not_found", "messages": ["Aucun objectif actif trouvé."]}
 
