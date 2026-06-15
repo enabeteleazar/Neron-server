@@ -199,7 +199,7 @@ def _capability_confidence(score: float) -> str:
 
 def _personality_available() -> bool:
     try:
-        import personality  # noqa: F401
+        import modules.personality  # noqa: F401
         return True
     except ImportError:
         return False
@@ -375,7 +375,7 @@ async def lifespan(app: FastAPI):
 
         if _personality_available():
             try:
-                from personality import get_current_state
+                from modules.personality import get_current_state
                 state = get_current_state()
                 logger.info(json.dumps({
                     "event": "personality_loaded",
@@ -664,7 +664,7 @@ async def personality_state(_: None = Depends(verify_api_key)):
     if not _personality_available():
         raise HTTPException(503, "Module personality non disponible")
     try:
-        from personality import get_current_state
+        from modules.personality import get_current_state
         return {"status": "ok", "state": get_current_state(), "timestamp": utc_now_iso()}
     except Exception as e:
         raise HTTPException(500, f"Erreur lecture etat personality : {e}")
