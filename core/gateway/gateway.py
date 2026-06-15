@@ -20,8 +20,8 @@ from core.identity import build_identity_prompt
 
 if TYPE_CHECKING:
     from core.pipeline.routing.agent_router import AgentRouter
-    from core.modules.sessions import SessionStore
-    from core.modules.skills import SkillRegistry
+    from modules.sessions import SessionStore
+    from modules.skills import SkillRegistry
 
 logger = logging.getLogger("neron.gateway")
 

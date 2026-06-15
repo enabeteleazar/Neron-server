@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict
 
-from core.agents.base_agent import get_logger
+from agents.builtin.base_agent import get_logger
 
 logger = get_logger(__name__)
 
@@ -37,6 +37,7 @@ class Intent(str, Enum):
 
     SYSTEM_STATUS        = "system_status"
     NETWORK_STATUS       = "network_status"
+    IDENTITY_QUERY       = "identity_query"
     SELF_STATUS          = "self_status"
 
     NEWS_QUERY           = "news_query"
@@ -118,7 +119,19 @@ def _fallback_intent(query: str) -> Intent | None:
         "comment vas-tu",
     ]
 
-    self_status_keywords = [
+    
+identity_keywords = [
+    "qui es tu",
+    "qui es-tu",
+    "présente toi",
+    "presente toi",
+    "présente-toi",
+    "quel est ton nom",
+    "comment t'appelles tu",
+    "comment t'appelle tu",
+]
+
+self_status_keywords = [
         "etat interne",
         "etat conscience",
         "etat cognitif",
@@ -344,6 +357,9 @@ def _fallback_intent(query: str) -> Intent | None:
     if q in status_smalltalk_keywords:
         return Intent.STATUS_SMALLTALK
 
+    if any(k in q for k in identity_keywords):
+        return Intent.IDENTITY_QUERY
+
     if any(k in q for k in self_status_keywords):
         return Intent.SELF_STATUS
 
@@ -417,7 +433,7 @@ class IntentRouter:
         )
 
         try:
-            from core.self_model.self_model import get_self_model
+            from modules.self_model.self_model import get_self_model
 
             model = get_self_model()
             model.set_last_intent(

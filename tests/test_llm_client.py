@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from core.llm_client.client import NéronLLMClient
+from llm.client.client import NéronLLMClient
 
 
 class FakeAsyncClient:

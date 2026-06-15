@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from core.agents.core import memory_agent
-from core.agents.core.memory_agent import MemoryAgent
+from agents.builtin.core import memory_agent
+from agents.builtin.core.memory_agent import MemoryAgent
 
 
 @pytest.fixture

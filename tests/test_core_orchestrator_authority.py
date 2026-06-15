@@ -87,7 +87,7 @@ async def test_planner_is_not_consulted_during_route_decision(monkeypatch):
         raise AssertionError("Planner must only be called by an executing pipeline")
 
     monkeypatch.setattr(
-        "core.planning.planner.AutonomousPlanner.create_plan",
+        "goal.planning.planner.AutonomousPlanner.create_plan",
         forbidden_planner,
     )
 

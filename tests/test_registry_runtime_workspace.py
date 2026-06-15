@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from core.agent_factory.registry import DynamicAgentRegistry
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.agent_runtime.runtime import AgentRuntime
-from core.agent_runtime.store import AgentRuntimeStore
-from core.tools.models import ToolSpec
-from core.tools.registry import ToolRegistry
-from core.tools.runtime import ToolRuntime
+from agents.factory.registry import DynamicAgentRegistry
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from agents.runtime.runtime import AgentRuntime
+from agents.runtime.store import AgentRuntimeStore
+from tools.models import ToolSpec
+from tools.registry import ToolRegistry
+from tools.runtime import ToolRuntime
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -119,7 +119,7 @@ async def test_agent_runtime_emits_events_only_for_registered_agent(
     async def capture(event):
         emitted.append(event)
 
-    monkeypatch.setattr("core.agent_runtime.runtime.event_bus.publish", capture)
+    monkeypatch.setattr("agents.runtime.runtime.event_bus.publish", capture)
 
     success = await runtime.run_agent("runtime_agent", "ok")
     missing = await runtime.run_agent("workspace_only_agent", "no")
@@ -161,7 +161,7 @@ async def test_tool_runtime_rejects_unregistered_handler_and_emits_events(
     async def capture(event):
         emitted.append(event)
 
-    monkeypatch.setattr("core.tools.runtime.event_bus.publish", capture)
+    monkeypatch.setattr("tools.runtime.event_bus.publish", capture)
 
     success = await runtime.execute_tool("registered_tool", {"value": "ok"})
     missing = await runtime.execute_tool("handler_only_tool", {})

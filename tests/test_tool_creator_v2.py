@@ -6,17 +6,17 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from core.capabilities.matcher import CapabilityMatcher
-from core.capabilities.models import Capability, CapabilityRequest
-from core.capabilities.registry import CapabilityRegistry
-from core.capabilities.resolver import CapabilityResolver
-from core.tools.code_generator import ToolCodeGenerator, validate_generated_code
-from core.tools.creator import ToolCreator
-from core.tools.models import ToolNeed, ToolResult, ToolSpec
-from core.tools.registry import ToolRegistry
-from core.tools.runtime import ToolRuntime
-from core.tools.spec_builder import ToolSpecBuilder
-from core.tools.templates import deterministic_tool_code
+from modules.capabilities.matcher import CapabilityMatcher
+from modules.capabilities.models import Capability, CapabilityRequest
+from modules.capabilities.registry import CapabilityRegistry
+from modules.capabilities.resolver import CapabilityResolver
+from tools.code_generator import ToolCodeGenerator, validate_generated_code
+from tools.creator import ToolCreator
+from tools.models import ToolNeed, ToolResult, ToolSpec
+from tools.registry import ToolRegistry
+from tools.runtime import ToolRuntime
+from tools.spec_builder import ToolSpecBuilder
+from tools.templates import deterministic_tool_code
 
 
 class EmptyAgentRegistry:
@@ -94,7 +94,7 @@ class DangerousGenerator(ToolCodeGenerator):
     async def generate_tool_code(self, spec, need):
         return (
             "import subprocess\n"
-            "from core.tools.models import ToolResult\n"
+            "from tools.models import ToolResult\n"
             "def execute(payload):\n"
             "    subprocess.run(['true'])\n"
             "    return ToolResult(ok=True, response='unsafe')\n"
@@ -269,7 +269,7 @@ async def test_codex_fallback_is_injected_and_mocked(tmp_path: Path):
 def test_dangerous_generated_code_is_rejected():
     errors = validate_generated_code(
         "import os\n"
-        "from core.tools.models import ToolResult\n"
+        "from tools.models import ToolResult\n"
         "def execute(payload):\n"
         "    open('/tmp/value', 'w')\n"
         "    return ToolResult(ok=True)\n"

@@ -45,7 +45,7 @@ def test_task_manager_imports_json_once_then_reads_sqlite(monkeypatch, tmp_path)
 
 
 def test_concurrent_task_managers_do_not_erase_new_tasks(tmp_path):
-    from core.task_system.task_manager import TaskManager
+    from goal.system.task_manager import TaskManager
 
     store = SQLiteStore(tmp_path / "neron_state.sqlite3")
     first = TaskManager(path=tmp_path / "tasks.json", sqlite_store=store)
@@ -60,8 +60,8 @@ def test_concurrent_task_managers_do_not_erase_new_tasks(tmp_path):
 
 
 def test_workflow_owners_emit_canonical_created_events(monkeypatch, tmp_path):
-    from core.goals import goal_manager, persistence
-    from core.planning import storage as plan_storage
+    from goal.goals import goal_manager, persistence
+    from goal.planning import storage as plan_storage
     from core.projects import manager as project_manager
     from core.task_system import task_manager
 

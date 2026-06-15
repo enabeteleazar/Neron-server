@@ -7,8 +7,8 @@ import unicodedata
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from core.agents.base_agent import get_logger
-from core.capabilities.models import CapabilityRequest
+from agents.builtin.base_agent import get_logger
+from modules.capabilities.models import CapabilityRequest
 from core.pipeline.intent.intent_router import Intent, IntentResult, IntentRouter
 from core.pipeline.routing.agent_router import AgentRouter
 
@@ -446,7 +446,7 @@ class CoreOrchestrator:
                     "timer_engine",
                     {"error": "timer_duration_missing"},
                 )
-            from core.modules.scheduler import schedule_timer
+            from modules.scheduler import schedule_timer
 
             timer = schedule_timer(seconds, label=query)
             return (
@@ -502,14 +502,14 @@ class CoreOrchestrator:
 
     def _get_capability_resolver(self) -> Any:
         if self._capability_resolver is None:
-            from core.capabilities.resolver import CapabilityResolver
+            from modules.capabilities.resolver import CapabilityResolver
 
             self._capability_resolver = CapabilityResolver()
         return self._capability_resolver
 
     def _get_goal_orchestrator(self) -> Any:
         if self._goal_orchestrator_factory is None:
-            from core.goals.goal_orchestrator import get_goal_orchestrator
+            from goal.goals.goal_orchestrator import get_goal_orchestrator
 
             self._goal_orchestrator_factory = get_goal_orchestrator
         return self._goal_orchestrator_factory()
@@ -523,21 +523,21 @@ class CoreOrchestrator:
 
     def _get_goal_execution_engine(self) -> Any:
         if self._goal_execution_engine is None:
-            from core.goals.execution_engine import get_goal_execution_engine
+            from goal.goals.execution_engine import get_goal_execution_engine
 
             self._goal_execution_engine = get_goal_execution_engine()
         return self._goal_execution_engine
 
     def _get_goal_background_runner(self) -> Any:
         if self._goal_background_runner is None:
-            from core.goals.background_runner import get_goal_background_runner
+            from goal.goals.background_runner import get_goal_background_runner
 
             self._goal_background_runner = get_goal_background_runner()
         return self._goal_background_runner
 
     def _get_memory_engine(self) -> Any:
         if self._memory_engine is None:
-            from core.agents.core.memory_agent import MemoryAgent, init_db
+            from agents.builtin.core.memory_agent import MemoryAgent, init_db
 
             init_db()
             self._memory_engine = MemoryAgent()
@@ -545,7 +545,7 @@ class CoreOrchestrator:
 
     def _get_time_provider(self) -> Any:
         if self._time_provider is None:
-            from core.neron_time.time_provider import TimeProvider
+            from modules.neron_time.time_provider import TimeProvider
 
             self._time_provider = TimeProvider()
         return self._time_provider

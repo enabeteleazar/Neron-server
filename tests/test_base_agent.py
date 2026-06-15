@@ -3,11 +3,11 @@
 
 import time
 import pytest
-from core.agents.base_agent import (
+from agents.builtin.base_agent import (
     AgentResult, BaseAgent, get_logger,
     register_agent, get_agents, _agents,
 )
-from core.llm_client.types import (
+from llm.client.types import (
     LLMGenerateRequest, LLMGenerateResponse, DEGRADED_RESPONSE, TaskType,
 )
 

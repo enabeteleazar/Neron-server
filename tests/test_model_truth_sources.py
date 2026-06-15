@@ -2,21 +2,21 @@ from __future__ import annotations
 
 
 def test_watchdog_uses_canonical_world_model_singleton():
-    from core.agents.automation import watchdog_agent
-    from core.world_model.world_model import get_world_model
+    from agents.builtin.automation import watchdog_agent
+    from modules.world_model.world_model import get_world_model
 
     assert watchdog_agent.world_model is get_world_model()
 
 
 def test_legacy_world_model_import_is_a_compatibility_adapter():
-    from core.memory.world_model.world_model import WorldModel as LegacyWorldModel
-    from core.world_model.world_model import WorldModel
+    from modules.memory.world_model.world_model import WorldModel as LegacyWorldModel
+    from modules.world_model.world_model import WorldModel
 
     assert LegacyWorldModel is WorldModel
 
 
 def test_world_model_observations_are_kept_in_world_model():
-    from core.world_model.world_model import WorldModel
+    from modules.world_model.world_model import WorldModel
 
     model = WorldModel()
     model.update("agents", "memory", {"status": "online"})

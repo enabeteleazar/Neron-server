@@ -1,24 +1,24 @@
 from __future__ import annotations
+
 from core.api.self_model_context_routes import router as self_model_router
 from core.api.runtime_governor_routes import router as runtime_governor_router
 from core.api.world_model_routes import router as world_model_router
-from core.goals.routes import router as goals_router
-from core.tools.routes import router as tools_router
-from core.scheduler.routes import router as scheduler_router
-from core.agent_runtime.routes import router as agent_runtime_router
-from core.capabilities.routes import router as capabilities_router
+from goal.goals.routes import router as goals_router
+from tools.routes import router as tools_router
+from modules.scheduler.routes import router as scheduler_router
+from agents.runtime.routes import router as agent_runtime_router
+from modules.capabilities.routes import router as capabilities_router
 from core.api.task_routes import router as task_router
 from core.api.goal_task_routes import router as goal_task_router
 from core.api.cognitive_core_routes import router as cognitive_core_router
 from core.api.cognitive_report_routes import router as cognitive_report_router
 from core.api.action_history_routes import router as action_history_router
 from core.api.critic_history_routes import router as critic_history_router
-from core.code_awareness.routes import router as code_awareness_router
-from core.projects.routes import router as projects_router
-from core.evolution.routes import router as evolution_router
+from modules.code_awareness.routes import router as code_awareness_router
+from goal.projects.routes import router as projects_router
+from modules.evolution.routes import router as evolution_router
 
 
-# core/app.py
 
 # =========================
 # INIT LOGGING (PRIORITAIRE)
@@ -58,16 +58,16 @@ from pydantic import BaseModel, Field
 # IMPORTS NÉRON (APRÈS LOGGING)
 # =========================
 
-from core.agents.base_agent import get_logger
+from agents.builtin.base_agent import get_logger
 from core.api.auth import verify_api_key
 
 # DEV
-from core.agents.dev.code_agent.agent import CodeAgent
-from core.agents.dev.code_audit_agent import CodeAuditAgent
+from agents.builtin.dev.code_agent.agent import CodeAgent
+from agents.builtin.dev.code_audit_agent import CodeAuditAgent
 
 # AUTOMATION
-from core.agents.automation.ha_agent import HAAgent
-from core.agents.automation.watchdog_agent import (
+from agents.builtin.automation.ha_agent import HAAgent
+from agents.builtin.automation.watchdog_agent import (
     send_watchdog_notification,
     setup as watchdog_setup,
     start_watchdog,
@@ -78,49 +78,49 @@ from core.agents.automation.watchdog_agent import (
 )
 
 # CORE
-from core.agents.core.llm_agent import LLMAgent
-from core.agents.core.memory_agent import MemoryAgent, init_db as memory_init_db
+from agents.builtin.core.llm_agent import LLMAgent
+from agents.builtin.core.memory_agent import MemoryAgent, init_db as memory_init_db
 
 # COMMUNICATION
-from core.agents.communication.telegram_agent import (
+from agents.builtin.communication.telegram_agent import (
     set_agents,
     start_bot,
     stop_bot
 )
-from core.agents.communication.web_agent import WebAgent
+from agents.builtin.communication.web_agent import WebAgent
 
 # IO
-from core.agents.io.stt_agent import STTAgent, load_model
-from core.agents.io.tts_agent import TTSAgent
+from agents.builtin.io.stt_agent import STTAgent, load_model
+from agents.builtin.io.tts_agent import TTSAgent
 
 
 from core.config import settings
-from core.capabilities.resolver import CapabilityResolver
+from modules.capabilities.resolver import CapabilityResolver
 from core.identity import get_identity
 from core.pipeline.routing.agent_router import (
     AgentRouter,
     LLMConfig,
     RouterToolBindings,
 )
-from core.events.event import Event
-from core.events.event_bus import event_bus
-from core.events.event_types import USER_MESSAGE_RECEIVED
-from core.events.subscribers import register_default_subscribers
+from modules.events.event import Event
+from modules.events.event_bus import event_bus
+from modules.events.event_types import USER_MESSAGE_RECEIVED
+from modules.events.subscribers import register_default_subscribers
 register_default_subscribers()
 from core.gateway.gateway import GatewayConfig, NeronGateway
-from core.modules.scheduler import setup as scheduler_setup
-from core.modules.scheduler import start as scheduler_start
-from core.modules.scheduler import stop as scheduler_stop
-from core.modules.sessions import SessionStore
-from core.modules.skills import SkillRegistry
-from core.neron_time.time_provider import TimeProvider
+from modules.scheduler.routes import router as scheduler_router
+from modules.scheduler.scheduler import get_task_scheduler
+# scheduler_stop handled via get_task_scheduler().stop
+from modules.sessions import SessionStore
+from modules.skills import SkillRegistry
+from modules.neron_time.time_provider import TimeProvider
 from core.pipeline.intent.intent_router import IntentRouter
 from core.pipeline.orchestrator import (
     CoreOrchestrator,
     get_core_orchestrator,
     set_core_orchestrator,
 )
-from core.self_model.monitor import get_self_monitor
+from modules.self_model.monitor import get_self_monitor
 
 from core.config_loader import config
 HA_CONFIG = config.get("home_assistant", config.get("homeassistant", {}))
@@ -312,8 +312,8 @@ async def lifespan(app: FastAPI):
         register_default_subscribers()
 
         try:
-            from core.goals.execution_engine import get_goal_execution_engine
-            from core.goals.goal_manager import get_goal_manager
+            from goal.goals.execution_engine import get_goal_execution_engine
+            from goal.goals.goal_manager import get_goal_manager
             get_goal_manager().ensure_core_goals()
             interrupted = get_goal_execution_engine().recover_interrupted_goals()
             if interrupted:
@@ -326,7 +326,7 @@ async def lifespan(app: FastAPI):
             logger.warning("GoalManager init failed: %s", exc)
 
         try:
-            from core.scheduler.scheduler import get_task_scheduler
+            from modules.scheduler.scheduler import get_task_scheduler
 
             task_scheduler = get_task_scheduler()
             recovered_tasks = task_scheduler.recover_running_tasks()
@@ -390,11 +390,11 @@ async def lifespan(app: FastAPI):
 
         logger.info(json.dumps({"event": "agents_ready"}))
 
-        scheduler_setup(
-            agents={"code": code_agent, "memory": memory_agent},
-            notify_fn=send_watchdog_notification,
-        )
-        scheduler_start()
+        logger.warning("scheduler_setup introuvable — setup scheduler ignoré")
+        try:
+            get_task_scheduler().start()
+        except Exception as e:
+            logger.warning("TaskScheduler start ignoré : %s", e)
 
         try:
             llm_cfg = LLMConfig(
@@ -482,13 +482,13 @@ async def lifespan(app: FastAPI):
         logger.info(json.dumps({"event": "shutdown_started"}))
 
         try:
-            from core.goals.background_runner import get_goal_background_runner
+            from goal.goals.background_runner import get_goal_background_runner
             await get_goal_background_runner().shutdown()
         except Exception as e:
             logger.warning("Erreur arrêt workflows goals : %s", e)
 
         try:
-            from core.scheduler.scheduler import get_task_scheduler
+            from modules.scheduler.scheduler import get_task_scheduler
 
             await get_task_scheduler().stop_worker()
         except Exception as e:
@@ -509,7 +509,7 @@ async def lifespan(app: FastAPI):
                 logger.warning("Erreur tâche SelfMonitor : %s", e)
 
         try:
-            scheduler_stop()
+            get_task_scheduler().stop()
         except Exception as e:
             logger.warning("Erreur arrêt scheduler : %s", e)
 

@@ -5,17 +5,17 @@ import json
 import tempfile
 from pathlib import Path
 
-from core.agent_factory.agent_creator import AgentCreator
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+from agents.factory.agent_creator import AgentCreator
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
 from core.cognitive import critic_engine
-from core.goals import goal_manager, persistence, routes as goal_routes
-from core.goals.goal_orchestrator import GoalOrchestrator
-from core.planning.executor import PlanExecutor
-from core.planning.storage import PlanStorage
-from core.projects.manager import ProjectManager
+from goal.goals import goal_manager, persistence, routes as goal_routes
+from goal.goals.goal_orchestrator import GoalOrchestrator
+from goal.planning.executor import PlanExecutor
+from goal.planning.storage import PlanStorage
+from goal.projects.manager import ProjectManager
 from core.task_system import task_manager
-from core.task_system.task_executor import TaskExecutor
-from core.task_system.task_manager import TaskManager
+from goal.system.task_executor import TaskExecutor
+from goal.system.task_manager import TaskManager
 
 
 def _build_orchestrator(tmp_path: Path, monkeypatch, notifications: list[tuple[str, str]]) -> GoalOrchestrator:

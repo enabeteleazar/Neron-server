@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from core.world_model.world_model import load_world_model_state, get_world_model
+from modules.world_model.world_model import load_world_model_state, get_world_model
 
 router = APIRouter(tags=["world-model"])
 

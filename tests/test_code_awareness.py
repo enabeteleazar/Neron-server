@@ -1,12 +1,12 @@
 import pytest
 
-from core.code_awareness.analyzer import analyze_file
-from core.code_awareness.architecture_mapper import map_architecture
-from core.code_awareness.dependency_mapper import map_dependencies
-from core.code_awareness.reader import read_file
-from core.code_awareness.scanner import scan_project
-from core.code_awareness.searcher import search_code
-from core.code_awareness.security import CodeAwarenessSecurityError
+from modules.code_awareness.analyzer import analyze_file
+from modules.code_awareness.architecture_mapper import map_architecture
+from modules.code_awareness.dependency_mapper import map_dependencies
+from modules.code_awareness.reader import read_file
+from modules.code_awareness.scanner import scan_project
+from modules.code_awareness.searcher import search_code
+from modules.code_awareness.security import CodeAwarenessSecurityError
 
 
 def _flatten_tree(node):

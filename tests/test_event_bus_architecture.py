@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.events.event import Event
-from core.events.event_bus import EventBus
+from modules.events.event import Event
+from modules.events.event_bus import EventBus
 
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ def test_subscriptions_are_idempotent_and_removable():
 
 @pytest.mark.asyncio
 async def test_memory_save_emits_update_after_persistence(monkeypatch, tmp_path):
-    from core.agents.core import memory_agent
+    from agents.builtin.core import memory_agent
 
     monkeypatch.setattr(memory_agent, "DB_PATH", str(tmp_path / "memory.db"))
     memory_agent.init_db()

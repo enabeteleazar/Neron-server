@@ -7,20 +7,20 @@ from typing import Awaitable, Callable
 
 import pytest
 
-from core.agents.communication.telegram_agent import route_evolution_telegram_text
+from agents.builtin.communication.telegram_agent import route_evolution_telegram_text
 from core.evolution import codex_runner as codex_runner_module
-from core.evolution.codex_runner import (
+from modules.evolution.codex_runner import (
     CODEX_MISSING_ERROR,
     CodexRunner,
     build_codex_exec_command,
     redact_secrets,
     resolve_codex_bin,
 )
-from core.evolution.models import CommandResult
-from core.evolution.proposal_engine import ProposalEngine
-from core.evolution.storage import EvolutionStorage
-from core.evolution.supervisor import EvolutionSupervisor
-from core.projects.manager import ProjectManager
+from modules.evolution.models import CommandResult
+from modules.evolution.proposal_engine import ProposalEngine
+from modules.evolution.storage import EvolutionStorage
+from modules.evolution.supervisor import EvolutionSupervisor
+from goal.projects.manager import ProjectManager
 
 
 class FakeCodexRunner:

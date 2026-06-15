@@ -5,11 +5,11 @@ from unittest.mock import Mock
 
 import pytest
 
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.goals.execution_engine import GoalExecutionEngine
-from core.projects.manager import ProjectManager
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from goal.goals.execution_engine import GoalExecutionEngine
+from goal.projects.manager import ProjectManager
 from core.runtime.sandbox.agent_sandbox import AgentSandbox
-from core.validation.business_validator import BusinessValidator
+from modules.validation.business_validator import BusinessValidator
 
 
 class AllowGovernor:
@@ -631,7 +631,7 @@ async def test_registry_not_reached_when_sandbox_fails(
         execution_engine=engine,
     )
     monkeypatch.setattr(
-        "core.agent_factory.promotion.AgentPromotionService.promote",
+        "agents.factory.promotion.AgentPromotionService.promote",
         lambda *_args, **_kwargs: pytest.fail("promotion must not be reached"),
     )
 

@@ -9,20 +9,20 @@ import pytest
 from pydantic import ValidationError
 
 from core.agent_factory import build_orchestrator
-from core.agent_factory.agent_creator import AgentCreator
-from core.agent_factory.agent_manager import AgentManager
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.agent_factory.registry import DynamicAgentRegistry
-from core.agent_runtime.runtime import AgentRuntime
-from core.agent_runtime.store import AgentRuntimeStore
-from core.agents.conversation.conversation_agent import ConversationAgent
-from core.events import event_types
-from core.events.event_bus import event_bus
-from core.evolution.models import CommandResult
+from agents.factory.agent_creator import AgentCreator
+from agents.factory.agent_manager import AgentManager
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from agents.factory.registry import DynamicAgentRegistry
+from agents.runtime.runtime import AgentRuntime
+from agents.runtime.store import AgentRuntimeStore
+from agents.builtin.conversation.conversation_agent import ConversationAgent
+from modules.events import event_types
+from modules.events.event_bus import event_bus
+from modules.evolution.models import CommandResult
 from core.pipeline.routing import agent_router
 from core.pipeline.intent.intent_router import Intent, IntentRouter
 from core.pipeline.intent.intent_router import IntentResult
-from core.projects.manager import ProjectManager
+from goal.projects.manager import ProjectManager
 
 
 class FakeCodexRunner:
@@ -1355,7 +1355,7 @@ async def test_registered_agent_is_reused_without_reconstruction(monkeypatch, tm
     monkeypatch.setattr(orchestrator, "_write_agent", lambda *_args, **_kwargs: pytest.fail("agent rewritten"))
     monkeypatch.setattr(orchestrator, "_write_agent_test", lambda *_args, **_kwargs: pytest.fail("test rewritten"))
     monkeypatch.setattr(
-        "core.agent_factory.promotion.AgentPromotionService.promote",
+        "agents.factory.promotion.AgentPromotionService.promote",
         lambda *_args, **_kwargs: pytest.fail("agent re-registered"),
     )
     monkeypatch.setattr(event_bus, "publish", fake_publish)
@@ -1684,7 +1684,7 @@ def test_build_orchestrator_has_no_obsidian_dependency():
 
 
 def test_planner_produces_specs_without_execution_side_effects():
-    from core.planning.planner import AutonomousPlanner
+    from goal.planning.planner import AutonomousPlanner
 
     plan = AutonomousPlanner().create_plan("Créer un agent météo")
     data = plan.to_dict()
@@ -1789,7 +1789,7 @@ async def test_agent_router_default_creation_path_uses_hybrid_build_mode(monkeyp
 
 @pytest.mark.asyncio
 async def test_telegram_goal_agent_creation_uses_hybrid_build_mode():
-    from core.goals.goal_orchestrator import GoalOrchestrator
+    from goal.goals.goal_orchestrator import GoalOrchestrator
 
     calls: list[tuple[str, str, str, str]] = []
 
@@ -1982,11 +1982,11 @@ async def test_agent_registry_telegram_commands_use_canonical_registry(monkeypat
 
     monkeypatch.setattr(agent_router, "_get_self_model", lambda: FakeModel())
     monkeypatch.setattr(
-        "core.agent_runtime.runtime.get_agent_runtime",
+        "agents.runtime.runtime.get_agent_runtime",
         lambda: FakeRuntime(),
     )
     monkeypatch.setattr(
-        "core.agent_factory.registry.DynamicAgentRegistry",
+        "agents.factory.registry.DynamicAgentRegistry",
         FakeRegistry,
     )
 

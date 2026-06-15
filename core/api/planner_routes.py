@@ -8,15 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from core.api.auth import verify_api_key
-from core.planning import AutonomousPlanner
-from core.planning.executor import PlanExecutor
-from core.planning.storage import PlanStorage
-from core.task_system.task_manager import get_task_manager
-from core.task_system.task_executor import get_task_executor
-from core.agents.communication.telegram_agent import send_notification
-from core.cognitive.critic_engine import get_critic_engine
-from core.goals.goal_orchestrator import get_goal_orchestrator
-from core.goals.goal_manager import get_goal_manager
+from goal.planning import AutonomousPlanner
+from goal.planning.executor import PlanExecutor
+from goal.planning.storage import PlanStorage
+from goal.system.task_manager import get_task_manager
+from goal.system.task_executor import get_task_executor
+from agents.builtin.communication.telegram_agent import send_notification
+from modules.cognitive.critic_engine import get_critic_engine
+from goal.goals.goal_orchestrator import get_goal_orchestrator
+from goal.goals.goal_manager import get_goal_manager
 
 router = APIRouter(tags=["planner"], dependencies=[Depends(verify_api_key)])
 

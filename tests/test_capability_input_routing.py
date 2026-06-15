@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.capabilities.models import CapabilityDecision, CapabilityResult
+from modules.capabilities.models import CapabilityDecision, CapabilityResult
 from core.pipeline.intent.intent_router import Intent, IntentResult
 
 
@@ -120,8 +120,8 @@ async def test_natural_telegram_creation_returns_short_async_response(monkeypatc
 
 async def test_unknown_durable_telegram_request_does_not_reach_conversation(monkeypatch):
     from core import app as core_app
-    from core.capabilities.registry import CapabilityRegistry
-    from core.capabilities.resolver import CapabilityResolver
+    from modules.capabilities.registry import CapabilityRegistry
+    from modules.capabilities.resolver import CapabilityResolver
 
     class EmptyAgents:
         def list_agent_records(self):

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from core.context.neron_context import get_neron_context_status
+from modules.context.neron_context import get_neron_context_status
 from core.runtime.governor import get_runtime_governor
 
 router = APIRouter(tags=["runtime-governor"])

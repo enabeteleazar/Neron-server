@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 
-from core.events.event import Event
+from modules.events.event import Event
 
 
 def test_persistent_store_migrates_incompatible_legacy_event_table(

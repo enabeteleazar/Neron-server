@@ -4,14 +4,14 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
-from core.evolution.supervisor import (
+from modules.evolution.supervisor import (
     format_proposals_for_telegram,
     get_evolution_supervisor,
 )
-from core.goals.goal_manager import get_goal_manager
-from core.goals.goal_orchestrator import get_goal_orchestrator
+from goal.goals.goal_manager import get_goal_manager
+from goal.goals.goal_orchestrator import get_goal_orchestrator
 from core.pipeline.orchestrator import CoreOrchestrator
-from core.planning.storage import PlanStorage
+from goal.planning.storage import PlanStorage
 
 
 def _normalize(text: str) -> str:

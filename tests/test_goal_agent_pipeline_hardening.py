@@ -7,13 +7,13 @@ import pytest
 from fastapi import HTTPException
 
 from core.agent_factory import build_orchestrator as build_module
-from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-from core.agent_factory.promotion import AgentPromotionService
-from core.goals import goal_manager, persistence, routes
-from core.goals.goal_orchestrator import GoalOrchestrator
-from core.planning.storage import PlanStorage
+from agents.factory.build_orchestrator import AgentBuildOrchestrator
+from agents.factory.promotion import AgentPromotionService
+from goal.goals import goal_manager, persistence, routes
+from goal.goals.goal_orchestrator import GoalOrchestrator
+from goal.planning.storage import PlanStorage
 from core.pipeline.routing import agent_router
-from core.projects.manager import ProjectManager
+from goal.projects.manager import ProjectManager
 from core.runtime.governor import RuntimeGovernor
 
 
@@ -202,7 +202,7 @@ async def test_legacy_router_does_not_promote_when_associated_test_fails(
 
     monkeypatch.setattr(agent_router, "WORKSPACE_AGENTS_DIR", workspace_agents)
     monkeypatch.setattr(
-        "core.agent_factory.promotion.AgentPromotionService.promote",
+        "agents.factory.promotion.AgentPromotionService.promote",
         forbidden_promotion,
     )
 
@@ -234,7 +234,7 @@ async def test_legacy_router_does_not_promote_without_associated_test(
 
     monkeypatch.setattr(agent_router, "WORKSPACE_AGENTS_DIR", workspace_agents)
     monkeypatch.setattr(
-        "core.agent_factory.promotion.AgentPromotionService.promote",
+        "agents.factory.promotion.AgentPromotionService.promote",
         forbidden_promotion,
     )
 

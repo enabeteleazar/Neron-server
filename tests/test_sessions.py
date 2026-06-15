@@ -7,7 +7,7 @@ Couvre : CRUD, JSONL persistence, pruning, messages_for_llm, sanitization.
 import json
 import pytest
 from pathlib import Path
-from core.modules.sessions import Session, SessionStore, MAX_HISTORY_TOKENS
+from modules.sessions import Session, SessionStore, MAX_HISTORY_TOKENS
 
 
 # ── Fixtures ───────────────────────────────────────────────────────────────────

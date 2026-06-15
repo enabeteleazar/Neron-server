@@ -7,7 +7,7 @@ from agents.autonomous.reasoning_agent import ReasoningAgent
 
 from core.autonomous.execution_logger import ExecutionLogger
 from core.autonomous.sandbox import Sandbox
-from core.modules.autonomous.scheduler import AutonomousScheduler
+from modules.autonomous.scheduler import AutonomousScheduler
 
 
 class ExecutorAgent:

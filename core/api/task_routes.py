@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from core.api.auth import verify_api_key
-from core.task_system.task_manager import get_task_manager
-from core.task_system.task_model import VALID_TASK_PRIORITIES, VALID_TASK_STATUSES
+from goal.system.task_manager import get_task_manager
+from goal.system.task_model import VALID_TASK_PRIORITIES, VALID_TASK_STATUSES
 
 router = APIRouter(prefix="/tasks", tags=["tasks"], dependencies=[Depends(verify_api_key)])
 

@@ -3,8 +3,8 @@
 import inspect
 from typing import Any, Callable
 
-from core.events.event import Event
-from core.events.event_bus import event_bus
+from modules.events.event import Event
+from modules.events.event_bus import event_bus
 
 
 class EventBus:

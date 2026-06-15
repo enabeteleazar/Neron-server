@@ -92,7 +92,7 @@ def _result_to_text(result: Any) -> str:
 def _get_llm():
     global _llm
     if _llm is None:
-        from core.agents.core.llm_agent import LLMAgent
+        from agents.builtin.core.llm_agent import LLMAgent
         _llm = LLMAgent()
     return _llm
 
@@ -100,7 +100,7 @@ def _get_llm():
 def _get_memory():
     global _memory
     if _memory is None:
-        from core.agents.core.memory_agent import MemoryAgent
+        from agents.builtin.core.memory_agent import MemoryAgent
         _memory = MemoryAgent()
     return _memory
 
@@ -108,7 +108,7 @@ def _get_memory():
 def _get_system():
     global _system
     if _system is None:
-        from core.agents.core.system_agent import SystemAgent
+        from agents.builtin.core.system_agent import SystemAgent
         _system = SystemAgent()
     return _system
 
@@ -116,7 +116,7 @@ def _get_system():
 def _get_ha():
     global _ha
     if _ha is None:
-        from core.agents.automation.ha_agent import HAAgent
+        from agents.builtin.automation.ha_agent import HAAgent
         _ha = HAAgent()
     return _ha
 
@@ -124,7 +124,7 @@ def _get_ha():
 def _get_web():
     global _web
     if _web is None:
-        from core.agents.communication.web_agent import WebAgent
+        from agents.builtin.communication.web_agent import WebAgent
         _web = WebAgent()
     return _web
 
@@ -132,7 +132,7 @@ def _get_web():
 def _get_news():
     global _news
     if _news is None:
-        from core.agents.io.news_agent import NewsAgent
+        from agents.builtin.io.news_agent import NewsAgent
         _news = NewsAgent()
     return _news
 
@@ -140,7 +140,7 @@ def _get_news():
 def _get_weather():
     global _weather
     if _weather is None:
-        from core.agents.io.weather_agent import WeatherAgent
+        from agents.builtin.io.weather_agent import WeatherAgent
         _weather = WeatherAgent()
     return _weather
 
@@ -148,7 +148,7 @@ def _get_weather():
 def _get_todo():
     global _todo
     if _todo is None:
-        from core.agents.core.todo_agent import TodoAgent
+        from agents.builtin.core.todo_agent import TodoAgent
         _todo = TodoAgent()
     return _todo
 
@@ -156,18 +156,18 @@ def _get_todo():
 def _get_wiki():
     global _wiki
     if _wiki is None:
-        from core.agents.io.wiki_agent import WikiAgent
+        from agents.builtin.io.wiki_agent import WikiAgent
         _wiki = WikiAgent()
     return _wiki
 
 
 def _get_self_model():
-    from core.self_model.self_model import get_self_model
+    from modules.self_model.self_model import get_self_model
     return get_self_model()
 
 
 def _list_dynamic_agents() -> str:
-    from core.agent_factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
+    from agents.factory.registry import DynamicAgentRegistry, AGENT_REGISTRY
 
     registry = DynamicAgentRegistry()
     registry.load_generated_agents()
@@ -200,7 +200,7 @@ def _is_registry_invalid_query(query: str) -> bool:
 
 
 async def _scan_agent_registry_text() -> str:
-    from core.agent_runtime.runtime import get_agent_runtime
+    from agents.runtime.runtime import get_agent_runtime
 
     runtime = get_agent_runtime()
     result = runtime.registry.scan()
@@ -217,7 +217,7 @@ async def _scan_agent_registry_text() -> str:
 
 
 def _agent_registry_records() -> list[dict[str, Any]]:
-    from core.agent_factory.registry import DynamicAgentRegistry
+    from agents.factory.registry import DynamicAgentRegistry
 
     index = DynamicAgentRegistry().validation_index()
     agents = index.get("agents") if isinstance(index, dict) else {}
@@ -256,8 +256,8 @@ def _invalid_agent_registry_text() -> str:
 
 
 def _project_status_text(query: str) -> str:
-    from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
-    from core.projects.manager import get_project_manager
+    from agents.factory.build_orchestrator import AgentBuildOrchestrator
+    from goal.projects.manager import get_project_manager
 
     manager = get_project_manager()
     matches = manager.find_project_by_query(query, limit=1)
@@ -266,7 +266,7 @@ def _project_status_text(query: str) -> str:
 
 
 def _project_list_text() -> str:
-    from core.projects.manager import get_project_manager
+    from goal.projects.manager import get_project_manager
 
     projects = get_project_manager().list_projects(limit=20)
     if not projects:
@@ -282,7 +282,7 @@ def _project_list_text() -> str:
 
 
 async def _build_tracked_agent(query: str, source_channel: str = "api") -> str:
-    from core.agent_factory.build_orchestrator import AgentBuildOrchestrator
+    from agents.factory.build_orchestrator import AgentBuildOrchestrator
 
     orchestrator = AgentBuildOrchestrator()
     result = await orchestrator.build_from_request(
@@ -369,7 +369,7 @@ def _extract_agent_update_request(query: str) -> tuple[str, str] | None:
 
 
 async def _update_dynamic_agent(query: str) -> str:
-    from core.agent_factory.agent_manager import AgentManager
+    from agents.factory.agent_manager import AgentManager
 
     parsed = _extract_agent_update_request(query)
     if not parsed:
@@ -395,7 +395,7 @@ async def _update_dynamic_agent(query: str) -> str:
 
 
 async def _run_dynamic_agent(query: str) -> str:
-    from core.agent_runtime.runtime import get_agent_runtime
+    from agents.runtime.runtime import get_agent_runtime
 
     runtime = get_agent_runtime()
     agent_name = _extract_agent_name_for_run(query)
@@ -413,8 +413,8 @@ async def _run_dynamic_agent(query: str) -> str:
 
 
 async def _promote_dynamic_agent(query: str) -> str:
-    from core.agent_factory.promotion import AgentPromotionService
-    from core.agent_factory.validator import validate_agent
+    from agents.factory.promotion import AgentPromotionService
+    from agents.factory.validator import validate_agent
 
     agent_name = _extract_agent_name_for_promote(query)
 
@@ -540,7 +540,7 @@ class AgentRouter:
             return await _promote_dynamic_agent(query)
 
         if intent == Intent.SELF_STATUS:
-            from core.agent_runtime.runtime import get_agent_runtime
+            from agents.runtime.runtime import get_agent_runtime
 
             runtime = get_agent_runtime()
             runtime.reload()
@@ -598,7 +598,7 @@ class AgentRouter:
                 or "status des tâches" in q
                 or "status des taches" in q
             ):
-                from core.task_system.task_manager import get_task_manager
+                from goal.system.task_manager import get_task_manager
 
                 manager = get_task_manager()
                 summary = manager.get_status_summary()
@@ -619,7 +619,7 @@ class AgentRouter:
                 or "tâche suivante" in q
                 or "tache suivante" in q
             ):
-                from core.task_system.task_manager import get_task_manager
+                from goal.system.task_manager import get_task_manager
 
                 manager = get_task_manager()
                 task = manager.get_next_task()
@@ -641,7 +641,7 @@ class AgentRouter:
                 or "commence la prochaine tâche" in q
                 or "commence la prochaine tache" in q
             ):
-                from core.task_system.task_manager import get_task_manager
+                from goal.system.task_manager import get_task_manager
 
                 manager = get_task_manager()
                 task = manager.start_next_task()
@@ -663,7 +663,7 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent == Intent.TIME_QUERY:
-            from core.neron_time.time_provider import get_formatted_time
+            from modules.neron_time.time_provider import get_formatted_time
             return get_formatted_time()
 
         if intent == Intent.HA_ACTION:
@@ -675,7 +675,7 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent in (Intent.CODE, Intent.CODE_AUDIT):
-            from core.agents.dev.code_audit_agent import CodeAuditAgent
+            from agents.builtin.dev.code_audit_agent import CodeAuditAgent
             agent = CodeAuditAgent()
             result = await agent.execute(query)
             return _result_to_text(result)

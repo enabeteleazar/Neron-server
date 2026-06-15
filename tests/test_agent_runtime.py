@@ -7,19 +7,19 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-from core.agent_factory.registry import DynamicAgentRegistry
-from core.agent_runtime.runtime import (
+from agents.factory.registry import DynamicAgentRegistry
+from agents.runtime.runtime import (
     AgentNotFoundError,
     AgentRuntime,
 )
-from core.agent_runtime.store import AgentRuntimeStore
-from core.capabilities.models import CapabilityRequest
-from core.capabilities.registry import CapabilityRegistry
-from core.capabilities.resolver import CapabilityResolver
-from core.tools.creator import ToolCreator
-from core.tools.models import ToolSpec
-from core.tools.registry import ToolRegistry
-from core.tools.runtime import ToolRuntime
+from agents.runtime.store import AgentRuntimeStore
+from modules.capabilities.models import CapabilityRequest
+from modules.capabilities.registry import CapabilityRegistry
+from modules.capabilities.resolver import CapabilityResolver
+from tools.creator import ToolCreator
+from tools.models import ToolSpec
+from tools.registry import ToolRegistry
+from tools.runtime import ToolRuntime
 
 
 pytestmark = pytest.mark.asyncio

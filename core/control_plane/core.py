@@ -17,8 +17,8 @@ from core.gateway.http_gateway import init_gateway as init_http_gateway
 
 from core.pipeline.intent.intent_router import IntentRouter
 from core.pipeline.routing.agent_router import AgentRouter
-from core.modules.sessions import SessionStore
-from core.modules.skills import SkillRegistry
+from modules.sessions import SessionStore
+from modules.skills import SkillRegistry
 from core.config import settings
 
 logger = logging.getLogger("neron.control_plane")
