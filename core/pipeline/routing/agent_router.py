@@ -539,6 +539,28 @@ class AgentRouter:
         if _is_promote_request(query):
             return await _promote_dynamic_agent(query)
 
+        if intent == Intent.IDENTITY_QUERY:
+            from core.identity import get_identity
+
+            identity = get_identity()
+            name = identity.get("name", "Néron")
+            role = identity.get("role", "système d'exploitation personnel piloté par l'IA")
+            mission = identity.get("mission", "superviser un écosystème d'agents spécialisés et assister son utilisateur")
+
+            response = (
+                f"Je suis {name}, {role}.\n\n"
+                f"Ma mission est de {mission}.\n\n"
+                "Je ne suis pas un simple chatbot : je suis le noyau d'orchestration de ton assistant personnel, "
+                "chargé de comprendre tes demandes, router vers les bons modules, superviser les agents et exécuter les capacités disponibles."
+            )
+
+            return {
+                "response": response,
+                "intent": Intent.IDENTITY_QUERY.value,
+                "agent": "identity_provider",
+                "confidence": "high",
+            }
+
         if intent == Intent.SELF_STATUS:
             from agents.runtime.runtime import get_agent_runtime
 
@@ -663,8 +685,8 @@ class AgentRouter:
             return _result_to_text(result)
 
         if intent == Intent.TIME_QUERY:
-            from modules.neron_time.time_provider import get_formatted_time
-            return get_formatted_time()
+            from core.modules.timer import build_timer_response
+            return build_timer_response('time')['response']
 
         if intent == Intent.HA_ACTION:
             result = await _get_ha().execute(query)

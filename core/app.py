@@ -113,7 +113,6 @@ from modules.scheduler.scheduler import get_task_scheduler
 # scheduler_stop handled via get_task_scheduler().stop
 from modules.sessions import SessionStore
 from modules.skills import SkillRegistry
-from modules.neron_time.time_provider import TimeProvider
 from core.pipeline.intent.intent_router import IntentRouter
 from core.pipeline.orchestrator import (
     CoreOrchestrator,
@@ -156,7 +155,6 @@ ha_agent:         HAAgent         | None = None
 code_agent:       CodeAgent       | None = None
 code_audit_agent: CodeAuditAgent  | None = None
 router:           IntentRouter    | None = None
-time_provider:    TimeProvider    | None = None
 obsidian_agent:   ObsidianAgent   | None = None
 autonomous_planner_agent: AutonomousPlannerAgent | None = None
 _capability_resolver: CapabilityResolver | None = None
@@ -183,8 +181,6 @@ def _active_core_orchestrator() -> CoreOrchestrator:
     orchestrator._capability_resolver = get_capability_resolver()
     if memory_agent is not None:
         orchestrator._memory_engine = memory_agent
-    if time_provider is not None:
-        orchestrator._time_provider = time_provider
     return orchestrator
 
 
@@ -299,7 +295,7 @@ metrics = Metrics()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global llm_agent, web_agent, stt_agent, tts_agent, ha_agent
-    global router, time_provider, _startup_time, memory_agent
+    global router, _startup_time, memory_agent
     global code_agent, code_audit_agent, _gateway_task, _self_monitor_task
     global obsidian_agent, autonomous_planner_agent
 
@@ -371,7 +367,6 @@ async def lifespan(app: FastAPI):
         await ha_agent.on_start()
 
         router = IntentRouter(llm_agent=llm_agent)
-        time_provider = TimeProvider()
 
         if _personality_available():
             try:
@@ -422,7 +417,6 @@ async def lifespan(app: FastAPI):
                     agent_router=agent_router,
                     capability_resolver=get_capability_resolver(),
                     memory_engine=memory_agent,
-                    time_provider=time_provider,
                 )
             )
 

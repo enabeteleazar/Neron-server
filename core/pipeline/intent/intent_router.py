@@ -37,6 +37,7 @@ class Intent(str, Enum):
 
     SYSTEM_STATUS        = "system_status"
     NETWORK_STATUS       = "network_status"
+    IDENTITY_QUERY       = "identity_query"
     SELF_STATUS          = "self_status"
 
     NEWS_QUERY           = "news_query"
@@ -118,6 +119,21 @@ def _fallback_intent(query: str) -> Intent | None:
         "comment vas-tu",
     ]
 
+    identity_keywords = [
+        "qui es tu",
+        "qui es-tu",
+        "tu es qui",
+        "presente toi",
+        "présente toi",
+        "presente-toi",
+        "présente-toi",
+        "quel est ton nom",
+        "comment tu t appelles",
+        "comment tu t'appelles",
+        "comment t appelles tu",
+        "comment t'appelles tu",
+    ]
+
     self_status_keywords = [
         "etat interne",
         "etat conscience",
@@ -127,8 +143,6 @@ def _fallback_intent(query: str) -> Intent | None:
         "selfmodel",
         "que sais tu de toi",
         "que sais-tu de toi",
-        "qui es tu",
-        "qui es-tu",
         "tes capacites",
         "tes capacités",
         "capacites de neron",
@@ -343,6 +357,9 @@ def _fallback_intent(query: str) -> Intent | None:
 
     if q in status_smalltalk_keywords:
         return Intent.STATUS_SMALLTALK
+
+    if any(k in q for k in identity_keywords):
+        return Intent.IDENTITY_QUERY
 
     if any(k in q for k in self_status_keywords):
         return Intent.SELF_STATUS

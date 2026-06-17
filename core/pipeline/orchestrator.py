@@ -11,6 +11,8 @@ from agents.builtin.base_agent import get_logger
 from modules.capabilities.models import CapabilityRequest
 from core.pipeline.intent.intent_router import Intent, IntentResult, IntentRouter
 from core.pipeline.routing.agent_router import AgentRouter
+from core.modules.timer import detect_timer_intent, build_timer_response
+from core.modules.identity import detect_identity_intent, build_identity_response
 
 logger = get_logger("core.pipeline.orchestrator")
 
@@ -79,7 +81,6 @@ class CoreOrchestrator:
         goal_background_runner: Any | None = None,
         runtime_governor: Any | None = None,
         memory_engine: Any | None = None,
-        time_provider: Any | None = None,
     ) -> None:
         self.intent_router = intent_router or IntentRouter()
         self.agent_router = agent_router or AgentRouter()
@@ -89,7 +90,6 @@ class CoreOrchestrator:
         self._goal_background_runner = goal_background_runner
         self._runtime_governor = runtime_governor
         self._memory_engine = memory_engine
-        self._time_provider = time_provider
 
     async def decide(
         self,
@@ -101,6 +101,7 @@ class CoreOrchestrator:
         intent = intent_result.intent
         normalized = _normalize(query)
         complexity = _complexity(query)
+        timer_result = detect_timer_intent(query)
 
         if explicit_route == "goal_pipeline" or normalized.startswith("/goal "):
             decision = OrchestratorDecision(
@@ -119,11 +120,27 @@ class CoreOrchestrator:
                 complexity="simple",
                 requires_timer=True,
             )
-        elif intent == Intent.TIME_QUERY or _is_date_request(normalized):
+        elif intent == Intent.IDENTITY_QUERY:
+            decision = OrchestratorDecision(
+                intent=Intent.IDENTITY_QUERY.value,
+                selected_route="identity_provider",
+                reason="Demande d'identité de Néron traitée localement depuis NERON.md.",
+                complexity="simple",
+                requires_llm=False,
+                requires_timer=False,
+                requires_memory=False,
+                requires_tool=False,
+                requires_resolver=False,
+                requires_agent_factory=False,
+                requires_goal_pipeline=False,
+                requires_governor=False,
+            )
+
+        elif timer_result.get("matched") or intent == Intent.TIME_QUERY:
             decision = OrchestratorDecision(
                 intent=Intent.TIME_QUERY.value,
                 selected_route="timer_engine",
-                reason="Demande de date ou heure detectee.",
+                reason="Demande de date ou heure detectee par timer_module.",
                 complexity="simple",
                 requires_timer=True,
             )
@@ -335,6 +352,10 @@ class CoreOrchestrator:
             self._log_used("timer_used", decision)
             return self._execute_timer(query, decision)
 
+        if route == "identity_provider":
+            self._log_used("identity_used", decision)
+            return self._execute_identity(query, decision)
+
         if route == "memory_engine":
             self._log_used("memory_used", decision)
             return await self._execute_memory(query)
@@ -433,40 +454,48 @@ class CoreOrchestrator:
         )
         return response, "llm_agent", {}
 
+    def _execute_identity(
+        self,
+        query: str,
+        decision: OrchestratorDecision,
+    ) -> tuple[str, str, dict[str, Any]]:
+        identity_result = detect_identity_intent(query)
+        kind = identity_result.get("kind") or "identity"
+        result = build_identity_response(kind)
+
+        metadata = {
+            "selected_route": "identity_provider",
+            "executor": "identity_module",
+            "fallback_used": False,
+            "retries": 0,
+            "source": result.get("source"),
+            "identity_kind": kind,
+            "identity_confidence": identity_result.get("confidence"),
+        }
+
+        return result["response"], result["agent"], metadata
+
     def _execute_timer(
         self,
         query: str,
         decision: OrchestratorDecision,
     ) -> tuple[str, str, dict[str, Any]]:
-        if decision.intent == "timer":
-            seconds = _timer_seconds(query)
-            if seconds is None:
-                return (
-                    "Je n'ai pas pu determiner la duree du minuteur.",
-                    "timer_engine",
-                    {"error": "timer_duration_missing"},
-                )
-            from modules.scheduler import schedule_timer
+        timer_result = detect_timer_intent(query)
+        kind = timer_result.get("kind") or "datetime"
+        result = build_timer_response(kind)
 
-            timer = schedule_timer(seconds, label=query)
-            return (
-                f"Minuteur programme pour {_human_duration(seconds)}.",
-                "timer_engine",
-                {"timer": timer},
-            )
+        metadata = {
+            "selected_route": "timer_engine",
+            "executor": "timer_module",
+            "fallback_used": False,
+            "retries": 0,
+            "iso": result.get("iso"),
+            "source": "timer_module",
+            "timer_kind": kind,
+            "timer_confidence": timer_result.get("confidence"),
+        }
 
-        provider = self._get_time_provider()
-        now = provider.now()
-        normalized = _normalize(query)
-        wants_date = _is_date_request(normalized)
-        wants_time = any(token in normalized for token in ("heure", "time", "il est"))
-        if wants_date and not wants_time:
-            response = now.strftime("Nous sommes le %d/%m/%Y.")
-        elif wants_time and not wants_date:
-            response = now.strftime("Il est %Hh%M.")
-        else:
-            response = now.strftime("Il est %Hh%M, le %d/%m/%Y.")
-        return response, "time_provider", {"iso": provider.iso()}
+        return result["response"], result["agent"], metadata
 
     async def _execute_memory(
         self,
@@ -542,13 +571,6 @@ class CoreOrchestrator:
             init_db()
             self._memory_engine = MemoryAgent()
         return self._memory_engine
-
-    def _get_time_provider(self) -> Any:
-        if self._time_provider is None:
-            from modules.neron_time.time_provider import TimeProvider
-
-            self._time_provider = TimeProvider()
-        return self._time_provider
 
     @staticmethod
     def _log_used(
