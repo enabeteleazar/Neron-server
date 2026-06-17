@@ -54,6 +54,18 @@ def save_memory(
     timestamp = now_iso()
 
     with connect() as conn:
+        existing = conn.execute(
+            """
+            SELECT * FROM memories
+            WHERE category = ? AND key = ? AND value = ?
+            LIMIT 1
+            """,
+            (category, key, value),
+        ).fetchone()
+
+        if existing is not None:
+            return dict(existing)
+
         cur = conn.execute(
             """
             INSERT INTO memories(category, key, value, source, confidence, created_at, updated_at)

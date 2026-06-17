@@ -54,6 +54,15 @@ def _guess_key(memory_text: str) -> str:
 def _extract_recall_query(text: str) -> str | None:
     value = normalize(text)
 
+    aliases = {
+        "moi": "user",
+        "sur moi": "user",
+        "a mon sujet": "user",
+        "de moi": "user",
+        "neron": "project",
+        "projet neron": "project",
+    }
+
     prefixes = [
         "que sais tu sur",
         "que sais tu",
@@ -64,7 +73,7 @@ def _extract_recall_query(text: str) -> str | None:
     for prefix in prefixes:
         if value.startswith(prefix):
             query = value.replace(prefix, "", 1).strip()
-            return query or None
+            return aliases.get(query, query or None)
 
     return None
 

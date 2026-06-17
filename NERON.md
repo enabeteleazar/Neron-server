@@ -19,6 +19,7 @@ Modules actuels :
 - Identity : identité et mission de Néron.
 - Timer : date et heure.
 - Status : état cognitif et opérationnel minimal.
+- Memory : mémoire persistante et rappel des connaissances.
 
 Les modules présents dans /modules sont considérés comme optionnels et peuvent être activés ou désactivés indépendamment du Core.
 
