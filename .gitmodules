@@ -14,3 +14,6 @@
 [submodule "neronHUB"]
 	path = ui/dashboard
 	url = git@github.com:enabeteleazar/neronHUB.git
+[submodule "core"]
+	path = core
+	url = git@github.com:enabeteleazar/neron_core.git
