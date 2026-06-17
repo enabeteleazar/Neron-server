@@ -13,6 +13,7 @@ from core.pipeline.intent.intent_router import Intent, IntentResult, IntentRoute
 from core.pipeline.routing.agent_router import AgentRouter
 from core.modules.timer import detect_timer_intent, build_timer_response
 from core.modules.identity import detect_identity_intent, build_identity_response
+from core.modules.status import detect_status_intent, build_status_response
 
 logger = get_logger("core.pipeline.orchestrator")
 
@@ -102,6 +103,7 @@ class CoreOrchestrator:
         normalized = _normalize(query)
         complexity = _complexity(query)
         timer_result = detect_timer_intent(query)
+        status_result = detect_status_intent(query)
 
         if explicit_route == "goal_pipeline" or normalized.startswith("/goal "):
             decision = OrchestratorDecision(
@@ -119,6 +121,21 @@ class CoreOrchestrator:
                 reason="Demande explicite de minuteur detectee.",
                 complexity="simple",
                 requires_timer=True,
+            )
+        elif status_result.get("matched"):
+            decision = OrchestratorDecision(
+                intent="status_query",
+                selected_route="status_provider",
+                reason="Demande d'état de Néron traitée localement par status_module.",
+                complexity="simple",
+                requires_llm=False,
+                requires_timer=False,
+                requires_memory=False,
+                requires_tool=False,
+                requires_resolver=False,
+                requires_agent_factory=False,
+                requires_goal_pipeline=False,
+                requires_governor=False,
             )
         elif intent == Intent.IDENTITY_QUERY:
             decision = OrchestratorDecision(
@@ -352,6 +369,10 @@ class CoreOrchestrator:
             self._log_used("timer_used", decision)
             return self._execute_timer(query, decision)
 
+        if route == "status_provider":
+            self._log_used("status_used", decision)
+            return self._execute_status(query, decision)
+
         if route == "identity_provider":
             self._log_used("identity_used", decision)
             return self._execute_identity(query, decision)
@@ -454,12 +475,35 @@ class CoreOrchestrator:
         )
         return response, "llm_agent", {}
 
+    def _execute_status(
+        self,
+        query: str,
+        decision: OrchestratorDecision,
+    ) -> tuple[str, str, dict[str, Any]]:
+        status_result = detect_status_intent(query)
+        kind = status_result.get("kind") or "core_status"
+        result = build_status_response(kind)
+
+        metadata = {
+            "selected_route": "status_provider",
+            "executor": "status_module",
+            "fallback_used": False,
+            "retries": 0,
+            "source": result.get("source"),
+            "status_kind": kind,
+            "status_confidence": status_result.get("confidence"),
+            "status": result.get("status"),
+        }
+
+        return result["response"], result["agent"], metadata
+
     def _execute_identity(
         self,
         query: str,
         decision: OrchestratorDecision,
     ) -> tuple[str, str, dict[str, Any]]:
         identity_result = detect_identity_intent(query)
+        status_result = detect_status_intent(query)
         kind = identity_result.get("kind") or "identity"
         result = build_identity_response(kind)
 
