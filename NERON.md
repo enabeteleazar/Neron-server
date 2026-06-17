@@ -2,11 +2,25 @@
 
 # NÉRON OPERATING CONTEXT
 
-Version: 0.1
+Version: 0.2.0
 Scope: Global runtime architecture and operational governance
 Root path: /etc/neron
 
 ---
+
+# Core Cognitive Modules
+
+Les modules présents dans core/modules constituent le noyau cognitif minimal de Néron.
+
+Ils doivent toujours être disponibles et ne peuvent pas être désactivés.
+
+Modules actuels :
+
+- Identity : identité et mission de Néron.
+- Timer : date et heure.
+- Status : état cognitif et opérationnel minimal.
+
+Les modules présents dans /modules sont considérés comme optionnels et peuvent être activés ou désactivés indépendamment du Core.
 
 # 1. Mission
 

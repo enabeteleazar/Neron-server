@@ -14,6 +14,7 @@ from core.pipeline.routing.agent_router import AgentRouter
 from core.modules.timer import detect_timer_intent, build_timer_response
 from core.modules.identity import detect_identity_intent, build_identity_response
 from core.modules.status import detect_status_intent, build_status_response
+from core.modules.memory import detect_memory_intent, build_memory_response
 
 logger = get_logger("core.pipeline.orchestrator")
 
@@ -81,7 +82,6 @@ class CoreOrchestrator:
         goal_execution_engine: Any | None = None,
         goal_background_runner: Any | None = None,
         runtime_governor: Any | None = None,
-        memory_engine: Any | None = None,
     ) -> None:
         self.intent_router = intent_router or IntentRouter()
         self.agent_router = agent_router or AgentRouter()
@@ -90,7 +90,6 @@ class CoreOrchestrator:
         self._goal_execution_engine = goal_execution_engine
         self._goal_background_runner = goal_background_runner
         self._runtime_governor = runtime_governor
-        self._memory_engine = memory_engine
 
     async def decide(
         self,
@@ -104,6 +103,7 @@ class CoreOrchestrator:
         complexity = _complexity(query)
         timer_result = detect_timer_intent(query)
         status_result = detect_status_intent(query)
+        memory_result = detect_memory_intent(query)
 
         if explicit_route == "goal_pipeline" or normalized.startswith("/goal "):
             decision = OrchestratorDecision(
@@ -161,13 +161,14 @@ class CoreOrchestrator:
                 complexity="simple",
                 requires_timer=True,
             )
-        elif _is_memory_request(normalized):
+        elif memory_result.get("matched") or _is_memory_request(normalized):
             decision = OrchestratorDecision(
-                intent="memory",
+                intent="memory_query",
                 selected_route="memory_engine",
-                reason="Demande explicite de memorisation ou recherche memoire.",
+                reason="Demande mémoire traitée localement par memory_module.",
                 complexity="simple",
                 requires_memory=True,
+                requires_llm=False,
             )
         elif intent in {Intent.AGENT_CREATION, Intent.TOOL_CREATION}:
             decision = OrchestratorDecision(
@@ -545,33 +546,28 @@ class CoreOrchestrator:
         self,
         query: str,
     ) -> tuple[str, str, dict[str, Any]]:
-        normalized = _normalize(query)
-        memory = self._get_memory_engine()
-        if any(
-            token in normalized
-            for token in ("souviens toi", "memorise", "retiens", "retient", "note ceci")
-        ):
-            memory.store(query, "Information memorisee.", {"source": "orchestrator"})
-            return "C'est memorise.", "memory_agent", {"memory_action": "store"}
+        memory_result = detect_memory_intent(query)
+        kind = memory_result.get("kind") or "recall"
+        result = build_memory_response(kind, query)
 
-        terms = re.sub(
-            r"^(cherche|recherche|retrouve).*(memoire|notes?)",
-            "",
-            query,
-            flags=re.IGNORECASE,
-        ).strip(" :")
-        entries = memory.search(terms or query, limit=5)
-        if not entries:
-            return "Je n'ai rien trouve dans la memoire.", "memory_agent", {
-                "memory_action": "search",
-                "matches": 0,
-            }
-        lines = ["Elements trouves en memoire :"]
-        lines.extend(f"- {entry['input']}: {entry['response']}" for entry in entries)
-        return "\n".join(lines), "memory_agent", {
-            "memory_action": "search",
-            "matches": len(entries),
+        metadata = {
+            "selected_route": "memory_engine",
+            "executor": "memory_module",
+            "fallback_used": False,
+            "retries": 0,
+            "source": result.get("source"),
+            "memory_kind": kind,
+            "memory_confidence": memory_result.get("confidence"),
         }
+
+        if "memory" in result:
+            metadata["memory"] = result["memory"]
+
+        if "memories" in result:
+            metadata["memories"] = result["memories"]
+
+        return result["response"], result["agent"], metadata
+
 
     def _get_capability_resolver(self) -> Any:
         if self._capability_resolver is None:
@@ -607,14 +603,6 @@ class CoreOrchestrator:
 
             self._goal_background_runner = get_goal_background_runner()
         return self._goal_background_runner
-
-    def _get_memory_engine(self) -> Any:
-        if self._memory_engine is None:
-            from agents.builtin.core.memory_agent import MemoryAgent, init_db
-
-            init_db()
-            self._memory_engine = MemoryAgent()
-        return self._memory_engine
 
     @staticmethod
     def _log_used(
