@@ -17,3 +17,6 @@
 [submodule "core"]
 	path = core
 	url = git@github.com:enabeteleazar/neron_core.git
+[submodule "goal"]
+	path = goal
+	url = git@github.com:enabeteleazar/neron_goal.git
