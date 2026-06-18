@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from core.agent_factory import build_orchestrator as build_module
+from agents.factory import build_orchestrator as build_module
 from agents.factory.build_orchestrator import AgentBuildOrchestrator
 from agents.factory.promotion import AgentPromotionService
 from goal.goals import goal_manager, persistence, routes

@@ -8,7 +8,7 @@ from typing import Awaitable, Callable
 import pytest
 
 from agents.builtin.communication.telegram_agent import route_evolution_telegram_text
-from core.evolution import codex_runner as codex_runner_module
+from modules.evolution import codex_runner as codex_runner_module
 from modules.evolution.codex_runner import (
     CODEX_MISSING_ERROR,
     CodexRunner,

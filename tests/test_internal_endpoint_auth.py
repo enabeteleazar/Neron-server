@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from core.api import auth
-from core.evolution import routes as evolution_routes
+from modules.evolution import routes as evolution_routes
 from core import app as core_app
 
 

@@ -7,13 +7,13 @@ from pathlib import Path
 
 from agents.factory.agent_creator import AgentCreator
 from agents.factory.build_orchestrator import AgentBuildOrchestrator
-from core.cognitive import critic_engine
+from modules.cognitive import critic_engine
 from goal.goals import goal_manager, persistence, routes as goal_routes
 from goal.goals.goal_orchestrator import GoalOrchestrator
 from goal.planning.executor import PlanExecutor
 from goal.planning.storage import PlanStorage
 from goal.projects.manager import ProjectManager
-from core.task_system import task_manager
+from goal.system import task_manager
 from goal.system.task_executor import TaskExecutor
 from goal.system.task_manager import TaskManager
 

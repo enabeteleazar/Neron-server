@@ -8,7 +8,7 @@ from core.storage.sqlite_store import SQLiteStore
 
 
 def test_task_manager_imports_json_once_then_reads_sqlite(monkeypatch, tmp_path):
-    from core.task_system import task_manager
+    from goal.system import task_manager
 
     tasks_path = tmp_path / "tasks.json"
     tasks_path.write_text(
@@ -62,8 +62,8 @@ def test_concurrent_task_managers_do_not_erase_new_tasks(tmp_path):
 def test_workflow_owners_emit_canonical_created_events(monkeypatch, tmp_path):
     from goal.goals import goal_manager, persistence
     from goal.planning import storage as plan_storage
-    from core.projects import manager as project_manager
-    from core.task_system import task_manager
+    from goal.projects import manager as project_manager
+    from goal.system import task_manager
 
     emitted = []
     monkeypatch.setattr(persistence, "GOALS_PATH", tmp_path / "goals_state.json")
@@ -118,7 +118,7 @@ def test_workflow_owners_emit_canonical_created_events(monkeypatch, tmp_path):
 
 @pytest.mark.asyncio
 async def test_agent_build_owner_emits_agent_created(monkeypatch, tmp_path):
-    from core.agent_factory import build_orchestrator
+    from agents.factory import build_orchestrator
 
     emitted = []
 

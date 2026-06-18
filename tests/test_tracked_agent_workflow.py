@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from core.agent_factory import build_orchestrator
+from agents.factory import build_orchestrator
 from agents.factory.agent_creator import AgentCreator
 from agents.factory.agent_manager import AgentManager
 from agents.factory.build_orchestrator import AgentBuildOrchestrator
@@ -946,7 +946,7 @@ def test_agent_creator_name_inference_prioritizes_explicit_names(
 
 @pytest.mark.asyncio
 async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monkeypatch, tmp_path: Path):
-    from core.projects import routes
+    from goal.projects import routes
 
     data_dir = tmp_path / "data"
     project_root = tmp_path / "project"
@@ -1003,7 +1003,7 @@ async def test_agent_proposal_approval_builds_registers_and_reloads_runtime(monk
 
 @pytest.mark.asyncio
 async def test_agent_proposal_approval_accepts_explicit_deterministic_mode(monkeypatch, tmp_path: Path):
-    from core.projects import routes
+    from goal.projects import routes
 
     data_dir = tmp_path / "data"
     project_root = tmp_path / "project"
@@ -1046,7 +1046,7 @@ async def test_agent_proposal_approval_accepts_explicit_deterministic_mode(monke
 
 @pytest.mark.asyncio
 async def test_agent_proposal_approval_codex_mode_calls_codex_runner(monkeypatch, tmp_path: Path):
-    from core.projects import routes
+    from goal.projects import routes
 
     data_dir = tmp_path / "data"
     project_root = tmp_path / "project"
@@ -1110,7 +1110,7 @@ async def test_agent_proposal_approval_codex_mode_does_not_promote_on_codex_or_t
     expected_error: str,
     expected_tests_calls: int,
 ):
-    from core.projects import routes
+    from goal.projects import routes
 
     data_dir = tmp_path / "data"
     project_root = tmp_path / "project"
@@ -1169,7 +1169,7 @@ async def test_agent_proposal_approval_codex_mode_does_not_promote_missing_or_in
     agent_code: str | None,
     expected_error: str,
 ):
-    from core.projects import routes
+    from goal.projects import routes
 
     data_dir = tmp_path / "data"
     project_root = tmp_path / "project"
@@ -1215,7 +1215,7 @@ async def test_agent_proposal_approval_codex_mode_does_not_promote_missing_or_in
 
 
 def test_agent_proposal_approval_rejects_unknown_mode():
-    from core.projects import routes
+    from goal.projects import routes
 
     with pytest.raises(ValidationError):
         routes.AgentProposalApprovalRequest(mode="unknown")
@@ -1224,7 +1224,7 @@ def test_agent_proposal_approval_rejects_unknown_mode():
 @pytest.mark.asyncio
 async def test_agent_proposal_approval_codex_mode_refuses_when_not_codex_ready(monkeypatch, tmp_path: Path):
     from fastapi import HTTPException
-    from core.projects import routes
+    from goal.projects import routes
 
     data_dir = tmp_path / "data"
     creator = AgentCreator(
@@ -2052,7 +2052,7 @@ async def test_agent_registry_telegram_commands_use_canonical_registry(monkeypat
     ],
 )
 async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch, query, expected_request):
-    from core.agent_factory import agent_manager
+    from agents.factory import agent_manager
 
     class FakeModel:
         def set_last_intent(self, *_args):
@@ -2090,7 +2090,7 @@ async def test_agent_update_telegram_command_uses_agent_manager(monkeypatch, que
 
 @pytest.mark.asyncio
 async def test_direct_agent_name_in_conversation_stays_on_llm(monkeypatch):
-    from core.agent_factory import agent_manager
+    from agents.factory import agent_manager
 
     class FakeModel:
         def set_last_intent(self, *_args):
@@ -2142,7 +2142,7 @@ async def test_direct_agent_name_in_conversation_stays_on_llm(monkeypatch):
 @pytest.mark.asyncio
 async def test_input_text_routes_agent_update_before_llm(monkeypatch):
     from core import app as core_app
-    from core.agent_factory import agent_manager
+    from agents.factory import agent_manager
 
     class FakeRouter:
         async def route(self, query: str):
@@ -2197,7 +2197,7 @@ async def test_input_text_routes_agent_update_before_llm(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_project_routes_list_get_and_search(monkeypatch, tmp_path: Path):
-    from core.projects import routes
+    from goal.projects import routes
 
     manager = ProjectManager(tmp_path / "projects.json")
     project = manager.create_project(
@@ -2221,7 +2221,7 @@ async def test_project_routes_list_get_and_search(monkeypatch, tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_agent_build_route_defaults_to_deterministic(monkeypatch):
-    from core.projects import routes
+    from goal.projects import routes
 
     calls: list[tuple[str, str, str, str]] = []
 
@@ -2247,7 +2247,7 @@ async def test_agent_build_route_defaults_to_deterministic(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_agent_manager_routes_expose_status_inspect_delete(monkeypatch):
-    from core.projects import routes
+    from goal.projects import routes
 
     calls: list[tuple[str, str]] = []
 
@@ -2292,7 +2292,7 @@ async def test_agent_manager_routes_expose_status_inspect_delete(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_agent_registry_routes_use_canonical_registry(monkeypatch):
-    from core.projects import routes
+    from goal.projects import routes
 
     calls: list[str] = []
 
@@ -2335,7 +2335,7 @@ async def test_agent_registry_routes_use_canonical_registry(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_project_route_exposes_failure_diagnostics(monkeypatch, tmp_path: Path):
-    from core.projects import routes
+    from goal.projects import routes
 
     manager = ProjectManager(tmp_path / "projects.json")
     project = manager.create_project(

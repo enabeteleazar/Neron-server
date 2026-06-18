@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from core.context import neron_context
+from modules.context import neron_context
 
 
 def test_has_neron_context_true_when_non_empty_file(monkeypatch, tmp_path):
