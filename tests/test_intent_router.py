@@ -70,6 +70,20 @@ class TestIntentNews:
         assert result.confidence in ["medium", "high"]
 
 
+class TestIntentIdentity:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("query", [
+        "Qui es-tu ?",
+        "Quelle est ta mission ?",
+        "Comment fonctionnes-tu ?",
+        "Explique ton architecture",
+    ])
+    async def test_identity_questions_use_identity_intent(self, router, query):
+        result = await router.route(query)
+        assert result.intent == Intent.IDENTITY_QUERY
+        assert result.confidence in ["medium", "high"]
+
+
 class TestIntentWeb:
     @pytest.mark.asyncio
     @pytest.mark.parametrize("query", [

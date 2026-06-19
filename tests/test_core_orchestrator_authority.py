@@ -27,6 +27,8 @@ EXPECTED_DECISION_KEYS = {
     [
         ("Salut Neron", "llm_provider"),
         ("Explique-moi Kubernetes", "llm_provider"),
+        ("Quelle est ta mission ?", "identity_provider"),
+        ("Comment fonctionnes-tu ?", "identity_provider"),
         ("Quelle heure est-il ?", "timer_engine"),
         ("Mets un minuteur de 10 minutes", "timer_engine"),
         ("Souviens-toi de mon projet Neron", "memory_engine"),

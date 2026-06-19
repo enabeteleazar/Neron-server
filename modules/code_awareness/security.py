@@ -6,8 +6,15 @@ from pathlib import Path
 
 PROJECT_ROOT = Path("/etc/neron").resolve()
 
+LEGACY_PATH_ALIASES = {
+    Path("core/goals/goal_orchestrator.py"): Path("goal/goals/goal_orchestrator.py"),
+    Path("core/planning/planner.py"): Path("goal/planning/planner.py"),
+    Path("core/planning/executor.py"): Path("goal/planning/executor.py"),
+}
+
 ALLOWED_TOP_LEVEL_DIRS = {
     "core",
+    "goal",
     "tests",
     "scripts",
     "agents",
@@ -79,7 +86,12 @@ def is_sensitive_file(path: Path) -> bool:
 
 
 def relative_to_project(path: Path) -> str:
-    return str(path.resolve().relative_to(PROJECT_ROOT))
+    relative = path.resolve().relative_to(PROJECT_ROOT)
+    if relative.parts[:2] == ("goal", "goals"):
+        return str(Path("core", "goals", *relative.parts[2:]))
+    if relative.parts[:2] == ("goal", "planning"):
+        return str(Path("core", "planning", *relative.parts[2:]))
+    return str(relative)
 
 
 def resolve_user_path(path: str) -> Path:
@@ -93,7 +105,8 @@ def resolve_user_path(path: str) -> Path:
     if any(part == ".." for part in raw.parts):
         raise CodeAwarenessSecurityError("Traversée de répertoire refusée.")
 
-    candidate = (PROJECT_ROOT / raw).resolve()
+    aliased = LEGACY_PATH_ALIASES.get(raw, raw)
+    candidate = (PROJECT_ROOT / aliased).resolve()
 
     try:
         relative = candidate.relative_to(PROJECT_ROOT)

@@ -1,0 +1,12 @@
+[Unit]
+Description=LEGACY Neron API service
+After=network.target
+
+[Service]
+WorkingDirectory=/etc/neron
+Environment=PYTHONPATH=/etc/neron
+ExecStart=/etc/neron/venv/bin/uvicorn server.core.app:app --host 0.0.0.0 --port 8010
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

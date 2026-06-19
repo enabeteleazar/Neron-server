@@ -13,6 +13,11 @@ def test_detect_date_query():
     assert result["kind"] == "date"
 
 
+def test_timer_ignores_specialized_calendar_queries():
+    result = detect_timer_intent("Donne-moi la date de Pâques 2027")
+    assert result["matched"] is False
+
+
 def test_build_time_response():
     result = build_timer_response("time")
     assert result["intent"] == "time_query"

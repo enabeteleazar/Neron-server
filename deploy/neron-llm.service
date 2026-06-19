@@ -1,0 +1,12 @@
+[Unit]
+Description=Neron LLM API
+After=network.target
+
+[Service]
+WorkingDirectory=/etc/neron
+Environment=PYTHONPATH=/etc/neron
+ExecStart=/etc/neron/venv/bin/python -m llm.api.app
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

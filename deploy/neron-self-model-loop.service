@@ -1,0 +1,12 @@
+[Unit]
+Description=Neron Self Model Loop
+After=network.target
+
+[Service]
+WorkingDirectory=/etc/neron
+Environment=PYTHONPATH=/etc/neron
+ExecStart=/etc/neron/venv/bin/python -m modules.self_model.self_model_loop
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

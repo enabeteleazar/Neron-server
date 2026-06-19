@@ -1,0 +1,12 @@
+[Unit]
+Description=Neron Doctor
+After=network.target
+
+[Service]
+WorkingDirectory=/etc/neron
+Environment=PYTHONPATH=/etc/neron
+ExecStart=/etc/neron/venv/bin/python scripts/doctor.sh
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

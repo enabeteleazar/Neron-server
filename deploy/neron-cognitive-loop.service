@@ -1,0 +1,12 @@
+[Unit]
+Description=Neron Cognitive Loop
+After=network.target
+
+[Service]
+WorkingDirectory=/etc/neron
+Environment=PYTHONPATH=/etc/neron
+ExecStart=/etc/neron/venv/bin/python core/autonomous/run_cognitive_loop.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
