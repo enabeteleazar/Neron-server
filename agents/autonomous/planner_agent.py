@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from modules.autonomous.scheduler import AutonomousScheduler
-from oblivia.memory_legacy.obsidian.semantic_search import ObsidianSemanticSearch
+from core.modules.oblivia.semantic.semantic_search import ObsidianSemanticSearch
 
 
 class AutonomousPlannerAgent:
