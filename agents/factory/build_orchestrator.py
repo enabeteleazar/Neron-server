@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -29,9 +30,12 @@ from core.runtime.sandbox.agent_sandbox import AgentSandbox
 from modules.validation.business_validator import BusinessValidator
 
 
-DEFAULT_PROJECT_ROOT = Path("/etc/neron")
-DEFAULT_WORKSPACE_AGENTS = DEFAULT_PROJECT_ROOT / "workspace" / "agents"
-DEFAULT_WORKSPACE_TESTS = DEFAULT_PROJECT_ROOT / "workspace" / "agent_tests"
+DEFAULT_PROJECT_ROOT = Path(os.getenv("NERON_PROJECT_ROOT", "/etc/neron"))
+DEFAULT_WORKSPACE_ROOT = Path(
+    os.getenv("NERON_WORKSPACE", str(DEFAULT_PROJECT_ROOT / "workspace"))
+)
+DEFAULT_WORKSPACE_AGENTS = DEFAULT_WORKSPACE_ROOT / "agents"
+DEFAULT_WORKSPACE_TESTS = DEFAULT_WORKSPACE_ROOT / "agent_tests"
 BuildMode = Literal["deterministic", "codex", "hybrid"]
 
 SENSITIVE_BUILD_KEYWORDS = {

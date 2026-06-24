@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from agents.factory.registry import DEFAULT_GENERATED_AGENTS, DynamicAgentRegistry
+from agents.factory.registry import (
+    DEFAULT_GENERATED_AGENTS,
+    PRODUCTION_GENERATED_AGENTS,
+    DynamicAgentRegistry,
+)
 from agents.factory.agent_manager import AgentManager
 from agents.factory.promotion import AgentPromotionService
 from agents.factory.build_orchestrator import AgentBuildOrchestrator
@@ -20,11 +24,20 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_default_generated_agents_live_outside_core():
-    assert DEFAULT_GENERATED_AGENTS == Path("/etc/neron/data/generated_agents")
+    assert PRODUCTION_GENERATED_AGENTS == Path(
+        "/etc/neron/data/generated_agents"
+    )
     assert "/core/" not in str(DEFAULT_GENERATED_AGENTS)
     assert AgentBuildOrchestrator(runtime_check=False).generated_agents == DEFAULT_GENERATED_AGENTS
     assert AgentManager().generated_agents == DEFAULT_GENERATED_AGENTS
     assert AgentPromotionService().generated_dir == DEFAULT_GENERATED_AGENTS
+
+
+def test_legacy_generated_tree_is_not_a_registry_source():
+    legacy = ROOT / "agents" / "generated" / "generated"
+
+    assert DEFAULT_GENERATED_AGENTS != legacy
+    assert list(legacy.glob("*.py")) == []
 
 
 def _write_agent(path: Path, name: str, *, valid: bool = True) -> None:

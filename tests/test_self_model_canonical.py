@@ -82,6 +82,51 @@ def test_self_status_question_routes_to_self_model_not_llm():
     assert decision.selected_route == "tool_router"
 
 
+def test_internal_state_question_routes_to_self_model_not_status():
+    from core.pipeline.orchestrator import CoreOrchestrator
+
+    decision, _ = asyncio.run(
+        CoreOrchestrator().decide("Quel est ton état interne ?")
+    )
+
+    assert decision.intent == "self_status"
+    assert decision.selected_route == "tool_router"
+
+
+def test_self_model_reports_goal_and_task_anomalies(monkeypatch):
+    import core.modules.self_model.service as service
+
+    monkeypatch.setattr(
+        service,
+        "_safe_goal_runtime",
+        lambda: {
+            "active_goal": {"id": "goal-test", "status": "active"},
+            "runtime_status": {"status": "interrupted"},
+        },
+    )
+    monkeypatch.setattr(
+        service,
+        "_safe_task_state",
+        lambda: {
+            "summary": {
+                "total": 4,
+                "active": 1,
+                "pending": 0,
+                "running": 0,
+                "failed": 3,
+            }
+        },
+    )
+
+    snapshot = service.build_self_model_snapshot()
+
+    assert snapshot["health_global"] == "stable_with_warning"
+    assert snapshot["cognitive_state"]["state"] == "warning"
+    assert any("interrupted" in item for item in snapshot["diagnostics"])
+    assert any("3 tâche(s) en échec" in item for item in snapshot["diagnostics"])
+    assert snapshot["tasks"]["summary"]["failed"] == 3
+
+
 def test_self_model_source_does_not_reintroduce_old_direct_collectors():
     root = Path(__file__).parents[1] / "core" / "modules" / "self_model"
     text = "\n".join(path.read_text(encoding="utf-8") for path in root.glob("*.py"))

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -50,6 +51,30 @@ def test_agent_ok_passes_sandbox(tmp_path: Path):
     assert result["ok"] is True
     assert result["result"]["response"] == "sandbox ok"
     assert result["sandbox"]["isolation"] == "python_audit"
+
+
+def test_staged_agent_remains_readable_with_restrictive_service_umask(
+    tmp_path: Path,
+):
+    workspace = tmp_path / "workspace"
+    agent = write_agent(
+        tmp_path / "agents" / "readable_agent.py",
+        ["class Agent:", "    pass"],
+    )
+    sandbox = AgentSandbox(
+        project_root=tmp_path,
+        workspace=workspace,
+        backend="python",
+    )
+
+    previous_umask = os.umask(0o027)
+    try:
+        staged, stage_dir = sandbox._stage_agent(agent)
+    finally:
+        os.umask(previous_umask)
+
+    assert stage_dir.stat().st_mode & 0o777 == 0o755
+    assert staged.stat().st_mode & 0o777 == 0o444
 
 
 def test_python_backend_skips_system_backends(

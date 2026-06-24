@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,10 @@ from modules.cognitive.history import append_jsonl
 
 
 ACTION_HISTORY_PATH = Path(
-    "/etc/neron/data/action_history.jsonl"
+    os.getenv(
+        "NERON_ACTION_HISTORY_PATH",
+        "/etc/neron/data/action_history.jsonl",
+    )
 )
 
 

@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 import json
+import os
 from datetime import datetime, timezone
 
 from modules.cognitive.history import append_jsonl, compact_cognitive_state
 
 
-CRITIC_HISTORY_PATH = Path("/etc/neron/data/critic_history.jsonl")
+CRITIC_HISTORY_PATH = Path(
+    os.getenv(
+        "NERON_CRITIC_HISTORY_PATH",
+        "/etc/neron/data/critic_history.jsonl",
+    )
+)
 
 
 class CriticEngine:

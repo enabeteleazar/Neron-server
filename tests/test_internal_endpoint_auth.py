@@ -62,6 +62,73 @@ async def test_internal_orchestration_endpoints_accept_valid_api_key(monkeypatch
 async def test_public_health_endpoints_remain_accessible_without_api_key(monkeypatch):
     _set_api_key(monkeypatch)
 
-    assert core_app.root()["status"] == "active"
-    assert core_app.health()["status"] == "healthy"
-    assert core_app.status() == {"ok": True}
+    async with _client() as client:
+        health = await client.get("/health")
+        root = await client.get("/")
+        status = await client.get("/status")
+
+    assert health.status_code == 200
+    assert health.json()["status"] == "healthy"
+    assert root.status_code == 401
+    assert status.status_code == 401
+
+
+async def test_api_key_empty_is_rejected(monkeypatch):
+    _set_api_key(monkeypatch)
+
+    async with _client() as client:
+        response = await client.get(
+            "/self-model/context",
+            headers={"X-API-Key": ""},
+        )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "API Key manquante"
+
+
+async def test_default_api_key_configuration_fails_closed(monkeypatch):
+    monkeypatch.setattr(auth.settings, "API_KEY", "changez_moi")
+    monkeypatch.setattr(core_app.settings, "API_KEY", "changez_moi")
+
+    async with _client() as client:
+        response = await client.get(
+            "/self-model/context",
+            headers={"X-API-Key": "changez_moi"},
+        )
+        health = await client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Authentification API non configurée"
+    assert health.status_code == 200
+
+
+async def test_sensitive_routes_are_never_public(monkeypatch):
+    _set_api_key(monkeypatch)
+    sensitive_paths = (
+        "/self-model/context",
+        "/memory/status",
+        "/code-awareness/map",
+        "/cognitive-core/state",
+        "/actions/latest",
+        "/critic/latest",
+        "/world-model/status",
+        "/runtime/governor/policy",
+        "/goals",
+    )
+
+    async with _client() as client:
+        for path in sensitive_paths:
+            response = await client.get(path)
+            assert response.status_code == 401, path
+
+
+async def test_sensitive_route_accepts_valid_api_key(monkeypatch):
+    _set_api_key(monkeypatch)
+
+    async with _client() as client:
+        response = await client.get(
+            "/self-model/context",
+            headers={"X-API-Key": API_KEY},
+        )
+
+    assert response.status_code == 200

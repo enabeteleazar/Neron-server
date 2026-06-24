@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import uuid
 from pathlib import Path
@@ -9,7 +10,12 @@ from typing import Any
 from modules.evolution.models import EvolutionProposal, EvolutionRun, utc_now_iso
 
 
-EVOLUTION_STATE_PATH = Path("/etc/neron/data/evolution_state.json")
+EVOLUTION_STATE_PATH = Path(
+    os.getenv(
+        "NERON_EVOLUTION_STATE_PATH",
+        "/etc/neron/data/evolution_state.json",
+    )
+)
 
 
 class EvolutionStorage:

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import importlib.util
-import inspect
+import ast
 import hashlib
 import json
+import os
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,7 +11,13 @@ from typing import Any, Iterable
 
 
 AGENT_REGISTRY = {}
-DEFAULT_GENERATED_AGENTS = Path("/etc/neron/data/generated_agents")
+PRODUCTION_GENERATED_AGENTS = Path("/etc/neron/data/generated_agents")
+DEFAULT_GENERATED_AGENTS = Path(
+    os.getenv(
+        "NERON_GENERATED_AGENTS_DIR",
+        str(PRODUCTION_GENERATED_AGENTS),
+    )
+)
 
 
 class DynamicAgentRegistry:
@@ -36,36 +42,14 @@ class DynamicAgentRegistry:
 
             module_name = file.stem
 
-            spec = importlib.util.spec_from_file_location(
-                f"generated.{module_name}",
-                file,
-            )
-
-            if not spec or not spec.loader:
-                self._record_invalid(file, "module_spec_unavailable")
-                continue
-
-            module = importlib.util.module_from_spec(spec)
             try:
-                spec.loader.exec_module(module)
-            except Exception as exc:
-                self._record_invalid(file, f"import_failed:{exc}")
+                record = self._parse_record(module_name, file)
+            except (OSError, SyntaxError, ValueError) as exc:
+                self._record_invalid(file, f"static_validation_failed:{exc}")
                 continue
 
-            if hasattr(module, "Agent"):
-                try:
-                    agent = module.Agent()
-                except Exception as exc:
-                    self._record_invalid(file, f"agent_init_failed:{exc}")
-                    continue
-                if not self._is_loadable_agent(agent):
-                    self._record_invalid(file, "async_execute_contract_missing")
-                    continue
-                AGENT_REGISTRY[module_name] = agent
-                record = self._build_record(module_name, file, module, agent)
-                self._records[module_name] = record
-            else:
-                self._record_invalid(file, "class_agent_missing")
+            AGENT_REGISTRY[module_name] = record
+            self._records[module_name] = record
 
         return AGENT_REGISTRY
 
@@ -91,27 +75,80 @@ class DynamicAgentRegistry:
 
         return None
 
-    def _build_record(self, module_name: str, path: Path, module: Any, agent: Any) -> dict[str, Any]:
-        agent_name = str(getattr(agent, "name", module_name) or module_name)
-        raw_spec = (
-            getattr(module, "AGENT_SPEC", None)
-            or getattr(agent, "agent_spec", None)
-            or getattr(agent, "spec", None)
+    def _parse_record(self, module_name: str, path: Path) -> dict[str, Any]:
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(path))
+        module_values = self._literal_assignments(tree.body)
+        agent_class = next(
+            (
+                node
+                for node in tree.body
+                if isinstance(node, ast.ClassDef) and node.name == "Agent"
+            ),
+            None,
         )
-        spec = raw_spec if isinstance(raw_spec, dict) else None
-        spec_signature = (
-            str(getattr(module, "AGENT_SPEC_SIGNATURE", "") or "")
-            or (self.spec_signature(spec) if spec else "")
+        if agent_class is None:
+            raise ValueError("class_agent_missing")
+        execute = next(
+            (
+                node
+                for node in agent_class.body
+                if isinstance(node, ast.AsyncFunctionDef) and node.name == "execute"
+            ),
+            None,
         )
-
+        if execute is None:
+            raise ValueError("async_execute_contract_missing")
+        class_values = self._literal_assignments(agent_class.body)
+        spec_value = (
+            module_values.get("AGENT_SPEC")
+            or class_values.get("agent_spec")
+            or class_values.get("spec")
+        )
+        spec = dict(spec_value) if isinstance(spec_value, dict) else None
+        agent_name = str(class_values.get("name") or module_name)
+        spec_signature = str(module_values.get("AGENT_SPEC_SIGNATURE") or "")
+        if not spec_signature and spec:
+            spec_signature = self.spec_signature(spec)
         return {
             "module_name": module_name,
             "agent_name": agent_name,
             "path": str(path),
             "spec": spec,
             "spec_signature": spec_signature,
-            "match_text": self._match_text(module_name, agent_name, module, agent, spec),
+            "match_text": self._match_text(
+                module_name,
+                agent_name,
+                module_values,
+                class_values,
+                spec,
+            ),
         }
+
+    @staticmethod
+    def _literal_assignments(nodes: list[ast.stmt]) -> dict[str, Any]:
+        values: dict[str, Any] = {}
+        for node in nodes:
+            targets: list[ast.expr]
+            value_node: ast.expr | None
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+                value_node = node.value
+            elif isinstance(node, ast.AnnAssign):
+                targets = [node.target]
+                value_node = node.value
+            else:
+                continue
+            if value_node is None:
+                continue
+            try:
+                value = ast.literal_eval(value_node)
+            except (ValueError, TypeError):
+                continue
+            for target in targets:
+                if isinstance(target, ast.Name):
+                    values[target.id] = value
+        return values
 
     def list_agent_records(self) -> list[dict[str, Any]]:
         self.load_generated_agents()
@@ -224,11 +261,6 @@ class DynamicAgentRegistry:
             "source": "dynamic_registry",
         }
 
-    def _is_loadable_agent(self, agent: Any) -> bool:
-        name = getattr(agent, "name", None)
-        execute = getattr(agent, "execute", None)
-        return bool(isinstance(name, str) and name.strip() and inspect.iscoroutinefunction(execute))
-
     def spec_signature(self, spec: dict[str, Any] | None) -> str:
         if not spec:
             return ""
@@ -249,17 +281,17 @@ class DynamicAgentRegistry:
         self,
         module_name: str,
         agent_name: str,
-        module: Any,
-        agent: Any,
+        module_values: dict[str, Any],
+        class_values: dict[str, Any],
         spec: dict[str, Any] | None,
     ) -> str:
         parts = [module_name, agent_name]
         if spec:
             parts.append(json.dumps(spec, sort_keys=True, ensure_ascii=False))
 
-        for source in (module, agent):
+        for source in (module_values, class_values):
             for attr in ("name", "title", "goal", "target_event", "source", "description"):
-                value = getattr(source, attr, None)
+                value = source.get(attr)
                 if isinstance(value, (str, int, float, bool)):
                     parts.append(str(value))
 

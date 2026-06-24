@@ -61,7 +61,8 @@ class ExecutionContext:
 @dataclass
 class AgentInstance:
     agent_slug: str
-    agent: Any = field(repr=False, compare=False)
+    agent: Any = field(default=None, repr=False, compare=False)
+    path: str = ""
     spec: dict[str, Any] = field(default_factory=dict)
     tools: dict[str, ToolBinding] = field(default_factory=dict)
     loaded_at: str = field(default_factory=utc_now_iso)
@@ -69,6 +70,7 @@ class AgentInstance:
     def to_dict(self) -> dict[str, Any]:
         return {
             "agent_slug": self.agent_slug,
+            "path": self.path,
             "spec": self.spec,
             "tools": {
                 slug: binding.to_dict() for slug, binding in self.tools.items()
@@ -88,6 +90,10 @@ class AgentExecutionResult:
     started_at: str | None = None
     finished_at: str | None = None
     duration_ms: float | None = None
+    sandbox_used: bool = False
+    sandbox_backend: str | None = None
+    sandbox_isolation: str | None = None
+    sudo_used: bool = False
 
     @property
     def ok(self) -> bool:

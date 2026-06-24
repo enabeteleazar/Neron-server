@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import logging
+import os
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,7 +21,12 @@ logging.basicConfig(
 
 logger = logging.getLogger("neron.cognitive_loop")
 
-ACTION_HISTORY_PATH = Path("/etc/neron/data/action_history.jsonl")
+ACTION_HISTORY_PATH = Path(
+    os.getenv(
+        "NERON_ACTION_HISTORY_PATH",
+        "/etc/neron/data/action_history.jsonl",
+    )
+)
 
 
 def _json_default(value: Any) -> Any:

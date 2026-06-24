@@ -1,6 +1,48 @@
+import atexit
 import os
+import shutil
+import tempfile
+from pathlib import Path
 
 os.environ.setdefault("NERON_API_KEY", "test-api-key")
 os.environ["NERON_SANDBOX_BACKEND"] = "python"
 os.environ["NERON_SANDBOX_SYSTEMD_USE_SUDO"] = "false"
 os.environ.setdefault("NERON_TASK_WORKER_ENABLED", "false")
+
+_TEST_ROOT = Path(tempfile.mkdtemp(prefix="neron-pytest-"))
+_TEST_DATA = _TEST_ROOT / "data"
+_TEST_WORKSPACE = _TEST_ROOT / "workspace"
+_TEST_MEMORY = _TEST_ROOT / "memory"
+
+os.environ["NERON_TEST_ROOT"] = str(_TEST_ROOT)
+os.environ["NERON_DATA_DIR"] = str(_TEST_DATA)
+os.environ["NERON_WORKSPACE"] = str(_TEST_WORKSPACE)
+os.environ["NERON_MEMORY_DIR"] = str(_TEST_MEMORY)
+os.environ["NERON_STATE_DB"] = str(_TEST_DATA / "neron_state.sqlite3")
+os.environ["NERON_GENERATED_AGENTS_DIR"] = str(
+    _TEST_DATA / "generated_agents"
+)
+os.environ["NERON_PROJECTS_PATH"] = str(_TEST_DATA / "projects.json")
+os.environ["NERON_TASKS_PATH"] = str(_TEST_DATA / "tasks.json")
+os.environ["NERON_PLANS_PATH"] = str(_TEST_DATA / "plans.jsonl")
+os.environ["NERON_GOALS_PATH"] = str(_TEST_DATA / "goals_state.json")
+os.environ["NERON_CRITIC_HISTORY_PATH"] = str(
+    _TEST_DATA / "critic_history.jsonl"
+)
+os.environ["NERON_ACTION_HISTORY_PATH"] = str(
+    _TEST_DATA / "action_history.jsonl"
+)
+os.environ["NERON_SELF_MODEL_STATE_PATH"] = str(
+    _TEST_DATA / "self_model_state.json"
+)
+os.environ["NERON_WORLD_MODEL_STATE_PATH"] = str(
+    _TEST_DATA / "world_model_state.json"
+)
+os.environ["NERON_EVOLUTION_STATE_PATH"] = str(
+    _TEST_DATA / "evolution_state.json"
+)
+os.environ["NERON_AGENT_PROPOSALS_PATH"] = str(
+    _TEST_DATA / "agent_creator_proposals.jsonl"
+)
+
+atexit.register(shutil.rmtree, _TEST_ROOT, ignore_errors=True)

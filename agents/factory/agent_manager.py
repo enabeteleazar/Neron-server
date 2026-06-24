@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -15,10 +16,12 @@ from agents.runtime.runtime import get_agent_runtime
 from modules.evolution.codex_runner import CodexRunner, redact_secrets
 
 
-DEFAULT_WORKSPACE_AGENTS = Path("/etc/neron/workspace/agents")
-DEFAULT_WORKSPACE_TESTS = Path("/etc/neron/workspace/agent_tests")
-DEFAULT_BACKUPS_DIR = Path("/etc/neron/data/agent_backups")
-DEFAULT_PROJECT_ROOT = Path("/etc/neron")
+_WORKSPACE_ROOT = Path(os.getenv("NERON_WORKSPACE", "/etc/neron/workspace"))
+_DATA_ROOT = Path(os.getenv("NERON_DATA_DIR", "/etc/neron/data"))
+DEFAULT_WORKSPACE_AGENTS = _WORKSPACE_ROOT / "agents"
+DEFAULT_WORKSPACE_TESTS = _WORKSPACE_ROOT / "agent_tests"
+DEFAULT_BACKUPS_DIR = _DATA_ROOT / "agent_backups"
+DEFAULT_PROJECT_ROOT = Path(os.getenv("NERON_PROJECT_ROOT", "/etc/neron"))
 
 PROTECTED_AGENTS = {
     "event_countdown_agent",

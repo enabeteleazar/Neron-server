@@ -64,6 +64,7 @@ def make_runtime(
     *,
     tool_registry: ToolRegistry | None = None,
     tool_runtime: ToolRuntime | None = None,
+    sandbox=None,
 ) -> tuple[AgentRuntime, Path]:
     generated = tmp_path / "generated"
     runtime = AgentRuntime(
@@ -71,6 +72,7 @@ def make_runtime(
         tool_registry=tool_registry or ToolRegistry(tmp_path / "tools.json"),
         tool_runtime=tool_runtime,
         store=AgentRuntimeStore(tmp_path / "runtime.sqlite3"),
+        sandbox=sandbox,
     )
     return runtime, generated
 
@@ -317,3 +319,135 @@ async def test_capability_resolver_runs_log_agent_through_tool_runtime(
     assert result.agent_slug == "logs_agent"
     assert "2 erreur" in result.response
     assert runtime.store.count_executions() == 1
+
+
+class RecordingSandbox:
+    def __init__(self, *, response="sandbox output", error=None):
+        self.response = response
+        self.error = error
+        self.calls = []
+
+    def execute_agent(
+        self,
+        agent_path,
+        prompt,
+        *,
+        context=None,
+        metadata=None,
+        tools=None,
+        timeout=None,
+        name="agent_execution",
+    ):
+        self.calls.append(
+            {
+                "agent_path": str(agent_path),
+                "prompt": prompt,
+                "context": context,
+                "metadata": metadata,
+                "tools": tools,
+                "name": name,
+            }
+        )
+        sandbox = {
+            "backend_used": "systemd",
+            "isolation_level": "kernel_systemd",
+            "sudo_used": True,
+        }
+        if self.error:
+            return {
+                "ok": False,
+                "error": self.error,
+                "sandbox": sandbox,
+            }
+        return {
+            "ok": True,
+            "result": {
+                "status": "ok",
+                "response": self.response,
+            },
+            "sandbox": sandbox,
+        }
+
+
+async def test_registered_agent_invocation_uses_sandbox(tmp_path: Path):
+    sandbox = RecordingSandbox()
+    runtime, generated = make_runtime(tmp_path, sandbox=sandbox)
+    write_agent(
+        generated,
+        "sandbox_agent",
+        body=(
+            "    async def execute(self, text=''):\n"
+            "        raise AssertionError('must execute only in sandbox')"
+        ),
+    )
+
+    result = await runtime.run_agent("sandbox_agent", "run")
+
+    assert result.ok is True
+    assert result.sandbox_used is True
+    assert result.sandbox_backend == "systemd"
+    assert result.sandbox_isolation == "kernel_systemd"
+    assert result.sudo_used is True
+    assert sandbox.calls[0]["prompt"] == "run"
+
+
+async def test_registered_agent_invocation_does_not_import_dynamic_agent_in_core(
+    tmp_path: Path,
+):
+    marker = tmp_path / "imported-in-core"
+    generated = tmp_path / "generated"
+    generated.mkdir()
+    (generated / "static_agent.py").write_text(
+        "from pathlib import Path\n"
+        f"Path({str(marker)!r}).write_text('unsafe')\n"
+        "class Agent:\n"
+        "    name = 'static_agent'\n"
+        "    async def execute(self, text=''):\n"
+        "        return {'status': 'ok', 'response': text}\n",
+        encoding="utf-8",
+    )
+
+    records = DynamicAgentRegistry(generated).load_generated_agents()
+
+    assert "static_agent" in records
+    assert marker.exists() is False
+
+
+async def test_registered_agent_invocation_does_not_call_execute_directly(
+    tmp_path: Path,
+):
+    sandbox = RecordingSandbox(response="isolated")
+    runtime, generated = make_runtime(tmp_path, sandbox=sandbox)
+    write_agent(
+        generated,
+        "direct_execute_probe",
+        body=(
+            "    async def execute(self, text=''):\n"
+            "        raise AssertionError('direct execute called')"
+        ),
+    )
+
+    result = await runtime.run_agent("direct_execute_probe", "test")
+
+    assert result.ok is True
+    assert result.response == "isolated"
+
+
+async def test_registered_agent_invocation_returns_sandbox_output(
+    tmp_path: Path,
+):
+    sandbox = RecordingSandbox(response="Goal Engine OK")
+    runtime, generated = make_runtime(tmp_path, sandbox=sandbox)
+    write_agent(
+        generated,
+        "validation_goal_engine",
+        body=(
+            "    async def execute(self, text=''):\n"
+            "        return {'status': 'ok', 'response': 'wrong process'}"
+        ),
+    )
+
+    result = await runtime.run_agent("validation_goal_engine", "")
+
+    assert result.response == "Goal Engine OK"
+    assert result.result["sandbox"]["backend_used"] == "systemd"

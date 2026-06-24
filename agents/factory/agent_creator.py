@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import unicodedata
 from datetime import datetime, timezone
@@ -9,7 +10,12 @@ from typing import Any
 from uuid import uuid4
 
 
-DEFAULT_PROPOSALS_PATH = Path("/etc/neron/data/agent_creator_proposals.jsonl")
+DEFAULT_PROPOSALS_PATH = Path(
+    os.getenv(
+        "NERON_AGENT_PROPOSALS_PATH",
+        "/etc/neron/data/agent_creator_proposals.jsonl",
+    )
+)
 
 
 class AgentCreator:

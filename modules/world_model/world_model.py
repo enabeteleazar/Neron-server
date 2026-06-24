@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import subprocess
 import time
@@ -15,7 +16,12 @@ from modules.events.event import Event
 from modules.events.event_bus import event_bus
 
 
-WORLD_STATE_PATH = Path("/etc/neron/data/world_model_state.json")
+WORLD_STATE_PATH = Path(
+    os.getenv(
+        "NERON_WORLD_MODEL_STATE_PATH",
+        "/etc/neron/data/world_model_state.json",
+    )
+)
 
 
 @dataclass

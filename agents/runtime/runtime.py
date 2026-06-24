@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import inspect
+import asyncio
 import json
 import logging
 import threading
@@ -16,6 +16,7 @@ from agents.runtime.models import (
     utc_now_iso,
 )
 from agents.runtime.store import AgentRuntimeStore
+from core.runtime.sandbox.agent_sandbox import AgentSandbox
 from modules.events.event import Event
 from modules.events.event_bus import event_bus
 from modules.events.event_types import (
@@ -45,6 +46,7 @@ class AgentRuntime:
         tool_registry: ToolRegistry | None = None,
         tool_runtime: ToolRuntime | None = None,
         store: AgentRuntimeStore | None = None,
+        sandbox: AgentSandbox | None = None,
     ) -> None:
         self.registry = registry or DynamicAgentRegistry()
         self.tool_registry = tool_registry or get_tool_registry()
@@ -54,6 +56,7 @@ class AgentRuntime:
             else get_tool_runtime()
         )
         self.store = store or AgentRuntimeStore()
+        self.sandbox = sandbox or AgentSandbox()
         self._loaded: dict[str, AgentInstance] = {}
         self._states: dict[str, dict[str, Any]] = {}
 
@@ -90,28 +93,25 @@ class AgentRuntime:
 
         agents = self.registry.load_generated_agents()
         resolved_slug = slug
-        agent = agents.get(slug)
-        if agent is None and not slug.endswith("_agent"):
+        record = agents.get(slug)
+        if record is None and not slug.endswith("_agent"):
             resolved_slug = f"{slug}_agent"
-            agent = agents.get(resolved_slug)
-        if agent is None:
+            record = agents.get(resolved_slug)
+        if record is None:
             available = ",".join(sorted(agents))
             raise AgentNotFoundError(
                 f"agent_not_found:{slug};available={available}"
             )
 
         records = getattr(self.registry, "_records", {})
-        record = records.get(resolved_slug, {}) if isinstance(records, dict) else {}
+        record = records.get(resolved_slug, record) if isinstance(records, dict) else record
         spec = record.get("spec") if isinstance(record.get("spec"), dict) else {}
-        if not spec:
-            raw_spec = getattr(agent, "agent_spec", None) or getattr(agent, "spec", None)
-            spec = dict(raw_spec) if isinstance(raw_spec, dict) else {}
 
         instance = AgentInstance(
             agent_slug=resolved_slug,
-            agent=agent,
+            path=str(record.get("path") or ""),
             spec=spec,
-            tools=self._bind_tools(spec, agent),
+            tools=self._bind_tools(spec),
         )
         self._loaded[resolved_slug] = instance
         return instance
@@ -153,8 +153,33 @@ class AgentRuntime:
                 },
             ))
             execution_started = True
-            raw = await self._execute_agent(instance, execution_context)
+            sandbox_execution = await self._execute_agent(
+                instance,
+                execution_context,
+            )
+            sandbox_details = sandbox_execution.get("sandbox") or {}
+            result.sandbox_used = True
+            result.sandbox_backend = sandbox_details.get("backend_used")
+            result.sandbox_isolation = (
+                sandbox_details.get("isolation_level")
+                or sandbox_details.get("isolation")
+            )
+            result.sudo_used = bool(sandbox_details.get("sudo_used"))
+            if not sandbox_execution.get("ok"):
+                sandbox_error = str(
+                    sandbox_execution.get("error")
+                    or "agent_sandbox_failed"
+                )
+                if sandbox_error.startswith("RuntimeError: "):
+                    sandbox_error = sandbox_error.removeprefix(
+                        "RuntimeError: "
+                    )
+                raise RuntimeError(
+                    sandbox_error
+                )
+            raw = sandbox_execution.get("result")
             result.response, result.result = self._coerce_result(raw)
+            result.result["sandbox"] = sandbox_details
             result.status = "completed"
         except Exception as exc:
             result.status = "failed"
@@ -218,11 +243,10 @@ class AgentRuntime:
     def _bind_tools(
         self,
         spec: dict[str, Any],
-        agent: Any,
     ) -> dict[str, ToolBinding]:
         bindings: dict[str, ToolBinding] = {}
         missing: list[str] = []
-        for slug in self._declared_tools(spec, agent):
+        for slug in self._declared_tools(spec):
             tool_spec = self.tool_registry.get_tool(slug)
             if tool_spec is None:
                 missing.append(slug)
@@ -241,14 +265,11 @@ class AgentRuntime:
     def _declared_tools(
         self,
         spec: dict[str, Any],
-        agent: Any,
     ) -> list[str]:
         declared: list[str] = []
         for value in (
             spec.get("tools"),
             spec.get("required_tools"),
-            getattr(agent, "tools", None),
-            getattr(agent, "required_tools", None),
         ):
             if isinstance(value, (list, tuple, set)):
                 declared.extend(str(item) for item in value if str(item).strip())
@@ -258,31 +279,18 @@ class AgentRuntime:
         self,
         instance: AgentInstance,
         execution_context: ExecutionContext,
-    ) -> Any:
-        execute = getattr(instance.agent, "execute", None)
-        if execute is None or not callable(execute):
-            raise RuntimeError("agent_execute_not_available")
-
-        parameters = inspect.signature(execute).parameters
-        accepts_kwargs = any(
-            parameter.kind == inspect.Parameter.VAR_KEYWORD
-            for parameter in parameters.values()
+    ) -> dict[str, Any]:
+        if not instance.path:
+            return {"ok": False, "error": "agent_path_unavailable"}
+        return await asyncio.to_thread(
+            self.sandbox.execute_agent,
+            instance.path,
+            execution_context.request,
+            context=execution_context.context,
+            metadata=execution_context.metadata,
+            tools=execution_context.tools,
+            name=f"runtime_{instance.agent_slug}",
         )
-        available = {
-            "text": execution_context.request,
-            "request": execution_context.request,
-            "execution_context": execution_context,
-            "context": execution_context,
-            "metadata": execution_context.metadata,
-            "tools": execution_context.tools,
-        }
-        kwargs = {
-            name: value
-            for name, value in available.items()
-            if accepts_kwargs or name in parameters
-        }
-        value = execute(**kwargs) if kwargs else execute(execution_context.request)
-        return await value if inspect.isawaitable(value) else value
 
     def _coerce_result(self, raw: Any) -> tuple[str, dict[str, Any]]:
         if isinstance(raw, dict):
