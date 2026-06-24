@@ -12,12 +12,11 @@ ARCHITECTURE_GROUPS = {
         "core/gateway",
     ],
     "Cognition": [
-        "core/cognitive",
-        "core/cognitive_core",
-        "core/planning",
-        "core/goals",
-        "core/goal_system",
-        "core/task_system",
+        "modules/cognitive",
+        "modules/cognitive_core",
+        "goal/planning",
+        "goal/goals",
+        "goal/system",
     ],
     "Memoire": [
         "core/memory",

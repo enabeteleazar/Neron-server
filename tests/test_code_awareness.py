@@ -62,4 +62,8 @@ def test_architecture_mapper_returns_global_view():
 
     assert result["name"] == "Neron"
     assert result["summary"]["architecture_known"] is True
-    assert any(group["name"] == "Cognition" for group in result["groups"])
+    cognition = next(group for group in result["groups"] if group["name"] == "Cognition")
+    assert "modules/cognitive" in cognition["packages"]
+    assert "modules/cognitive_core" in cognition["packages"]
+    assert "goal/goals" in cognition["packages"]
+    assert all(not package.startswith("core/cognitive") for package in cognition["packages"])

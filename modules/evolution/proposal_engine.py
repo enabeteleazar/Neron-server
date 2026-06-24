@@ -93,7 +93,7 @@ class ProposalEngine:
                     "kind": "routes_missing",
                     "severity": "recommended",
                     "summary": "Des endpoints d'évolution supervisée sont absents.",
-                    "areas": ["core/evolution/routes.py", "core/app.py"],
+                    "areas": ["modules/evolution/routes.py", "core/app.py"],
                     "missing_routes": missing_routes,
                 }
             )

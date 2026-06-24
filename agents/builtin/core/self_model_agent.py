@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from modules.self_model.self_model import load_self_model_state
+from core.modules.self_model import load_self_model_state
 
 
 class SelfModelAgent:

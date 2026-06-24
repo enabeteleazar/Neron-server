@@ -129,7 +129,7 @@ def _generate_plan_from_goal() -> dict[str, Any]:
 
 def _run_cognitive_core_once() -> dict[str, Any] | None:
     try:
-        module = importlib.import_module("modules.cognitive_core.cognitive_core.core")
+        module = importlib.import_module("modules.cognitive_core.core")
     except Exception as exc:
         logger.warning("Cognitive Core indisponible: %s", exc)
         return None

@@ -80,6 +80,7 @@ def test_python_backend_skips_system_backends(
     ).diagnostics()
 
     assert diagnostics["backend_used"] == "python"
+    assert diagnostics["backend_selected"] == "python"
     assert diagnostics["isolation_level"] == "process_python_audit"
     assert diagnostics["systemd_available"] is False
     assert diagnostics["user_available"] is False
@@ -197,6 +198,7 @@ def test_auto_selects_systemd_when_available(
     )
 
     assert sandbox.diagnostics()["backend_used"] == "systemd"
+    assert sandbox.diagnostics()["backend_selected"] == "systemd"
     assert sandbox.diagnostics()["fallback_reason"] is None
 
 
@@ -405,6 +407,7 @@ def test_systemd_auto_uses_sudo_for_non_root(
     assert diagnostics["sudo_available"] is True
     assert diagnostics["sudo_error"] is None
     assert diagnostics["systemd_run_path"] == "/usr/bin/systemd-run"
+    assert diagnostics["backend_selected"] == "systemd"
 
 
 def test_systemd_strict_fails_cleanly_when_sudo_is_unavailable(
@@ -485,6 +488,7 @@ def test_auto_falls_back_to_python_when_sudo_probe_fails(
     ).diagnostics()
 
     assert diagnostics["backend_used"] == "python"
+    assert diagnostics["backend_selected"] == "python"
     assert diagnostics["fallback_reason"] == "systemd_sudo_unavailable"
     assert diagnostics["sudo_used"] is False
     assert diagnostics["sudo_available"] is False

@@ -1,22 +1,27 @@
 [submodule "ui_client"]
 	path = ui/web
 	url = git@github.com:enabeteleazar/neronOS_client.git
+
 [submodule "ui_vocal"]
 	path = ui/vocal
-	url = git@github.com:enabeteleazar/neronOS_vocal.git
+	url = git@github.com:enabeteleazar/neron_vocal.git
+
 [submodule "doctor"]
 	path = modules/health
 	url = git@github.com:enabeteleazar/neronOS_doctor.git
 
 [submodule "llm"]
 	path = llm
-	url = git@github.com:enabeteleazar/neronOS_llm.git
+	url = git@github.com:enabeteleazar/neron_llm.git
+
 [submodule "neronHUB"]
 	path = ui/dashboard
 	url = git@github.com:enabeteleazar/neronHUB.git
+
 [submodule "core"]
 	path = core
 	url = git@github.com:enabeteleazar/neron_core.git
+
 [submodule "goal"]
 	path = goal
 	url = git@github.com:enabeteleazar/neron_goal.git

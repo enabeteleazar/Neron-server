@@ -32,8 +32,8 @@ EXPECTED_DECISION_KEYS = {
         ("Quelle heure est-il ?", "timer_engine"),
         ("Mets un minuteur de 10 minutes", "timer_engine"),
         ("Souviens-toi de mon projet Neron", "memory_engine"),
-        ("Cree un outil pour surveiller systemd", "agent_factory"),
-        ("Analyse cette demande complexe", "resolver"),
+        ("Cree un outil pour surveiller systemd", "goal_pipeline"),
+        ("Analyse cette demande complexe", "goal_pipeline"),
         ("/goal cree un agent meteo", "goal_pipeline"),
     ],
 )
@@ -66,7 +66,7 @@ class ForbiddenResolver:
 
 
 @pytest.mark.asyncio
-async def test_resolver_is_not_used_by_default():
+async def test_orchestrator_does_not_route_everything_to_resolver():
     agent_router = FakeAgentRouter()
     orchestrator = CoreOrchestrator(
         agent_router=agent_router,
@@ -97,7 +97,104 @@ async def test_planner_is_not_consulted_during_route_decision(monkeypatch):
         "Analyse cette demande complexe"
     )
 
-    assert decision.selected_route == "resolver"
+    assert decision.selected_route == "goal_pipeline"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_routes_timer(monkeypatch):
+    class ForbiddenAgentRouter:
+        async def route(self, *_args, **_kwargs):
+            raise AssertionError("Timer must not use the LLM/agent router")
+
+    orchestrator = CoreOrchestrator(agent_router=ForbiddenAgentRouter())
+    result = await orchestrator.handle("Quelle heure est-il ?")
+
+    assert result.decision.selected_route == "timer_engine"
+    assert result.executor == "timer_module"
+    assert result.decision.requires_llm is False
+    assert result.metadata["source"] == "timer_module"
+
+
+@pytest.mark.asyncio
+async def test_timer_does_not_require_llm():
+    decision, _ = await CoreOrchestrator().decide("Quel jour sommes-nous ?")
+
+    assert decision.selected_route == "timer_engine"
+    assert decision.requires_timer is True
+    assert decision.requires_llm is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_routes_identity(monkeypatch):
+    calls = []
+
+    async def fake_identity(kind, question=None, *, use_llm=True):
+        calls.append((kind, question, use_llm))
+        return {
+            "response": "Je suis Néron.",
+            "agent": "identity_module",
+            "source": "identity_module:test",
+            "llm_used": False,
+        }
+
+    monkeypatch.setattr(
+        "core.pipeline.orchestrator.build_identity_response_async",
+        fake_identity,
+    )
+
+    result = await CoreOrchestrator().handle("Qui es-tu ?")
+
+    assert result.decision.selected_route == "identity_provider"
+    assert result.executor == "identity_module"
+    assert calls == [("identity_short", "Qui es-tu ?", False)]
+    assert result.metadata["identity_llm_used"] is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_routes_status(monkeypatch):
+    calls = []
+
+    async def fake_status(kind, *, question=None, use_llm=True):
+        calls.append((kind, question, use_llm))
+        return {
+            "response": "Je fonctionne normalement.",
+            "agent": "status_module",
+            "source": "status_module",
+            "status_kind": kind,
+            "status": {"global_status": "healthy"},
+            "llm_used": False,
+        }
+
+    monkeypatch.setattr(
+        "core.pipeline.orchestrator.build_status_response_async",
+        fake_status,
+    )
+
+    result = await CoreOrchestrator().handle("Comment vas-tu ?")
+
+    assert result.decision.selected_route == "status_provider"
+    assert result.executor == "status_module"
+    assert calls == [("health_query", "Comment vas-tu ?", False)]
+    assert result.metadata["status_llm_used"] is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_routes_location_to_status():
+    decision, _ = await CoreOrchestrator().decide("Où es-tu ?")
+
+    assert decision.selected_route == "status_provider"
+    assert decision.requires_llm is False
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_routes_goal():
+    decision, _ = await CoreOrchestrator().decide(
+        "Créer un agent nommé phase4_agent"
+    )
+
+    assert decision.selected_route == "goal_pipeline"
+    assert decision.requires_goal_pipeline is True
+    assert decision.requires_agent_factory is False
 
 
 @pytest.mark.asyncio

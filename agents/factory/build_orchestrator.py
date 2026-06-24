@@ -1235,6 +1235,7 @@ class AgentBuildOrchestrator:
         sandbox = result.get("sandbox") or result
         diagnostics = self._sandbox_diagnostics()
         for key in (
+            "backend_selected",
             "backend_used",
             "isolation_level",
             "systemd_available",
