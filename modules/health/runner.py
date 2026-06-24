@@ -1,11 +1,11 @@
 # doctor/runner.py
 # Orchestrateur principal — coordonne analyse, tests, fixes, monitoring
 
-from doctor.analyzer import analyze_project
-from doctor.tester import test_services
-from doctor.fixer import apply_fixes
-from doctor.monitor import get_system_metrics, get_all_services_status, get_all_journal_errors
-from doctor.config import cfg
+from modules.health.analyzer import analyze_project
+from modules.health.tester import test_services
+from modules.health.fixer import apply_fixes
+from modules.health.monitor import get_system_metrics, get_all_services_status, get_all_journal_errors
+from modules.health.config import cfg
 
 
 def run_full_diagnosis() -> dict:

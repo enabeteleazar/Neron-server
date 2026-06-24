@@ -8,6 +8,7 @@ from typing import Any
 from goal.planning import AutonomousPlanner
 from goal.planning.storage import PlanStorage
 from goal.system.task_manager import get_task_manager
+from modules.cognitive.history import append_jsonl
 
 
 ACTION_HISTORY_PATH = Path(
@@ -179,17 +180,7 @@ class ActionExecutor:
             exist_ok=True,
         )
 
-        with ACTION_HISTORY_PATH.open(
-            "a",
-            encoding="utf-8",
-        ) as f:
-            f.write(
-                json.dumps(
-                    payload,
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+        append_jsonl(ACTION_HISTORY_PATH, payload)
 
 
 _action_executor: ActionExecutor | None = None

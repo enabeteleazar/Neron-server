@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from agents.factory.registry import DynamicAgentRegistry
+from agents.factory.registry import DEFAULT_GENERATED_AGENTS, DynamicAgentRegistry
 from agents.factory.promotion import AgentPromotionService
 from agents.factory.validator import validate_agent
 from modules.evolution.codex_runner import CodexRunner, redact_secrets
@@ -32,7 +32,6 @@ from modules.validation.business_validator import BusinessValidator
 DEFAULT_PROJECT_ROOT = Path("/etc/neron")
 DEFAULT_WORKSPACE_AGENTS = DEFAULT_PROJECT_ROOT / "workspace" / "agents"
 DEFAULT_WORKSPACE_TESTS = DEFAULT_PROJECT_ROOT / "workspace" / "agent_tests"
-DEFAULT_GENERATED_AGENTS = DEFAULT_PROJECT_ROOT / "core" / "agents" / "generated"
 BuildMode = Literal["deterministic", "codex", "hybrid"]
 
 SENSITIVE_BUILD_KEYWORDS = {
@@ -1284,10 +1283,11 @@ class AgentBuildOrchestrator:
         if test_result:
             self._append_test_result(project_id, test_result)
         existing = self.project_manager.get_project(project_id) or {}
+        generated_prefix = self._relative(self.generated_agents).rstrip("/") + "/"
         created_files = [
             path
             for path in existing.get("created_files") or []
-            if "core/agents/generated/" not in str(path).replace("\\", "/")
+            if not str(path).replace("\\", "/").startswith(generated_prefix)
         ]
         project = self.project_manager.update_project(
             project_id,
@@ -1426,7 +1426,7 @@ class AgentBuildOrchestrator:
                 f"- Write the agent only at {relative_agent}.",
                 f"- Write the test only at {relative_test}.",
                 "- Do not write, edit, delete, or inspect secrets.",
-                "- Do not write to core/agents/generated.",
+                f"- Do not write to {self._relative(self.generated_agents)}.",
                 "- Do not edit systemd, services, security config, deployment files, or data stores.",
                 "- Do not commit or push.",
                 "",
@@ -1799,6 +1799,21 @@ class Agent:
 '''
 
     def _generic_agent_code(self, spec: AgentSpec) -> str:
+        explicit_response = self._explicit_response_contract(spec.goal)
+        if explicit_response:
+            return f'''from __future__ import annotations
+
+
+class Agent:
+    name = {spec.name!r}
+
+    async def execute(self, text: str = "") -> dict:
+        return {{
+            "status": "ok",
+            "agent": self.name,
+            "response": {explicit_response!r},
+        }}
+'''
         return f'''from __future__ import annotations
 
 
@@ -1813,6 +1828,19 @@ class Agent:
             "response": f"Demande traitée : {{request}}",
         }}
 '''
+
+    def _explicit_response_contract(self, goal: str) -> str | None:
+        match = re.search(
+            r"\b(?:repond|répond|reply|returns?)\s+(?:avec\s+)?(.+?)\s*$",
+            goal.strip(),
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        response = match.group(1).strip(" \t\r\n\"'«».,;:")
+        if self._normalize(response).startswith("a cette demande"):
+            return None
+        return response or None
 
     def _neron_log_analysis_agent_code(self, spec: AgentSpec) -> str:
         return f'''from __future__ import annotations

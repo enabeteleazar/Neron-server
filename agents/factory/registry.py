@@ -11,12 +11,13 @@ from typing import Any, Iterable
 
 
 AGENT_REGISTRY = {}
+DEFAULT_GENERATED_AGENTS = Path("/etc/neron/data/generated_agents")
 
 
 class DynamicAgentRegistry:
 
     def __init__(self, generated_dir: Path | str | None = None):
-        self.generated_dir = Path(generated_dir or "/etc/neron/core/agents/generated")
+        self.generated_dir = Path(generated_dir or DEFAULT_GENERATED_AGENTS)
         self._records: dict[str, dict[str, Any]] = {}
         self._invalid_records: dict[str, dict[str, Any]] = {}
 

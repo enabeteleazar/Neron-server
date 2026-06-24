@@ -4,8 +4,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-
-DEFAULT_GENERATED_AGENTS = Path("/etc/neron/core/agents/generated")
+from agents.factory.registry import DEFAULT_GENERATED_AGENTS
 
 
 class AgentPromotionService:

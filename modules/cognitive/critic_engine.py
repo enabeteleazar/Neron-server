@@ -5,6 +5,8 @@ from pathlib import Path
 import json
 from datetime import datetime, timezone
 
+from modules.cognitive.history import append_jsonl, compact_cognitive_state
+
 
 CRITIC_HISTORY_PATH = Path("/etc/neron/data/critic_history.jsonl")
 
@@ -165,10 +167,13 @@ class CriticEngine:
         if sensitive_detected:
             risk_score = max(risk_score, 90)
 
-        if plan.get("approved") is not True:
+        if plan.get("approval_required") is True and plan.get("approved") is not True:
             risk_score += 20
             risks.append("Le plan n'est pas approuvé.")
             recommendations.append("Demander une approbation avant exécution.")
+
+        risks = list(dict.fromkeys(risks))
+        recommendations = list(dict.fromkeys(recommendations))
 
         if sensitive_detected or risk_score > 80:
             level = "critical"
@@ -215,21 +220,11 @@ class CriticEngine:
             "timestamp": datetime.now(
                 timezone.utc
             ).isoformat(),
-            "cognitive_state": cognitive_state,
+            "cognitive_state": compact_cognitive_state(cognitive_state),
             "result": result,
         }
 
-        with CRITIC_HISTORY_PATH.open(
-            "a",
-            encoding="utf-8",
-        ) as f:
-            f.write(
-                json.dumps(
-                    payload,
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
+        append_jsonl(CRITIC_HISTORY_PATH, payload)
 
 
 _critic_engine: CriticEngine | None = None

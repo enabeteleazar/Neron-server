@@ -179,6 +179,19 @@ class BusinessValidator:
                 },
                 "fallback": False,
             }
+        explicit_response = self._explicit_response_contract(original_goal)
+        if explicit_response:
+            return {
+                "name": "explicit_response_contract",
+                "input": original_goal,
+                "expected": {
+                    "contains_all": [explicit_response],
+                    "reject_generic_markers": list(
+                        _INTERNAL_GENERIC_RESPONSE_MARKERS
+                    ),
+                },
+                "fallback": False,
+            }
         return {
             "name": "generic_non_empty_response",
             "input": original_goal,
@@ -259,3 +272,16 @@ class BusinessValidator:
         text = unicodedata.normalize("NFKD", value.lower())
         text = "".join(char for char in text if unicodedata.category(char) != "Mn")
         return " ".join(text.split())
+
+    def _explicit_response_contract(self, goal: str) -> str | None:
+        import re
+
+        match = re.search(
+            r"\b(?:repond|répond|reply|returns?)\s+(?:avec\s+)?(.+?)\s*$",
+            goal.strip(),
+            flags=re.IGNORECASE,
+        )
+        if not match:
+            return None
+        response = match.group(1).strip(" \t\r\n\"'«».,;:")
+        return response or None

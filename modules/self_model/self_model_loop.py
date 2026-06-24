@@ -23,7 +23,6 @@ async def update_loop() -> None:
         try:
             model.refresh()
             model.save_state()
-            model.update_cognitive_snapshot()
 
             LOGGER.info(
                 "self_model_updated health=%s cpu=%s ram=%s",

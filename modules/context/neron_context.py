@@ -6,7 +6,7 @@ from pathlib import Path
 
 logger = logging.getLogger("neron.context")
 
-NERON_CONTEXT_PATH = Path("/etc/neron/NERON.md")
+NERON_CONTEXT_PATH = Path("/etc/neron/memory/obsidian/identity/NERON.md")
 
 _CACHE_TTL_SECONDS = 30.0
 _cached_context: str | None = None
@@ -15,7 +15,7 @@ _cached_at: float = 0.0
 
 def load_neron_context(force_reload: bool = False) -> str:
     """
-    Charge le contexte opérationnel global de Néron depuis /etc/neron/NERON.md.
+    Charge le contexte opérationnel global depuis le document canonique NERON.md.
 
     Ce fichier sert de vérité opérationnelle compacte pour les agents,
     le raisonnement, le planner, le governor et les prompts système.

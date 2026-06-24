@@ -11,6 +11,7 @@ from typing import Any
 from goal.goals.goal_manager import get_goal_manager
 from goal.planning import AutonomousPlanner
 from goal.planning.storage import PlanStorage
+from modules.cognitive.history import append_jsonl
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,8 +36,7 @@ def _json_default(value: Any) -> Any:
 def _save_action(payload: dict[str, Any]) -> None:
     ACTION_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    with ACTION_HISTORY_PATH.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(payload, ensure_ascii=False, default=_json_default) + "\n")
+    append_jsonl(ACTION_HISTORY_PATH, payload)
 
 
 def _read_active_goal() -> str | None:
@@ -162,6 +162,17 @@ def _run_cognitive_core_once() -> dict[str, Any] | None:
         try:
             state = method()
 
+            raw_state = _json_default(state)
+            state_summary = {
+                "timestamp": raw_state.get("timestamp"),
+                "self_health": raw_state.get("self_health"),
+                "world_status": raw_state.get("world_status"),
+                "active_goal": raw_state.get("active_goal"),
+                "active_task_count": len(raw_state.get("active_tasks") or []),
+                "cognitive_score": raw_state.get("cognitive_score"),
+                "next_action": raw_state.get("next_action"),
+            } if isinstance(raw_state, dict) else {"value": str(raw_state)[:500]}
+
             result = {
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "action": "cognitive_core_cycle",
@@ -169,7 +180,7 @@ def _run_cognitive_core_once() -> dict[str, Any] | None:
                 "priority": "medium",
                 "status": "success",
                 "message": f"Cognitive Core exécuté via {method_name}.",
-                "state": _json_default(state),
+                "state": state_summary,
             }
 
             _save_action(result)

@@ -4,18 +4,18 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 
-from doctor.config import cfg
-from doctor.logger import get_logger
-from doctor.auth import require_api_key
-from doctor.analyzer import analyze_project
-from doctor.tester import test_services
-from doctor.fixer import apply_fixes
-from doctor.monitor import (
+from modules.health.config import cfg
+from modules.health.logger import get_logger
+from modules.health.auth import require_api_key
+from modules.health.analyzer import analyze_project
+from modules.health.tester import test_services
+from modules.health.fixer import apply_fixes
+from modules.health.monitor import (
     get_system_metrics,
     get_all_services_status,
     get_all_journal_errors,
 )
-from doctor.runner import run_full_diagnosis
+from modules.health.runner import run_full_diagnosis
 
 VERSION = "1.1.0"
 logger = get_logger("doctor.app")
@@ -130,13 +130,13 @@ def core_reload():
         return {"status": "error", "detail": "Reload already in progress"}
 
     try:
-        from doctor.config import Config, YAML_PATH
+        from modules.health.config import Config, YAML_PATH
 
         # 1. Construire la nouvelle config (peut lever une exception)
         new_cfg = Config(YAML_PATH)
 
         # 2. Swap atomique — on remplace les attributs de l'instance globale
-        import doctor.config as _cfg_module
+        import modules.health.config as _cfg_module
         old_cfg = _cfg_module.cfg
 
         for attr in vars(new_cfg):

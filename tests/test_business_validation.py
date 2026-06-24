@@ -149,6 +149,47 @@ def test_generic_fallback_rejects_non_business_claims(
     assert any("generic_response_rejected" in error for error in result["errors"])
 
 
+def test_explicit_response_contract_rejects_generic_echo(tmp_path: Path):
+    goal = "Créer un agent qui répond Phase 4 validation OK"
+    agent_file = write_agent(tmp_path / "echo_agent.py", f"Demande traitée : {goal}")
+
+    result = BusinessValidator(project_root=tmp_path).validate(
+        {"name": "echo_agent", "goal": goal},
+        agent_file,
+        goal,
+    )
+
+    assert result["ok"] is False
+    assert result["scenario"]["name"] == "explicit_response_contract"
+    assert any("generic_response_rejected" in error for error in result["errors"])
+
+
+def test_explicit_response_contract_accepts_required_response(tmp_path: Path):
+    goal = "Créer un agent qui répond Phase 4 validation OK"
+    agent_file = write_agent(tmp_path / "contract_agent.py", "Phase 4 validation OK")
+
+    result = BusinessValidator(project_root=tmp_path).validate(
+        {"name": "contract_agent", "goal": goal},
+        agent_file,
+        goal,
+    )
+
+    assert result["ok"] is True
+    assert result["expected"]["contains_all"] == ["Phase 4 validation OK"]
+
+
+def test_builder_generates_explicit_response_contract(tmp_path: Path):
+    builder = make_builder(tmp_path)
+    spec = builder.plan_spec(
+        "Créer un agent nommé contract_agent qui répond Phase 4 validation OK"
+    )
+
+    generated = builder._generic_agent_code(spec)
+
+    assert '"response": \'Phase 4 validation OK\'' in generated
+    assert "Demande traitée" not in generated
+
+
 def test_internal_capability_without_reliable_scenario_fails(tmp_path: Path):
     agent_file = write_agent(
         tmp_path / "generic_internal_agent.py",

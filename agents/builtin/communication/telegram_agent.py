@@ -38,7 +38,7 @@ from telegram.ext import (
     filters,
 )
 
-from core.constants import CODE_KEYWORDS
+from core.constants import CODE_KEYWORDS, NERON_HELP_TEXT
 from agents.builtin.base_agent import get_logger
 from agents.builtin.automation.watchdog_agent import get_health_score, get_status
 from core.config import settings
@@ -119,42 +119,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
         return await unauthorized(update)
 
-    await update.message.reply_text(
-        "🤖 <b>Néron — Commandes disponibles</b>\n\n"
-        "💬 <b>Conversation</b>\n"
-        "  Envoyez n'importe quel message pour parler à Néron\n\n"
-        "🧪 <b>Diagnostics directs</b>\n"
-        "  ports ouverts\n"
-        "  liste les services actifs\n"
-        "  statut système\n\n"
-        "💻 <b>Code</b>\n"
-        "  /fix &lt;fichier.py&gt; — améliore un fichier\n"
-        "  /review — auto-review du code\n"
-        "  /run &lt;fichier.py&gt; — exécute un script du workspace\n"
-        "  /workspace — liste les fichiers du workspace\n\n"
-        "🧭 <b>Code Awareness</b>\n"
-        "  /code_map — carte simplifiée du dépôt\n"
-        "  /code_search &lt;terme&gt; — recherche dans le code\n"
-        "  /code_read &lt;fichier&gt; — lecture sécurisée\n"
-        "  /code_analyze &lt;fichier&gt; — analyse AST\n"
-        "  /architecture — vue globale\n\n"
-        "🧠 <b>Mémoire</b>\n"
-        "  /memory — 5 derniers échanges\n\n"
-        "🏠 <b>Home Assistant</b>\n"
-        "  /ha_reload — recharge les entités HA\n\n"
-        "📊 <b>Système</b>\n"
-        "  /status — CPU, RAM, disque, uptime\n\n"
-        "🧬 <b>Évolution supervisée</b>\n"
-        "  /evolution propose — propose les prochaines évolutions\n"
-        "  /evolution status — état des évolutions\n"
-        "  /accept_evolution 1 — valide une proposition\n"
-        "  /reject_evolution 1 — refuse une proposition\n"
-        "  /evolution_stop — stoppe la mission active\n\n"
-        "📞 <b>Téléphonie</b>\n"
-        "  /call [message] — appel vocal via Twilio\n\n"
-        "❓ /help — cette aide",
-        parse_mode="HTML",
-    )
+    await update.message.reply_text(NERON_HELP_TEXT)
 
 
 async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

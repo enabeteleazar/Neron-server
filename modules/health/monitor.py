@@ -5,8 +5,8 @@ import subprocess
 import time
 from typing import Any
 import psutil
-from doctor.config import cfg
-from doctor.logger import get_logger
+from modules.health.config import cfg
+from modules.health.logger import get_logger
 
 log = get_logger("doctor.monitor")
 

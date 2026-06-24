@@ -35,6 +35,7 @@ EXPECTED_DECISION_KEYS = {
         ("Cree un outil pour surveiller systemd", "goal_pipeline"),
         ("Analyse cette demande complexe", "goal_pipeline"),
         ("/goal cree un agent meteo", "goal_pipeline"),
+        ("/help", "help_provider"),
     ],
 )
 async def test_core_orchestrator_is_the_single_route_authority(
@@ -81,6 +82,40 @@ async def test_orchestrator_does_not_route_everything_to_resolver():
     assert agent_router.calls == [
         ("conversation", "Explique-moi Kubernetes", "api")
     ]
+
+
+@pytest.mark.asyncio
+async def test_help_returns_phase4_sections_without_obsolete_commands():
+    class ForbiddenAgentRouter:
+        async def route(self, *_args, **_kwargs):
+            raise AssertionError("/help must not use the LLM/agent router")
+
+    result = await CoreOrchestrator(agent_router=ForbiddenAgentRouter()).handle(
+        "/help"
+    )
+
+    assert result.decision.selected_route == "help_provider"
+    assert result.executor == "help_provider"
+    for section in (
+        "🤖 Néron — Commandes disponibles",
+        "💬 Conversation",
+        "🧠 Orchestration",
+        "📊 Système",
+        "🧭 Code Awareness",
+        "💻 Workspace",
+        "🧬 Évolution supervisée",
+    ):
+        assert section in result.response
+
+    for obsolete_command in (
+        "/fix",
+        "/review",
+        "/goal_status",
+        "/projects",
+        "/health",
+        "/services",
+    ):
+        assert obsolete_command not in result.response
 
 
 @pytest.mark.asyncio

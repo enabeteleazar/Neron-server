@@ -3,7 +3,7 @@
 
 from fastapi import Security, HTTPException, status
 from fastapi.security import APIKeyHeader
-from doctor.config import cfg
+from modules.health.config import cfg
 
 api_key_header = APIKeyHeader(name="X-Doctor-Key", auto_error=False)
 

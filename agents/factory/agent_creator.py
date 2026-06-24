@@ -83,7 +83,7 @@ class AgentCreator:
         candidates: list[str] = []
         for relative in (
             "core/agents",
-            "core/agents/generated",
+            "data/generated_agents",
             "workspace/agents",
             "workspace/agent_drafts",
         ):

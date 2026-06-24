@@ -7,7 +7,7 @@ import subprocess
 import time
 from typing import Any
 
-from doctor.config import cfg
+from modules.health.config import cfg
 
 
 # Mapping strict test runtime -> services systemd autorises.
@@ -86,7 +86,7 @@ def _restart_service(service: str) -> dict[str, Any]:
 
 
 def _validate_services() -> dict[str, Any]:
-    from doctor.tester import test_services
+    from modules.health.tester import test_services
 
     return test_services()
 

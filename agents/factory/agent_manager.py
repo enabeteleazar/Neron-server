@@ -8,14 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agents.factory.registry import DynamicAgentRegistry
+from agents.factory.registry import DEFAULT_GENERATED_AGENTS, DynamicAgentRegistry
 from agents.factory.promotion import AgentPromotionService
 from agents.factory.validator import validate_agent
 from agents.runtime.runtime import get_agent_runtime
 from modules.evolution.codex_runner import CodexRunner, redact_secrets
 
 
-DEFAULT_GENERATED_AGENTS = Path("/etc/neron/core/agents/generated")
 DEFAULT_WORKSPACE_AGENTS = Path("/etc/neron/workspace/agents")
 DEFAULT_WORKSPACE_TESTS = Path("/etc/neron/workspace/agent_tests")
 DEFAULT_BACKUPS_DIR = Path("/etc/neron/data/agent_backups")
@@ -409,13 +408,19 @@ class AgentManager:
         agent_file: Path,
         test_file: Path,
     ) -> str:
+        try:
+            generated_path = self.generated_agents.resolve().relative_to(
+                self.project_root.resolve()
+            )
+        except ValueError:
+            generated_path = self.generated_agents
         return "\n".join(
             [
                 "Mission: improve an existing Neron OS generated agent.",
                 "",
                 "Strict constraints:",
                 "- Edit only the workspace files listed below.",
-                "- Do not write to core/agents/generated or any production agent path.",
+                f"- Do not write to {generated_path} or any production agent path.",
                 "- Do not read or print secrets.",
                 "- Keep the public Agent contract: class Agent, name attribute, async execute().",
                 "- Update or extend the pytest file to cover the requested improvement.",
