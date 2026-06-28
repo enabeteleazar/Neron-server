@@ -1,6 +1,0 @@
-defaults:
-  mood: "neutre"
-  energy_level: "normal"
-  communication:
-    tone: "technique"
-    verbosity: "concis"
