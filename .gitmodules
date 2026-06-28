@@ -34,3 +34,6 @@
 [submodule "web/neron-app"]
 	path = web/neron-app
 	url = git@github.com:enabeteleazar/neron_app.git
+[submodule "server/llm"]
+	path = server/llm
+	url = git@github.com:enabeteleazar/neron_llm.git
