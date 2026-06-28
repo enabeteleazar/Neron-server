@@ -37,3 +37,6 @@
 [submodule "server/llm"]
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
+[submodule "server/doctor"]
+	path = server/doctor
+	url = git@github.com:enabeteleazar/neronOS_doctor.git
