@@ -132,3 +132,22 @@ __pycache__/
 # Néron memory SQLite runtime files
 memory/*.db-shm
 memory/*.db-wal
+
+# Frontend
+web/neron-app/node_modules/
+web/neron-app/dist/
+web/neron-app/tsconfig.tsbuildinfo
+
+# Runtime
+runtime/workspace/
+runtime/logs/
+runtime/cache/
+runtime/tmp/
+runtime/backups/
+server/memory/*.db-shm
+server/memory/*.db-wal
+
+# Frontend
+web/neron-app/node_modules/
+web/neron-app/dist/
+web/neron-app/tsconfig.tsbuildinfo
