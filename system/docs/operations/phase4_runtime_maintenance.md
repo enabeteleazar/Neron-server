@@ -20,7 +20,7 @@ laisser le service en état `failed` au lieu de provoquer une boucle infinie.
 
 Le contexte global et l'identité utilisent le document canonique :
 
-`/etc/neron/memory/obsidian/identity/NERON.md`
+`/etc/neron/server/memory/obsidian/identity/NERON.md`
 
 Aucune copie `/etc/neron/NERON.md` n'est maintenue.
 

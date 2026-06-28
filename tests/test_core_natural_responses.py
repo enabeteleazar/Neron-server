@@ -30,7 +30,7 @@ def _memory_result(content: str, backend: str = "sqlite"):
 def test_natural_response_rejects_system_paths():
     assert (
         _validate_response(
-            "Je conserve ces informations dans /etc/neron/memory.",
+            "Je conserve ces informations dans /etc/neron/server/memory.",
             max_chars=300,
             max_sentences=2,
             require_first_person=True,
@@ -47,7 +47,7 @@ async def test_memory_recall_fallback_is_natural(monkeypatch):
         "_oblivia_results",
         lambda query, limit=8: [
             _memory_result(
-                "La mémoire de Néron est centralisée dans /etc/neron/memory avec SQLite et Obsidian."
+                "La mémoire de Néron est centralisée dans /etc/neron/server/memory avec SQLite et Obsidian."
             )
         ],
     )

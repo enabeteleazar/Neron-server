@@ -6,7 +6,7 @@ from core.modules.oblivia.text_utils import normalize_text
 
 
 MEMORY_CONTENT = (
-    "La mémoire de Néron est centralisée dans /etc/neron/memory "
+    "La mémoire de Néron est centralisée dans /etc/neron/server/memory "
     "avec SQLite et Obsidian."
 )
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 logger = logging.getLogger("neron.context")
 
-NERON_CONTEXT_PATH = Path("/etc/neron/memory/obsidian/identity/NERON.md")
+NERON_CONTEXT_PATH = Path("/etc/neron/server/memory/obsidian/identity/NERON.md")
 
 _CACHE_TTL_SECONDS = 30.0
 _cached_context: str | None = None
