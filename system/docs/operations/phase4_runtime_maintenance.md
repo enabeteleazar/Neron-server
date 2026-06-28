@@ -1,44 +1,21 @@
-# Phase 4 runtime maintenance
+# Maintenance runtime Phase 4
 
-## Services systemd
+## Services actifs
 
-Les services maintenus utilisent les chemins canoniques suivants :
+- `neron-core.service` : API principale Néron Core
+- `neron-llm.service` : microservice LLM
+- `neron-doctor.service` : diagnostic système
+- `neron-web.service` : interface web Néron
+- `neron-watchdog.service` : surveillance et alertes
+- `neron-homeassistant.service` : Home Assistant
+- `ollama.service` : fournisseur LLM local
 
-- `neron-core`: `core.app:app`
-- `neron-cognitive-loop`: `modules/autonomous/run_cognitive_loop.py`
-- `neron-doctor`: `modules.health.app:app`
-- `neron-self-model-loop`: `modules.self_model.self_model_loop`
-- `neron-world-model-loop`: `modules.world_model.world_model_loop`
-- `neron-dashboard`: `ui/dashboard/dist/index.cjs`
-- `neron-vocal`: `ui/vocal/server.js`
+## Services reclassés / désactivés
 
-Les unités utilisent `Restart=on-failure`, une temporisation de 10 secondes et
-une limite de trois tentatives par minute. Une erreur persistante doit donc
-laisser le service en état `failed` au lieu de provoquer une boucle infinie.
-
-## Contexte LLM
-
-Le contexte global et l'identité utilisent le document canonique :
-
-`/etc/neron/server/memory/obsidian/identity/NERON.md`
-
-Aucune copie `/etc/neron/NERON.md` n'est maintenue.
-
-## Historiques cognitifs
-
-`critic_history.jsonl` et `action_history.jsonl` sont limités à 10 Mio chacun.
-Trois générations locales sont conservées (`.1` à `.3`). Les snapshots de la
-boucle cognitive ne contiennent plus les objets complets de toutes les tâches.
-
-Les historiques antérieurs au compactage sont archivés sous :
-
-`/etc/neron/data/archive/cognitive/`
-
-## Agents générés
-
-Le registre dynamique canonique est :
-
-`/etc/neron/data/generated_agents`
-
-Les agents ne doivent plus être promus dans le submodule `core/`. Le workspace
-reste la zone de génération et de test avant promotion.
+- `neron-dashboard.service` : remplacé par `neron-web.service`
+- `neron-cognitive-loop.service` : désactivé, à réévaluer avec Goal/Watchdog
+- `neron-self-model-loop.service` : désactivé, logique partiellement intégrée au Core
+- `neron-world-model-loop.service` : désactivé, logique à réévaluer
+- `neron-vocal.service` : désactivé, à migrer plus tard
+- `neron-stt.service` : désactivé, à migrer plus tard
+- `neron-kula.service` : désactivé, legacy

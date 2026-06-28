@@ -9,8 +9,8 @@ SERVICES = {
     "llm":              "neron-llm",
     "doctor":           "neron-doctor",
     "ollama":           "ollama",
-    "client":           "neron-vocal",
-    "cognitive-loop":   "neron-cognitive-loop",
+    "web":              "neron-web",
+    "watchdog":         "neron-watchdog",
     "cognitive-daemon": "neron-cognitive-daemon.service",
 }
 
