@@ -7,9 +7,7 @@ from agents.builtin.base_agent import (
     AgentResult, BaseAgent, get_logger,
     register_agent, get_agents, _agents,
 )
-from llm.client.types import (
-    LLMGenerateRequest, LLMGenerateResponse, DEGRADED_RESPONSE, TaskType,
-)
+from llm.core.types import GenerateRequest, GenerateResponse
 
 
 # ── AgentResult ────────────────────────────────────────────────────────────────
@@ -152,14 +150,14 @@ class TestGetLogger:
 
 class TestLLMTypes:
     def test_generate_request_defaults(self):
-        req = LLMGenerateRequest(prompt="test")
+        req = GenerateRequest(prompt="test")
         assert req.task_type == "chat"
         assert req.model_preference == "auto"
         assert req.request_id == ""
         assert req.context == {}
 
     def test_generate_request_full(self):
-        req = LLMGenerateRequest(
+        req = GenerateRequest(
             task_type="code",
             prompt="écris une fonction",
             context={"lang": "python"},
@@ -170,17 +168,11 @@ class TestLLMTypes:
         assert req.context["lang"] == "python"
 
     def test_generate_response(self):
-        resp = LLMGenerateResponse(result="bonjour", model_used="llama3.2", latency_ms=250)
+        resp = GenerateResponse(result="bonjour", model_used="llama3.2", latency_ms=250)
         assert resp.result == "bonjour"
         assert resp.warning is None
 
-    def test_degraded_response_sentinel(self):
-        assert DEGRADED_RESPONSE.model_used == "degraded"
-        assert DEGRADED_RESPONSE.latency_ms == 0
-        assert DEGRADED_RESPONSE.warning is not None
-        assert len(DEGRADED_RESPONSE.result) > 0
-
     @pytest.mark.parametrize("task", ["code", "reasoning", "chat", "agent"])
     def test_valid_task_types(self, task):
-        req = LLMGenerateRequest(prompt="p", task_type=task)
+        req = GenerateRequest(prompt="p", task_type=task)
         assert req.task_type == task
