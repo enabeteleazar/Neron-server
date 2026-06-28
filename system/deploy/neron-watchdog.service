@@ -1,0 +1,19 @@
+[Unit]
+Description=Néron Watchdog
+After=network.target neron-core.service neron-doctor.service neron-llm.service
+Requires=neron-core.service
+
+[Service]
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neron
+EnvironmentFile=/etc/neron/secrets.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neron/server
+ExecStart=/etc/neron/venv/bin/python -m watchdog.runner
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
