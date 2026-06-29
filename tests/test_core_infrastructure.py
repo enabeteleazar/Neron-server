@@ -76,7 +76,10 @@ async def test_publish_and_list_events():
                 "trace_id": "trace-1",
             },
         )
-        listed = await client.get("/events")
+        listed = await client.get(
+            "/events",
+            params={"event_type": "test.created"},
+        )
 
     assert published.status_code == 200
     event = published.json()
