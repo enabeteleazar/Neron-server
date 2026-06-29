@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from core.api import auth
+from core.infrastructure.event_bus import event_bus
 from modules.evolution import routes as evolution_routes
 from core import app as core_app
 
@@ -113,6 +114,8 @@ async def test_sensitive_routes_are_never_public(monkeypatch):
         "/critic/latest",
         "/world-model/status",
         "/runtime/governor/policy",
+        "/registry/services",
+        "/gateway/doctor/health",
         "/goals",
     )
 
@@ -132,3 +135,62 @@ async def test_sensitive_route_accepts_valid_api_key(monkeypatch):
         )
 
     assert response.status_code == 200
+
+
+async def test_official_and_legacy_headers_and_auth_events(monkeypatch):
+    _set_api_key(monkeypatch)
+    event_bus.clear()
+
+    async with _client() as client:
+        invalid = await client.get(
+            "/status",
+            headers={
+                "X-Neron-API-Key": "wrong",
+                "X-Neron-Trace-Id": "trace-auth-failure",
+            },
+        )
+        official = await client.get(
+            "/status",
+            headers={
+                "X-Neron-API-Key": API_KEY,
+                "X-Neron-Trace-Id": "trace-auth-official",
+            },
+        )
+        legacy = await client.get(
+            "/status",
+            headers={
+                "X-API-Key": API_KEY,
+                "X-Neron-Trace-Id": "trace-auth-legacy",
+            },
+        )
+        failures = await client.get(
+            "/events",
+            params={"event_type": "auth.failure"},
+            headers={"X-Neron-API-Key": API_KEY},
+        )
+        successes = await client.get(
+            "/events",
+            params={"event_type": "auth.success"},
+            headers={"X-Neron-API-Key": API_KEY},
+        )
+
+    assert invalid.status_code == 403
+    assert official.status_code == 200
+    assert legacy.status_code == 200
+
+    failure_events = failures.json()["events"]
+    assert failure_events[-1]["trace_id"] == "trace-auth-failure"
+    assert failure_events[-1]["payload"]["reason"] == "invalid"
+    assert failure_events[-1]["level"] == "warning"
+
+    success_events = successes.json()["events"]
+    assert any(
+        event["trace_id"] == "trace-auth-official"
+        and event["payload"]["header"] == "X-Neron-API-Key"
+        for event in success_events
+    )
+    assert any(
+        event["trace_id"] == "trace-auth-legacy"
+        and event["payload"]["header"] == "X-API-Key"
+        for event in success_events
+    )
