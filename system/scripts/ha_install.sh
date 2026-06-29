@@ -184,6 +184,12 @@ EOF
     sudo systemctl daemon-reload
     sudo systemctl enable $SERVICE
 
+    sudo install -m 0644 \
+        "$BASE_DIR/system/deploy/neron-homeassistant-registry.service" \
+        /etc/systemd/system/neron-homeassistant-registry.service
+    sudo systemctl daemon-reload
+    sudo systemctl enable neron-homeassistant-registry.service
+
     echo -e "${GREEN}✔ Service systemd OK${NC}"
 }
 

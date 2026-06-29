@@ -1,0 +1,20 @@
+[Unit]
+Description=NéronOS Home Assistant Registry Sidecar
+After=network-online.target neron-core.service neron-homeassistant.service
+PartOf=neron-homeassistant.service
+
+[Service]
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neron
+EnvironmentFile=/etc/neron/secrets.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neron/server
+Environment=NERON_SERVICE_PORT=8123
+ExecStart=/etc/neron/venv/bin/python -m homeassistant_bridge.registry_runner
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=neron-homeassistant.service
