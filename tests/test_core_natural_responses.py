@@ -135,8 +135,8 @@ async def test_goal_status_response_is_not_json():
 @pytest.mark.parametrize(
     ("query", "expected_route"),
     [
-        ("Que sais-tu de ta mémoire ?", "memory_engine"),
-        ("Comment est organisée ta mémoire ?", "memory_engine"),
+        ("Que sais-tu de ta mémoire ?", "memory_provider"),
+        ("Comment est organisée ta mémoire ?", "memory_provider"),
         ("Quel est ton état actuel ?", "status_provider"),
         ("Comment va ton système ?", "status_provider"),
         ("Quels services sont actifs ?", "status_provider"),

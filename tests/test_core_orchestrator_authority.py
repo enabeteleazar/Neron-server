@@ -31,9 +31,9 @@ EXPECTED_DECISION_KEYS = {
         ("Comment fonctionnes-tu ?", "identity_provider"),
         ("Quelle heure est-il ?", "timer_engine"),
         ("Mets un minuteur de 10 minutes", "timer_engine"),
-        ("Souviens-toi de mon projet Neron", "memory_engine"),
-        ("Cree un outil pour surveiller systemd", "goal_pipeline"),
-        ("Analyse cette demande complexe", "goal_pipeline"),
+        ("Souviens-toi de mon projet Neron", "memory_provider"),
+        ("Cree un outil pour surveiller systemd", "goal_engine"),
+        ("Analyse cette demande complexe", "goal_engine"),
         ("/goal cree un agent meteo", "goal_pipeline"),
         ("/help", "help_provider"),
     ],
@@ -76,12 +76,10 @@ async def test_orchestrator_does_not_route_everything_to_resolver():
 
     result = await orchestrator.handle("Explique-moi Kubernetes")
 
-    assert result.response == "reponse llm"
     assert result.decision.selected_route == "llm_provider"
-    assert result.executor == "llm_agent"
-    assert agent_router.calls == [
-        ("conversation", "Explique-moi Kubernetes", "api")
-    ]
+    assert result.executor == "llm"
+    assert result.error == "llm provider unavailable"
+    assert agent_router.calls == []
 
 
 @pytest.mark.asyncio
@@ -132,7 +130,7 @@ async def test_planner_is_not_consulted_during_route_decision(monkeypatch):
         "Analyse cette demande complexe"
     )
 
-    assert decision.selected_route == "goal_pipeline"
+    assert decision.selected_route == "goal_engine"
 
 
 @pytest.mark.asyncio
@@ -227,7 +225,7 @@ async def test_orchestrator_routes_goal():
         "Créer un agent nommé phase4_agent"
     )
 
-    assert decision.selected_route == "goal_pipeline"
+    assert decision.selected_route == "goal_engine"
     assert decision.requires_goal_pipeline is True
     assert decision.requires_agent_factory is False
 

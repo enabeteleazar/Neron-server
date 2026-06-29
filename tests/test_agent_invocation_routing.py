@@ -117,7 +117,7 @@ async def test_create_agent_still_routes_to_goal():
         "Crée un agent nommé validation_goal_engine"
     )
 
-    assert decision.selected_route == "goal_pipeline"
+    assert decision.selected_route == "goal_engine"
     assert decision.requires_goal_pipeline is True
 
 
