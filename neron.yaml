@@ -9,9 +9,9 @@ model_map:
   code: deepseek-coder:6.7b
 
 routing:
-  code: qwen2.5-coder:1.5b
-  reasoning: qwen2.5-coder:1.5b
-  agent: qwen2.5-coder:1.5b
+  code: Qwen2.5-Coder:1.5b
+  reasoning: Qwen2.5-Coder:1.5b
+  agent: Qwen2.5-Coder:1.5b
   chat: gemma4:31b-cloud
   fast: gemma4:31b-cloud
   default: gemma4:31b-cloud
@@ -54,7 +54,7 @@ gguf_map:
 
 code_agent:
   enabled: true
-  model: qwen2.5-coder:1.5b
+  model: Qwen2.5-Coder:1.5b
   backup_count: 10
   sandbox_timeout: 10
   self_review_on_startup: false

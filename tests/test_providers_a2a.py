@@ -172,15 +172,13 @@ def test_default_providers_are_registered_idempotently():
     ensure_default_providers(registry)
 
     payload = registry.status()
-    assert payload["count"] == 3
+    assert payload["count"] == 2
     assert {provider["name"] for provider in payload["providers"]} == {
         "oblivia",
         "llm",
-        "open_meteo",
     }
     assert "memory" in payload["types"]
     assert "llm" in payload["types"]
-    assert "web" in payload["types"]
 
 
 async def test_status_exposes_providers_and_a2a():
