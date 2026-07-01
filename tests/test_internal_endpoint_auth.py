@@ -109,6 +109,7 @@ async def test_sensitive_routes_are_never_public(monkeypatch):
         "/memory/status",
         "/code-awareness/map",
         "/cognitive-core/state",
+        "/cognitive-core/report",
         "/actions/latest",
         "/critic/latest",
         "/world-model/status",
@@ -120,6 +121,32 @@ async def test_sensitive_routes_are_never_public(monkeypatch):
         for path in sensitive_paths:
             response = await client.get(path)
             assert response.status_code == 401, path
+
+
+async def test_all_explicitly_protected_router_surfaces_reject_bad_key(monkeypatch):
+    _set_api_key(monkeypatch)
+    requests = (
+        ("GET", "/self-model/status"),
+        ("GET", "/runtime/governor/policy"),
+        ("GET", "/world-model/status"),
+        ("GET", "/goals"),
+        ("POST", "/goals/active/task"),
+        ("GET", "/cognitive-core/state"),
+        ("GET", "/cognitive-core/report"),
+        ("GET", "/actions/latest"),
+        ("GET", "/critic/latest"),
+        ("GET", "/code-awareness/map"),
+        ("GET", "/memory/status"),
+    )
+
+    async with _client() as client:
+        for method, path in requests:
+            response = await client.request(
+                method,
+                path,
+                headers={"X-Neron-API-Key": "wrong"},
+            )
+            assert response.status_code == 403, (method, path, response.text)
 
 
 async def test_sensitive_route_accepts_valid_api_key(monkeypatch):
