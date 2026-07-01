@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import re
 import shutil
 import subprocess
@@ -303,11 +304,20 @@ class ToolCreator:
 
     @staticmethod
     def _validate_generated_tool(test_path: Path) -> None:
+        env = os.environ.copy()
+        server_root = str(Path(__file__).resolve().parents[1])
+        existing_pythonpath = env.get("PYTHONPATH")
+        env["PYTHONPATH"] = (
+            f"{server_root}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else server_root
+        )
         completed = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", str(test_path)],
             text=True,
             capture_output=True,
             timeout=120,
+            env=env,
         )
         if completed.returncode != 0:
             error = completed.stdout[-2000:] or completed.stderr[-2000:]

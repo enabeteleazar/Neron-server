@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from core.pipeline.orchestrator import CoreOrchestrator
+from core.providers.registry import ProviderRegistry
 
 
 EXPECTED_DECISION_KEYS = {
@@ -67,7 +68,11 @@ class ForbiddenResolver:
 
 
 @pytest.mark.asyncio
-async def test_orchestrator_does_not_route_everything_to_resolver():
+async def test_orchestrator_does_not_route_everything_to_resolver(monkeypatch):
+    monkeypatch.setattr(
+        "core.pipeline.orchestrator.provider_registry",
+        ProviderRegistry(),
+    )
     agent_router = FakeAgentRouter()
     orchestrator = CoreOrchestrator(
         agent_router=agent_router,

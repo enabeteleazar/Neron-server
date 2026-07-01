@@ -97,8 +97,8 @@ def test_self_model_context_uses_identity_loader(monkeypatch, tmp_path):
 def test_runtime_sources_do_not_define_the_legacy_identity():
     root = Path(__file__).parents[1]
     runtime_sources = [
-        root / "core",
-        root / "deploy",
+        root / "server" / "core",
+        root / "system" / "deploy",
         root / "neron.yaml",
     ]
     forbidden = (
@@ -116,5 +116,5 @@ def test_runtime_sources_do_not_define_the_legacy_identity():
             content = path.read_text(encoding="utf-8")
             assert not any(value in content for value in forbidden), path
 
-    app_source = (root / "core" / "app.py").read_text(encoding="utf-8")
+    app_source = (root / "server" / "core" / "app.py").read_text(encoding="utf-8")
     assert 'VERSION = "3.7.0"' not in app_source

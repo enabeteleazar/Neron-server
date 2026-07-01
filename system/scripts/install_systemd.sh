@@ -2,21 +2,18 @@
 set -euo pipefail
 
 if [ "$(id -u)" -ne 0 ]; then
-  echo "This script requires sudo/root. Run: sudo ./scripts/install_systemd.sh" >&2
+  echo "This script requires sudo/root. Run: sudo ./system/scripts/install_systemd.sh" >&2
   exit 1
 fi
 
 BASE_DIR="/etc/neron"
-SYSTEMD_DIR="$BASE_DIR/deploy"
+SYSTEMD_DIR="$BASE_DIR/system/deploy"
 UNITS=(
-  "neron-core.service"
   "neron-core.service"
   "neron-llm.service"
   "neron-doctor.service"
   "neron-web.service"
   "neron-watchdog.service"
-  "neron-llm.service"
-  "neron-doctor.service"
 )
 
 echo "Installing systemd unit files..."

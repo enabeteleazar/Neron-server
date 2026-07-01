@@ -1,12 +1,37 @@
 [Unit]
-Description=Neron Doctor
+Description=Néron Doctor API
 After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
 
 [Service]
+Type=simple
+User=neron
+Group=neron-dev
+SupplementaryGroups=systemd-journal
 WorkingDirectory=/etc/neron
-Environment=PYTHONPATH=/etc/neron
-ExecStart=/etc/neron/venv/bin/python scripts/doctor.sh
+EnvironmentFile=/etc/neron/secrets.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neron/server
+ExecStart=/etc/neron/venv/bin/uvicorn doctor.app:app --host 0.0.0.0 --port 8020 --workers 1
 Restart=on-failure
+RestartSec=10
+LimitNOFILE=65536
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+PrivateDevices=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+UMask=0027
+ReadWritePaths=/etc/neron/runtime /etc/neron/server/memory -/var/log/neron
+MemoryMax=256M
+CPUQuota=100%
 
 [Install]
 WantedBy=multi-user.target

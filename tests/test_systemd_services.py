@@ -5,15 +5,16 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEPLOY_DIR = ROOT / "deploy"
-INSTALL_SCRIPT = ROOT / "scripts" / "install_systemd.sh"
+DEPLOY_DIR = ROOT / "system" / "deploy"
+INSTALL_SCRIPT = ROOT / "system" / "scripts" / "install_systemd.sh"
 
 
 CRITICAL_UNITS = {
     "neron-core.service": "core.app:app",
-    "neron-self-model-loop.service": "-m modules.self_model.self_model_loop",
-    "neron-world-model-loop.service": "-m modules.world_model.world_model_loop",
-    "neron-cognitive-loop.service": "modules/autonomous/run_cognitive_loop.py",
+    "neron-llm.service": "-m llm.api.app",
+    "neron-doctor.service": "doctor.app:app",
+    "neron-web.service": "npm run dev",
+    "neron-watchdog.service": "watchdog.app:app",
 }
 
 
@@ -37,8 +38,8 @@ def test_install_systemd_references_existing_deploy_units():
 
 
 def test_legacy_neron_service_is_marked_and_not_used_by_server_script():
-    legacy_unit = ROOT / "deploy" / "systemd" / "neron.service"
-    server_script = ROOT / "scripts" / "server.sh"
+    legacy_unit = ROOT / "system" / "deploy" / "systemd" / "neron.service"
+    server_script = ROOT / "system" / "scripts" / "server.sh"
 
     legacy_content = legacy_unit.read_text(encoding="utf-8")
     server_content = server_script.read_text(encoding="utf-8")

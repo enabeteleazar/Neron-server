@@ -71,7 +71,14 @@ async def test_dispatcher_routes_evolution_status():
 
 
 def test_telegram_agent_does_not_import_internal_orchestrators_directly():
-    source = Path("core/agents/communication/telegram_agent.py").read_text(encoding="utf-8")
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "server"
+        / "core"
+        / "agents"
+        / "communication"
+        / "telegram_agent.py"
+    ).read_text(encoding="utf-8")
 
     assert "goal.goals.goal_orchestrator" not in source
     assert "modules.evolution.supervisor" not in source

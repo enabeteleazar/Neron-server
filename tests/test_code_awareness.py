@@ -38,11 +38,11 @@ def test_searcher_finds_create_skeleton():
     result = search_code("create_skeleton", max_results=20)
     files = {item["file"] for item in result["results"]}
 
-    assert "core/planning/planner.py" in files or "core/planning/executor.py" in files
+    assert "goal/planning/planner.py" in files or "goal/planning/executor.py" in files
 
 
 def test_analyzer_detects_ast_structures():
-    result = analyze_file("core/goals/goal_orchestrator.py")
+    result = analyze_file("goal/goals/goal_orchestrator.py")
 
     assert any(item["name"] == "GoalOrchestrator" for item in result["classes"])
     assert result["functions"] or result["classes"]

@@ -4,20 +4,22 @@ import fnmatch
 from pathlib import Path
 
 
-PROJECT_ROOT = Path("/etc/neron").resolve()
-
-LEGACY_PATH_ALIASES = {
-    Path("core/goals/goal_orchestrator.py"): Path("goal/goals/goal_orchestrator.py"),
-    Path("core/planning/planner.py"): Path("goal/planning/planner.py"),
-    Path("core/planning/executor.py"): Path("goal/planning/executor.py"),
-}
+PROJECT_ROOT = Path("/etc/neron/server").resolve()
 
 ALLOWED_TOP_LEVEL_DIRS = {
     "core",
     "goal",
-    "tests",
-    "scripts",
     "agents",
+    "common",
+    "doctor",
+    "homeassistant_bridge",
+    "llm",
+    "memory",
+    "modules",
+    "providers",
+    "tools",
+    "watchdog",
+    "web_bridge",
 }
 
 DENIED_DIR_NAMES = {
@@ -86,12 +88,7 @@ def is_sensitive_file(path: Path) -> bool:
 
 
 def relative_to_project(path: Path) -> str:
-    relative = path.resolve().relative_to(PROJECT_ROOT)
-    if relative.parts[:2] == ("goal", "goals"):
-        return str(Path("core", "goals", *relative.parts[2:]))
-    if relative.parts[:2] == ("goal", "planning"):
-        return str(Path("core", "planning", *relative.parts[2:]))
-    return str(relative)
+    return str(path.resolve().relative_to(PROJECT_ROOT))
 
 
 def resolve_user_path(path: str) -> Path:
@@ -105,8 +102,7 @@ def resolve_user_path(path: str) -> Path:
     if any(part == ".." for part in raw.parts):
         raise CodeAwarenessSecurityError("Traversée de répertoire refusée.")
 
-    aliased = LEGACY_PATH_ALIASES.get(raw, raw)
-    candidate = (PROJECT_ROOT / aliased).resolve()
+    candidate = (PROJECT_ROOT / raw).resolve()
 
     try:
         relative = candidate.relative_to(PROJECT_ROOT)
