@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neronos"
+version = "0.1.0"
+description = "NéronOS internal Python packages"
+requires-python = ">=3.11"
+
+[project.scripts]
+neron = "common.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["server"]
+include = [
+    "agents*",
+    "common*",
+    "core*",
+    "doctor*",
+    "goal*",
+    "llm*",
+    "memory*",
+    "modules*",
+    "providers*",
+    "tools*",
+    "watchdog*",
+]
+exclude = ["core.core*"]
+namespaces = true

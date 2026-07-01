@@ -12,7 +12,7 @@ from tools.models import ToolSpec
 
 
 DEFAULT_REGISTRY_PATH = Path("/etc/neron/data/tool_registry.json")
-DEFAULT_GENERATED_TOOLS = Path("/etc/neron/core/tools/generated")
+DEFAULT_GENERATED_TOOLS = Path("/etc/neron/server/tools/generated")
 
 
 def _normalize(value: str) -> str:

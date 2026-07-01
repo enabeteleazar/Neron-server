@@ -60,7 +60,7 @@ class ToolCreator:
         )
         self.workspace = workspace
         self.generated_tools = generated_tools or (
-            workspace.parent.parent / "core" / "tools" / "generated"
+            workspace.parent.parent / "server" / "tools" / "generated"
         )
         self.spec_builder = spec_builder or ToolSpecBuilder()
         self.deterministic_generator = (

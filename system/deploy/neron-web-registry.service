@@ -10,7 +10,6 @@ Group=neron-dev
 WorkingDirectory=/etc/neron
 EnvironmentFile=/etc/neron/secrets.env
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/etc/neron/server
 Environment=NERON_SERVICE_PORT=8080
 ExecStart=/etc/neron/venv/bin/python -m web_bridge.registry_runner
 Restart=always

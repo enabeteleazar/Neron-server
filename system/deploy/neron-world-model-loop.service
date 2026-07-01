@@ -4,7 +4,6 @@ After=network.target
 
 [Service]
 WorkingDirectory=/etc/neron
-Environment=PYTHONPATH=/etc/neron
 ExecStart=/etc/neron/venv/bin/python -m modules.world_model.world_model_loop
 Restart=always
 

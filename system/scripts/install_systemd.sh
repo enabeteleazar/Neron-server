@@ -8,6 +8,7 @@ fi
 
 BASE_DIR="/etc/neron"
 SYSTEMD_DIR="$BASE_DIR/system/deploy"
+PYTHON="$BASE_DIR/venv/bin/python"
 UNITS=(
   "neron-core.service"
   "neron-llm.service"
@@ -15,6 +16,9 @@ UNITS=(
   "neron-web.service"
   "neron-watchdog.service"
 )
+
+echo "Installing NéronOS Python packages..."
+"$PYTHON" -m pip install --no-deps --no-build-isolation --editable "$BASE_DIR"
 
 echo "Installing systemd unit files..."
 mkdir -p /etc/systemd/system
