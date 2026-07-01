@@ -86,7 +86,7 @@ async def _task_memory_cleanup():
         return
     try:
         retention = getattr(settings, "MEMORY_RETENTION", 30)
-        deleted   = memory_agent.cleanup(days=retention)
+        deleted   = await memory_agent.cleanup(days=retention)
         logger.info(f"Mémoire nettoyée : {deleted} entrées supprimées")
     except Exception as e:
         logger.error(f"Erreur nettoyage mémoire : {e}")

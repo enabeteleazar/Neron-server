@@ -73,6 +73,7 @@ class FakeMemoryProvider:
 class FakeProviderRegistry:
     def __init__(self, provider: FakeMemoryProvider) -> None:
         self.provider = provider
+        self.a2a_calls: list[tuple[str, object]] = []
 
     def by_type(self, provider_type):
         if provider_type != "memory":
@@ -90,6 +91,10 @@ class FakeProviderRegistry:
         if name == self.provider.name:
             return self.provider
         return None
+
+    async def execute_via_a2a(self, name, request):
+        self.a2a_calls.append((name, request))
+        return await self.provider.execute(request)
 
 
 MEMORY_SEARCH_QUERIES = [

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-
 import pytest
 
 from core.modules.goal_status_response import build_goal_status_response_async
@@ -12,20 +10,7 @@ from core.modules.runtime_response import build_runtime_response_async
 from core.modules.status.detector import detect_status_intent
 from core.modules.status.service import build_status_response
 from core.pipeline.orchestrator import CoreOrchestrator
-
-
-def _memory_result(content: str, backend: str = "sqlite"):
-    return SimpleNamespace(
-        record=SimpleNamespace(
-            category="decision",
-            content=content,
-            source="memory_manager",
-            metadata={},
-        ),
-        backend=backend,
-        score=1.0,
-    )
-
+from core.providers.models import ProviderInfo, ProviderResponse
 
 def test_natural_response_rejects_system_paths():
     assert (
@@ -41,16 +26,28 @@ def test_natural_response_rejects_system_paths():
 
 @pytest.mark.asyncio
 async def test_memory_recall_fallback_is_natural(monkeypatch):
-    monkeypatch.setattr(memory_service, "search_memories", lambda query, limit=10: [])
-    monkeypatch.setattr(
-        memory_service,
-        "_oblivia_results",
-        lambda query, limit=8: [
-            _memory_result(
-                "La mémoire de Néron est centralisée dans /etc/neron/server/memory avec SQLite et Obsidian."
+    class Registry:
+        def by_type(self, provider_type):
+            return [ProviderInfo(
+                name="oblivia",
+                type=provider_type,
+                status="healthy",
+                capabilities=["recall"],
+            )]
+
+        async def execute_via_a2a(self, _name, request):
+            return ProviderResponse(
+                provider="oblivia",
+                action=request.action,
+                status="healthy",
+                result={
+                    "answer": "Je me souviens que ma mémoire repose sur SQLite et Obsidian.",
+                    "facts": [],
+                    "results": [],
+                },
             )
-        ],
-    )
+
+    monkeypatch.setattr(memory_service, "provider_registry", Registry())
 
     result = await build_memory_response_async(
         "recall",
@@ -58,7 +55,7 @@ async def test_memory_recall_fallback_is_natural(monkeypatch):
         use_llm=False,
     )
 
-    assert result["memory_response_mode"] == "memory_default"
+    assert result["memory_response_mode"] == "provider"
     assert result["memory_llm_used"] is False
     assert result["response"].startswith("Je me souviens")
     assert "SQLite" in result["response"]
@@ -67,25 +64,37 @@ async def test_memory_recall_fallback_is_natural(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_memory_recall_can_use_valid_llm(monkeypatch):
-    monkeypatch.setattr(memory_service, "search_memories", lambda query, limit=10: [])
-    monkeypatch.setattr(
-        memory_service,
-        "_oblivia_results",
-        lambda query, limit=8: [_memory_result("Oblivia devient le chef de mémoire de Néron.")],
-    )
+async def test_memory_recall_uses_provider_answer_without_llm(monkeypatch):
+    class Registry:
+        def by_type(self, provider_type):
+            return [ProviderInfo(
+                name="oblivia",
+                type=provider_type,
+                status="healthy",
+                capabilities=["recall"],
+            )]
 
-    async def reformulate(**_kwargs):
-        return "Je me souviens qu'Oblivia porte la mémoire centrale de Néron."
+        async def execute_via_a2a(self, _name, request):
+            return ProviderResponse(
+                provider="oblivia",
+                action=request.action,
+                status="healthy",
+                result={
+                    "answer": "Je me souviens qu'Oblivia porte la mémoire centrale de Néron.",
+                    "facts": [],
+                    "results": [],
+                },
+            )
 
-    monkeypatch.setattr(memory_service, "_try_memory_llm", reformulate)
+    monkeypatch.setattr(memory_service, "provider_registry", Registry())
 
     result = await build_memory_response_async(
         "recall",
         "Que sais-tu de ta mémoire ?",
     )
 
-    assert result["memory_llm_used"] is True
+    assert result["memory_llm_used"] is False
+    assert result["a2a_used"] is True
     assert result["response"].startswith("Je me souviens")
 
 

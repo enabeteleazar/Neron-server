@@ -61,9 +61,16 @@ def test_subscriptions_are_idempotent_and_removable():
 @pytest.mark.asyncio
 async def test_memory_save_emits_update_after_persistence(monkeypatch, tmp_path):
     from agents.builtin.core import memory_agent
+    from core.providers.memory import ObliviaProvider
+    from core.providers.registry import ProviderRegistry
+    from memory.oblivia.manager import ObliviaMemoryManager
 
-    monkeypatch.setattr(memory_agent, "DB_PATH", str(tmp_path / "memory.db"))
-    memory_agent.init_db()
+    registry = ProviderRegistry()
+    registry.register(ObliviaProvider(ObliviaMemoryManager(
+        sqlite_path=str(tmp_path / "memory.db"),
+        obsidian_path=str(tmp_path / "obsidian"),
+    )))
+    monkeypatch.setattr(memory_agent, "provider_registry", registry)
     emitted = []
 
     async def capture(event):
@@ -77,7 +84,7 @@ async def test_memory_save_emits_update_after_persistence(monkeypatch, tmp_path)
         {"source": "test"},
     )
 
-    assert row_id > 0
+    assert row_id
     assert emitted[0].type == "memory.updated"
     assert emitted[0].payload["record_id"] == row_id
 

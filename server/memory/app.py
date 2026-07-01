@@ -10,9 +10,8 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from core.modules.oblivia.obsidian_adapter import ObsidianMemoryAdapter
-from core.modules.oblivia.schemas import MemoryCategory, MemoryRecord
-from core.modules.oblivia.sqlite_adapter import SQLiteMemoryAdapter
+from memory.oblivia.manager import ObliviaMemoryManager
+from memory.oblivia.schemas import MemoryCategory, MemoryQuery, MemoryRecord
 from server.common.registry.client import RegistryClient
 
 
@@ -45,20 +44,20 @@ class RecallRequest(BaseModel):
     limit: int = Field(default=10, ge=1, le=100)
 
 
-class MemoryService:
-    """Lightweight Oblivia-compatible facade over SQLite and Obsidian."""
+class ForgetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
 
-    _OBSIDIAN_CATEGORIES = {
-        "self",
-        "project",
-        "decision",
-        "lesson",
-        "agent",
-    }
+    query: str = Field(min_length=1)
+
+
+class MemoryService:
+    """HTTP facade over the single Oblivia source of truth."""
 
     def __init__(self, sqlite_path: Path, obsidian_path: Path) -> None:
-        self.sqlite = SQLiteMemoryAdapter(str(sqlite_path))
-        self.obsidian = ObsidianMemoryAdapter(str(obsidian_path))
+        self.oblivia = ObliviaMemoryManager(
+            sqlite_path=str(sqlite_path),
+            obsidian_path=str(obsidian_path),
+        )
 
     def remember(self, request: RememberRequest) -> dict[str, Any]:
         record = MemoryRecord(
@@ -66,50 +65,18 @@ class MemoryService:
             category=request.category,
             metadata=request.metadata,
         )
-        self.sqlite.add(record)
-        if record.category in self._OBSIDIAN_CATEGORIES:
-            self.obsidian.add(record)
-        return record.model_dump(mode="json")
+        return self.oblivia.remember(record).model_dump(mode="json")
 
     def search(self, query: str, limit: int) -> list[dict[str, Any]]:
-        results: list[dict[str, Any]] = []
-        for row in self.sqlite.search(query, limit):
-            results.append(
-                {
-                    "record": MemoryRecord(
-                        id=row[0],
-                        source=row[1],
-                        category=row[2],
-                        content=row[3],
-                    ).model_dump(mode="json"),
-                    "backend": "sqlite",
-                    "score": 1.0,
-                }
+        return [
+            result.model_dump(mode="json")
+            for result in self.oblivia.recall(
+                MemoryQuery(query=query, limit=limit)
             )
-
-        remaining = max(0, limit - len(results))
-        if remaining:
-            for item in self.obsidian.search(query, remaining):
-                results.append(
-                    {
-                        "record": MemoryRecord(
-                            source="obsidian",
-                            category="project",
-                            content=item["content"],
-                            metadata={"path": item["path"]},
-                        ).model_dump(mode="json"),
-                        "backend": "obsidian",
-                        "score": item["score"],
-                    }
-                )
-        return results
+        ]
 
     def status(self) -> dict[str, Any]:
-        return {
-            "ok": True,
-            "sqlite": self.sqlite.status(),
-            "obsidian": self.obsidian.status(),
-        }
+        return self.oblivia.status().model_dump(mode="json")
 
 
 def create_memory_service() -> MemoryService:
@@ -182,7 +149,20 @@ async def remember(request: Request, payload: RememberRequest) -> dict[str, Any]
 @app.post("/memory/recall")
 async def recall(request: Request, payload: RecallRequest) -> dict[str, Any]:
     results = _service(request).search(payload.query, payload.limit)
-    return {"count": len(results), "results": results}
+    knowledge = _service(request).oblivia.recall_knowledge(
+        payload.query,
+        limit=payload.limit,
+    )
+    return {
+        "count": len(results),
+        "results": results,
+        **knowledge,
+    }
+
+
+@app.post("/memory/forget")
+async def forget(request: Request, payload: ForgetRequest) -> dict[str, Any]:
+    return _service(request).oblivia.forget(payload.query)
 
 
 @app.get("/memory/search")

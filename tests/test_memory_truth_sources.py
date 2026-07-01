@@ -1,43 +1,48 @@
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
 from agents.builtin.core import memory_agent
 from agents.builtin.core.memory_agent import MemoryAgent
+from core.providers.memory import ObliviaProvider
+from core.providers.registry import ProviderRegistry
+from memory.oblivia.manager import ObliviaMemoryManager
 
 
 @pytest.fixture
-def isolated_memory_db(monkeypatch, tmp_path):
-    db_path = tmp_path / "memory.db"
-    monkeypatch.setattr(memory_agent, "DB_PATH", str(db_path))
-    memory_agent.init_db()
-    return db_path
+def isolated_memory(monkeypatch, tmp_path):
+    manager = ObliviaMemoryManager(
+        sqlite_path=str(tmp_path / "memory.db"),
+        obsidian_path=str(tmp_path / "obsidian"),
+    )
+    registry = ProviderRegistry()
+    registry.register(ObliviaProvider(manager))
+    monkeypatch.setattr(memory_agent, "provider_registry", registry)
+    return manager
 
 
 @pytest.mark.asyncio
-async def test_memory_agent_supplies_persisted_context(isolated_memory_db):
+async def test_memory_agent_supplies_context_via_oblivia(isolated_memory):
     agent = MemoryAgent()
-    agent.store("Mon projet favori est Atlas", "Information memorisee.")
+    await agent.save("Mon projet favori est Atlas", "Information mémorisée.")
 
     context = await agent.get_context("Atlas")
 
     assert context is not None
-    assert context.startswith("Historique mémoire pertinent")
+    assert context.startswith("Mémoire pertinente")
     assert "Mon projet favori est Atlas" in context
 
 
 @pytest.mark.asyncio
-async def test_memory_agent_async_save_uses_persistent_store(isolated_memory_db):
+async def test_memory_agent_async_save_uses_oblivia_source_of_truth(
+    isolated_memory,
+):
     agent = MemoryAgent()
 
-    row_id = await agent.save("question", "réponse", {"source": "test"})
+    record_id = await agent.save("question", "réponse", {"source": "test"})
+    recent = isolated_memory.recent(limit=1)
 
-    assert row_id > 0
-    with sqlite3.connect(isolated_memory_db) as connection:
-        row = connection.execute(
-            "SELECT input, response FROM memory WHERE id = ?",
-            (row_id,),
-        ).fetchone()
-    assert row == ("question", "réponse")
+    assert record_id
+    assert recent[0].record.id == record_id
+    assert recent[0].record.metadata == {}
+    assert "Utilisateur: question" in recent[0].record.content
