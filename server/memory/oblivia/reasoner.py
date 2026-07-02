@@ -7,6 +7,7 @@ import unicodedata
 from typing import TYPE_CHECKING
 
 from .ontology import PREDICATES
+from .predicate_discovery import DEVICE_SLOTS, canonical_slot
 from .schemas import LifecycleKnowledgeFact
 from .timeline import project_unique_timeline
 
@@ -320,7 +321,127 @@ class MemoryReasoner:
                 else "Je ne connais encore aucun de tes achats."
             )
             return self._result(answer, purchases)
+        personal_query = self._personal_query(query)
+        if personal_query is not None:
+            slot, mode = personal_query
+            relevant = self._slot_facts(facts, slot)
+            if relevant:
+                current = relevant[-1]
+                if mode == "color":
+                    color = self._color(current.object)
+                    answer = (
+                        f"Ton {self._slot_label(slot)} est {color}."
+                        if color
+                        else f"Je sais que ton {self._slot_label(slot)} est "
+                        f"{current.object}, sans couleur plus précise."
+                    )
+                elif mode == "name":
+                    answer = (
+                        f"Ton {self._slot_label(slot)} s'appelle "
+                        f"{current.object}."
+                    )
+                elif mode == "where":
+                    answer = (
+                        f"Ton {self._slot_label(slot)} est {current.object}."
+                    )
+                else:
+                    answer = (
+                        f"Ton {self._slot_label(slot)} est {current.object}."
+                    )
+                return self._result(answer, [current])
         return None
+
+    @staticmethod
+    def _personal_query(query: str) -> tuple[str, str] | None:
+        patterns = (
+            ("color", r"^de quelle couleur est (?:mon|ma|mes)\s+(.+)$"),
+            ("where", r"^ou est (?:mon|ma|mes)\s+(.+)$"),
+            ("name", r"^comment s appelle (?:mon|ma|mes)\s+(.+)$"),
+            ("value", r"^quel(?:le)? est (?:mon|ma|mes)\s+(.+)$"),
+            (
+                "value",
+                r"^quel(?:le)? ((?:systeme|solution|appareil).+?) "
+                r"(?:que )?j utilise$",
+            ),
+        )
+        for mode, pattern in patterns:
+            match = re.match(pattern, query)
+            if not match:
+                continue
+            concept = match.group(1)
+            slot = canonical_slot(concept)
+            return (f"{slot}:name" if mode == "name" else slot, mode)
+        return None
+
+    @staticmethod
+    def _slot_facts(
+        facts: list[LifecycleKnowledgeFact],
+        slot: str,
+    ) -> list[LifecycleKnowledgeFact]:
+        base_slot = slot.removesuffix(":name")
+        relevant = [
+            fact
+            for fact in facts
+            if fact.subject == "user"
+            and fact.is_current
+            and not fact.retracted
+            and not fact.conflict
+            and (
+                (
+                    fact.predicate == "personal_attribute"
+                    and fact.metadata.get("attribute_slot") == slot
+                )
+                or (
+                    base_slot == "vehicle"
+                    and fact.predicate == "owns_vehicle"
+                )
+                or (
+                    (base_slot in DEVICE_SLOTS or base_slot == "device")
+                    and fact.predicate in {"owns_device", "uses_device"}
+                    and (
+                        base_slot == "device"
+                        or fact.metadata.get("device_slot") == base_slot
+                    )
+                )
+                or (
+                    base_slot in {"pet", "dog", "cat"}
+                    and fact.predicate == "has_pet"
+                    and (
+                        base_slot == "pet"
+                        or fact.metadata.get("pet_slot") == base_slot
+                    )
+                )
+            )
+        ]
+        return sorted(relevant, key=lambda fact: fact.updated_at)
+
+    @staticmethod
+    def _color(value: str) -> str | None:
+        normalized = _normalize(value)
+        colors = (
+            "bleu", "bleue", "rouge", "vert", "verte", "noir", "noire",
+            "blanc", "blanche", "gris", "grise", "jaune", "orange",
+        )
+        return next((color for color in colors if color in normalized.split()), None)
+
+    @staticmethod
+    def _slot_label(slot: str) -> str:
+        labels = {
+            "vehicle": "véhicule",
+            "phone": "téléphone",
+            "laptop": "ordinateur portable",
+            "desktop": "ordinateur",
+            "internet_box": "box internet",
+            "home_automation": "solution domotique",
+            "containers": "système de conteneurs",
+            "operating_system": "système d’exploitation",
+            "favorite_movie": "film préféré",
+            "favorite_game": "jeu préféré",
+            "favorite_color": "couleur préférée",
+            "pet": "animal",
+        }
+        clean = slot.removesuffix(":name")
+        return labels.get(clean, clean.replace("_", " "))
 
     @staticmethod
     def _result(

@@ -76,6 +76,7 @@ PREDICATES: dict[str, PredicateDefinition] = {
     "owns_vehicle": PredicateDefinition(
         "owns_vehicle", "many", "accumulate", True, "ownership",
         {"fr": "véhicule possédé"},
+        replacement_scope_key="vehicle_slot",
     ),
     "owns_device": PredicateDefinition(
         "owns_device", "many", "accumulate", True, "devices",
@@ -124,6 +125,11 @@ PREDICATES: dict[str, PredicateDefinition] = {
     "is": PredicateDefinition(
         "is", "many", "accumulate", True, "identity",
         {"fr": "est"},
+    ),
+    "personal_attribute": PredicateDefinition(
+        "personal_attribute", "many", "accumulate", True, "personal",
+        {"fr": "attribut personnel"},
+        replacement_scope_key="attribute_slot",
     ),
 }
 

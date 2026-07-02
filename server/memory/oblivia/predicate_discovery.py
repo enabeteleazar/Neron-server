@@ -91,6 +91,31 @@ class PredicateDiscovery:
         value = text.strip()
         patterns = (
             (
+                "replacement",
+                re.compile(
+                    r"^j['’]ai remplac[ée]\s+(?:(?:mon|ma|mes)\s+)?"
+                    r"(?P<concept>.+?)\s+par\s+(?P<object>.+?)[.!?]*$",
+                    re.IGNORECASE,
+                ),
+            ),
+            (
+                "named",
+                re.compile(
+                    r"^(?:(?:mon|ma|mes)\s+)?(?P<concept>.+?)\s+"
+                    r"s['’]appelle\s+(?P<object>.+?)[.!?]*$",
+                    re.IGNORECASE,
+                ),
+            ),
+            (
+                "attribute",
+                re.compile(
+                    r"^(?:mon|ma|mes)\s+(?P<concept>.+?)\s+"
+                    r"(?:est|sont)\s+(?:maintenant\s+)?"
+                    r"(?P<object>.+?)[.!?]*$",
+                    re.IGNORECASE,
+                ),
+            ),
+            (
                 "purchase",
                 re.compile(
                     r"^j['’]ai achet[ée]\s+(?P<object>.+?)[.!?]*$",
@@ -146,11 +171,17 @@ class PredicateDiscovery:
             object_name = _clean_object(raw_object)
             if not object_name:
                 return []
+            concept = (
+                match.groupdict().get("concept")
+                if "concept" in match.groupdict()
+                else None
+            )
             return self._facts(
                 object_name,
                 operation=operation,
                 source=source,
                 raw_text=value,
+                concept=concept,
             )
         return []
 
@@ -161,8 +192,68 @@ class PredicateDiscovery:
         operation: str,
         source: str,
         raw_text: str,
+        concept: str | None = None,
     ) -> list[KnowledgeFact]:
+        slot = canonical_slot(concept or object_name)
+        if operation == "named":
+            return [
+                _attribute_fact(
+                    slot=f"{slot}:name",
+                    value=object_name,
+                    source=source,
+                    raw_text=raw_text,
+                    concept=concept or slot,
+                )
+            ]
+
+        if operation == "attribute" and slot == "vehicle":
+            if _looks_like_color(object_name):
+                object_name = f"{_vehicle_kind(concept)} {object_name}"
+            return [
+                KnowledgeFact(
+                    subject="user",
+                    predicate="owns_vehicle",
+                    object=object_name,
+                    source=source,
+                    raw_text=raw_text,
+                    metadata={
+                        "vehicle_slot": "vehicle",
+                        "attribute_slot": slot,
+                        "discovered_by": "predicate_discovery",
+                    },
+                )
+            ]
+
+        if operation in {"attribute", "replacement"} and slot in DEVICE_SLOTS:
+            return [
+                KnowledgeFact(
+                    subject="user",
+                    predicate="owns_device",
+                    object=object_name,
+                    source=source,
+                    raw_text=raw_text,
+                    metadata={
+                        "device_slot": slot,
+                        "discovered_by": "predicate_discovery",
+                    },
+                )
+            ]
+
+        if operation in {"attribute", "replacement"}:
+            return [
+                _attribute_fact(
+                    slot=slot,
+                    value=object_name,
+                    source=source,
+                    raw_text=raw_text,
+                    concept=concept or slot,
+                )
+            ]
+
         device = _classify_device(object_name)
+        inferred_slot = canonical_slot(object_name)
+        if device is None and inferred_slot in DEVICE_SLOTS:
+            device = {"slot": inferred_slot, "type": inferred_slot}
         if operation in {"phone", "computer", "uses"} or device:
             predicate = "uses_device" if operation == "uses" else "owns_device"
             device_slot = (
@@ -174,9 +265,18 @@ class PredicateDiscovery:
                 "device_slot": device_slot,
                 "discovered_by": "predicate_discovery",
             }
-        elif _contains(object_name, ("voiture", "vehicule", "véhicule")):
+        elif canonical_slot(object_name) == "vehicle":
             predicate = "owns_vehicle"
-            metadata = {"discovered_by": "predicate_discovery"}
+            metadata = {
+                "vehicle_slot": "vehicle",
+                "discovered_by": "predicate_discovery",
+            }
+        elif canonical_slot(object_name) in {"pet", "dog", "cat"}:
+            predicate = "has_pet"
+            metadata = {
+                "pet_slot": canonical_slot(object_name),
+                "discovered_by": "predicate_discovery",
+            }
         else:
             predicate = "owns_object"
             metadata = {"discovered_by": "predicate_discovery"}
@@ -261,19 +361,21 @@ def _contains(value: str, tokens: tuple[str, ...]) -> bool:
 
 
 def _classify_device(value: str) -> dict[str, str] | None:
-    normalized = value.casefold()
+    normalized = _normalize(value)
     if any(token in normalized for token in ("iphone", "smartphone", "téléphone")):
         return {
             "slot": "phone",
             "type": "smartphone",
             **({"brand": "Apple"} if "iphone" in normalized else {}),
         }
-    if any(token in normalized for token in ("ordinateur", "macbook", "laptop", " pc")):
+    if any(token in normalized for token in ("ordinateur portable", "macbook", "laptop")):
         return {
-            "slot": "computer",
+            "slot": "laptop",
             "type": "computer",
             **({"brand": "Apple"} if "macbook" in normalized else {}),
         }
+    if any(token in normalized for token in ("ordinateur fixe", "desktop", " pc", "pc ")):
+        return {"slot": "desktop", "type": "computer"}
     if any(token in normalized for token in ("ipad", "tablette")):
         return {
             "slot": "tablet",
@@ -281,3 +383,88 @@ def _classify_device(value: str) -> dict[str, str] | None:
             **({"brand": "Apple"} if "ipad" in normalized else {}),
         }
     return None
+
+
+SLOT_ALIASES: dict[str, tuple[str, ...]] = {
+    "device": ("appareil",),
+    "vehicle": ("vehicule", "camion", "voiture", "utilitaire"),
+    "phone": ("telephone", "smartphone", "iphone"),
+    "laptop": ("ordinateur portable", "portable", "laptop", "macbook"),
+    "desktop": ("ordinateur fixe", "pc fixe", "desktop", "ordinateur", "pc"),
+    "tv": ("television", "televiseur", "tv"),
+    "watch": ("montre",),
+    "headphones": ("casque",),
+    "console": ("console",),
+    "nas": ("nas",),
+    "printer": ("imprimante",),
+    "house": ("maison",),
+    "roof": ("toit", "toiture"),
+    "gate": ("portail",),
+    "kitchen": ("cuisine",),
+    "living_room": ("salon",),
+    "bedroom": ("chambre",),
+    "pet": ("animal", "animaux"),
+    "dog": ("chien",),
+    "cat": ("chat",),
+    "internet_box": ("box internet", "routeur internet", "box"),
+    "router": ("routeur",),
+    "switch": ("switch", "commutateur"),
+    "server": ("serveur",),
+    "home_automation": ("solution domotique", "systeme domotique", "domotique", "home assistant"),
+    "containers": ("systeme de conteneurs", "conteneurs", "docker"),
+    "operating_system": ("systeme d exploitation", "os", "ubuntu"),
+    "favorite_movie": ("film prefere",),
+    "favorite_game": ("jeu prefere",),
+    "favorite_color": ("couleur preferee",),
+}
+
+DEVICE_SLOTS = {
+    "phone", "laptop", "desktop", "tv", "watch", "headphones",
+    "console", "nas", "printer", "internet_box", "router", "switch",
+    "server",
+}
+
+
+def canonical_slot(value: str) -> str:
+    normalized = _normalize(value)
+    for slot, aliases in SLOT_ALIASES.items():
+        if normalized == slot or any(alias in normalized for alias in aliases):
+            return slot
+    return re.sub(r"[^a-z0-9]+", "_", normalized).strip("_") or "attribute"
+
+
+def _attribute_fact(
+    *,
+    slot: str,
+    value: str,
+    source: str,
+    raw_text: str,
+    concept: str,
+) -> KnowledgeFact:
+    return KnowledgeFact(
+        subject="user",
+        predicate="personal_attribute",
+        object=value,
+        source=source,
+        raw_text=raw_text,
+        metadata={
+            "attribute_slot": slot,
+            "concept": concept.strip(),
+            "discovered_by": "predicate_discovery",
+        },
+    )
+
+
+def _looks_like_color(value: str) -> bool:
+    return _normalize(value) in {
+        "bleu", "bleue", "rouge", "vert", "verte", "noir", "noire",
+        "blanc", "blanche", "gris", "grise", "jaune", "orange",
+    }
+
+
+def _vehicle_kind(value: str | None) -> str:
+    normalized = _normalize(value or "")
+    return next(
+        (kind for kind in ("camion", "voiture", "utilitaire") if kind in normalized),
+        "véhicule",
+    )
