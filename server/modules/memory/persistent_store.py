@@ -1,4 +1,4 @@
-# core/memory/persistent_store.py
+"""Persistent runtime event store owned by the canonical memory module."""
 # Mémoire persistante SQLite — zéro ORM, thread-safe, WAL mode.
 # Tables : sessions | turns | facts | events
 from __future__ import annotations

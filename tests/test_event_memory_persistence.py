@@ -9,7 +9,7 @@ def test_persistent_store_migrates_incompatible_legacy_event_table(
     monkeypatch,
     tmp_path,
 ):
-    from core.memory import persistent_store
+    from modules.memory import persistent_store
 
     db_path = tmp_path / "memory.db"
     with sqlite3.connect(db_path) as connection:

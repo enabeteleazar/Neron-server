@@ -19,14 +19,15 @@ ARCHITECTURE_GROUPS = {
         "goal/system",
     ],
     "Memoire": [
-        "core/memory",
+        "modules/memory",
+        "memory",
+        "core/providers/memory",
     ],
     "SelfModel": [
         "core/self_model",
     ],
     "WorldModel": [
         "core/world_model",
-        "core/memory/world_model",
     ],
     "Runtime": [
         "core/runtime",
