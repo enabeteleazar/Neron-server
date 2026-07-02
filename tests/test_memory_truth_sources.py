@@ -6,7 +6,7 @@ from agents.builtin.core import memory_agent
 from agents.builtin.core.memory_agent import MemoryAgent
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia.manager import ObliviaMemoryManager
+from memory.oblivia import ObliviaMemoryManager
 
 
 @pytest.fixture

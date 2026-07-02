@@ -10,8 +10,12 @@ Goal → Provider Registry → A2A → Oblivia
 ```
 
 Le Core détecte et route les intentions. Il ne stocke, n’interprète et ne
-reformule aucune connaissance. Les anciens imports
-`core.modules.oblivia.*` sont uniquement des façades de compatibilité.
+reformule aucune connaissance. Il accède à Oblivia exclusivement via le
+provider enregistré et A2A.
+
+L’API Python publique est `memory.oblivia`. Les adapters SQLite, Obsidian et
+les composants sémantiques sont des détails d’implémentation et ne doivent
+pas être importés par le Core.
 
 ## Modèle
 
@@ -50,10 +54,31 @@ préférences actives/anciennes. Les faits rétractés ou conflictuels sont excl
 des réponses normales. Les `MemoryRecord` système/projet ne sont jamais
 injectés dans une synthèse utilisateur.
 
+Il fournit aussi des vues déterministes sans LLM pour l’audit personnel
+(prédicats, catégories, faits obsolètes, rétractations et conflits), les
+relations familiales avec réponses prudentes sur le foyer/dépendance, et le
+dernier fait personnel appris. Ces vues ne consultent jamais les
+`MemoryRecord` projet/système.
+
 Pour les historiques `lives_at` et `works_at`, la projection utilisateur est
 d’abord triée par bornes temporelles, puis rendue unique par valeur normalisée
 en conservant sa première apparition. Cette projection ne modifie jamais les
 faits d’audit.
+
+## Découverte de prédicats
+
+`predicate_discovery.py` classe les déclarations claires de possession,
+d’usage et d’achat. Il réutilise les prédicats proches de l’ontologie et
+conserve les concepts nouveaux clairs comme candidats ; les concepts ambigus
+requièrent une confirmation. Les catégories `devices`, `possessions` et
+`purchases` couvrent notamment `owns_device`, `owns_object`, `purchased` et
+`uses_device`.
+
+`owns_device` est `accumulate`, avec remplacement ontologique par
+`device_slot` : changer de téléphone clôt le téléphone précédent sans
+désactiver l’ordinateur ou la tablette. `purchased` reste `accumulate` dans
+cette phase afin de fournir un historique idempotent sans activer le
+lifecycle `event`.
 
 ## Extensions prévues
 

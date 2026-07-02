@@ -1,4 +1,4 @@
-from memory.oblivia.obsidian_adapter import ObsidianMemoryAdapter
+from ..obsidian_adapter import ObsidianMemoryAdapter
 from memory.oblivia.semantic.semantic_search import ObsidianSemanticSearch
 
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from core.modules.oblivia.manager import ObliviaMemoryManager
-from core.modules.oblivia.schemas import MemoryRecord
-from core.modules.oblivia.text_utils import normalize_text
+from memory.oblivia import ObliviaMemoryManager
+from memory.oblivia import MemoryRecord
+from memory.oblivia.text_utils import normalize_text
 
 
 MEMORY_CONTENT = (
@@ -27,7 +27,7 @@ def test_normalize_text_ignores_accents_case_and_extra_spaces():
 
 def test_manager_search_is_accent_insensitive(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "core.modules.oblivia.semantic.vector_index.LocalEmbedder",
+        "memory.oblivia.semantic.vector_index.LocalEmbedder",
         DummyEmbedder,
     )
 

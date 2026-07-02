@@ -8,8 +8,8 @@ from core.modules.memory import detect_memory_intent
 from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia.manager import ObliviaMemoryManager
-from memory.oblivia.schemas import MemoryRecord
+from memory.oblivia import ObliviaMemoryManager
+from memory.oblivia import MemoryRecord
 
 
 class ForbiddenAgentRouter:

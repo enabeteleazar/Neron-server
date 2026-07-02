@@ -6,6 +6,7 @@ import re
 import unicodedata
 from typing import TYPE_CHECKING
 
+from .ontology import PREDICATES
 from .schemas import LifecycleKnowledgeFact
 from .timeline import project_unique_timeline
 
@@ -38,6 +39,13 @@ class MemoryReasoner:
         "presente moi",
         "que sais tu de moi",
         "fais un resume de ce que tu sais sur moi",
+        "tu me connais bien",
+        "est ce que tu te souviens de moi",
+        "as tu appris des choses sur moi",
+        "qu est ce que tu retiens principalement de moi",
+        "qu est ce qui me caracterise",
+        "que pourrais tu raconter sur moi a quelqu un",
+        "si tu devais me presenter que dirais tu",
     }
     _spouse_questions = {"qui est ma femme", "qui est mon epouse"}
     _works_history_questions = {"ou ai je travaille"}
@@ -46,6 +54,48 @@ class MemoryReasoner:
         "j aime quoi",
     }
     _likes_history_questions = {"qu est ce que j aimais avant"}
+    _audit_questions = {
+        "montre moi tout ce que tu sais",
+        "montre toute ma memoire",
+        "quels souvenirs possedes tu",
+    }
+    _count_questions = {"combien de souvenirs as tu sur moi"}
+    _predicate_questions = {"quels predicats connais tu sur moi"}
+    _category_questions = {"quels types d informations connais tu"}
+    _stale_questions = {
+        "quels anciens souvenirs possedes tu",
+        "quelles informations ne sont plus actuelles",
+        "quelles informations sont obsoletes",
+        "y a t il des donnees obsoletes",
+    }
+    _retracted_questions = {"y a t il des souvenirs retractes"}
+    _conflict_questions = {
+        "ai je des informations contradictoires",
+        "as tu detecte des conflits",
+        "as tu des informations douteuses",
+    }
+    _family_questions = {
+        "qui fait partie de ma famille",
+        "qui partage ma vie",
+        "qui fait partie de mon foyer",
+        "qui est lie a moi",
+    }
+    _dependant_questions = {"qui depend de moi"}
+    _household_questions = {"qui habite avec moi"}
+    _moving_questions = {
+        "si je demenage qui demenage probablement avec moi",
+    }
+    _latest_questions = {
+        "quelle est la derniere chose importante que tu as apprise sur moi",
+    }
+    _phone_questions = {
+        "quel est mon telephone",
+        "quel telephone j utilise",
+        "quel smartphone ai je",
+        "tu te souviens de mon telephone",
+    }
+    _device_questions = {"quels appareils je possede"}
+    _purchase_questions = {"qu est ce que j ai achete"}
 
     def __init__(self, store: SQLiteMemoryAdapter) -> None:
         self.store = store
@@ -112,6 +162,164 @@ class MemoryReasoner:
                 else "Je ne connais aucune de tes anciennes préférences."
             )
             return self._result(answer, relevant)
+        personal = self._personal_facts(facts)
+        if query in self._audit_questions:
+            return self._result(self._audit(personal), personal)
+        if query in self._count_questions:
+            return self._result(
+                f"Je connais {len(personal)} "
+                f"fait{'s' if len(personal) != 1 else ''} structuré"
+                f"{'s' if len(personal) != 1 else ''} sur toi.",
+                personal,
+            )
+        if query in self._predicate_questions:
+            predicates = sorted({fact.predicate for fact in personal})
+            answer = (
+                "Je connais ces prédicats sur toi : "
+                + ", ".join(predicates)
+                + "."
+                if predicates
+                else "Je ne connais encore aucun prédicat sur toi."
+            )
+            return self._result(answer, personal)
+        if query in self._category_questions:
+            categories = sorted(
+                {
+                    PREDICATES[fact.predicate].category
+                    for fact in personal
+                    if fact.predicate in PREDICATES
+                }
+            )
+            answer = (
+                "Je connais des informations de type : "
+                + ", ".join(categories)
+                + "."
+                if categories
+                else "Je ne connais encore aucun type d’information sur toi."
+            )
+            return self._result(answer, personal)
+        if query in self._stale_questions:
+            stale = sorted(
+                (
+                    fact
+                    for fact in personal
+                    if not fact.is_current
+                    and not fact.retracted
+                    and not fact.conflict
+                ),
+                key=_timeline_key,
+            )
+            answer = (
+                "Informations qui ne sont plus actuelles : "
+                + self._describe(stale)
+                + "."
+                if stale
+                else "Je ne connais aucune information obsolète sur toi."
+            )
+            return self._result(answer, stale)
+        if query in self._retracted_questions:
+            retracted = [fact for fact in personal if fact.retracted]
+            answer = (
+                "Souvenirs rétractés : " + self._describe(retracted) + "."
+                if retracted
+                else "Je n’ai aucun souvenir rétracté sur toi."
+            )
+            return self._result(answer, retracted)
+        if query in self._conflict_questions:
+            conflicts = [fact for fact in personal if fact.conflict]
+            answer = (
+                "J’ai détecté des informations contradictoires : "
+                + self._describe(conflicts)
+                + "."
+                if conflicts
+                else "Je n’ai détecté aucun conflit dans tes informations."
+            )
+            return self._result(answer, conflicts)
+        if query in self._family_questions:
+            return self._result(*self._family(facts))
+        if query in self._dependant_questions:
+            children = self._current(facts, "has_child")
+            answer = (
+                f"Je sais que tu as {self._number(len(children))} enfants : "
+                f"{_join_french([fact.object for fact in children])}, "
+                "mais je ne sais pas s’ils dépendent administrativement "
+                "ou financièrement de toi."
+                if children
+                else "Je ne sais pas qui dépend de toi."
+            )
+            return self._result(answer, children)
+        if query in self._household_questions:
+            return self._result(
+                "Je ne sais pas précisément qui habite avec toi. "
+                "Je connais ta famille, mais tu ne m’as pas dit "
+                "explicitement qui vit dans ton foyer.",
+                self._family_facts(facts),
+            )
+        if query in self._moving_questions:
+            return self._result(
+                "Probablement les personnes de ton foyer, mais je ne sais "
+                "pas encore qui vit officiellement avec toi.",
+                self._family_facts(facts),
+            )
+        if query in self._latest_questions:
+            relevant = [
+                fact
+                for fact in personal
+                if fact.is_current
+                and not fact.retracted
+                and not fact.conflict
+                and fact.predicate != "relation_to_user"
+            ]
+            latest = max(relevant, key=lambda fact: fact.updated_at) if relevant else None
+            answer = (
+                "La dernière information personnelle importante que j’ai "
+                f"apprise est : {self._describe([latest])}."
+                if latest
+                else "Je n’ai encore appris aucune information personnelle "
+                "importante sur toi."
+            )
+            return self._result(answer, [latest] if latest else [])
+        if query in self._phone_questions:
+            devices = [
+                fact
+                for fact in facts
+                if fact.subject == "user"
+                and fact.predicate in {"owns_device", "uses_device"}
+                and fact.metadata.get("device_slot") == "phone"
+                and fact.is_current
+                and not fact.retracted
+                and not fact.conflict
+            ]
+            preferred = next(
+                (
+                    fact
+                    for fact in reversed(devices)
+                    if fact.predicate == "uses_device"
+                ),
+                devices[-1] if devices else None,
+            )
+            answer = (
+                f"Ton téléphone est un {preferred.object}."
+                if preferred
+                else "Je ne connais pas ton téléphone actuel."
+            )
+            return self._result(answer, [preferred] if preferred else [])
+        if query in self._device_questions:
+            devices = self._current(facts, "owns_device")
+            answer = (
+                f"Tu possèdes {_join_french([f'un {item.object}' for item in devices])}."
+                if devices
+                else "Je ne connais aucun appareil que tu possèdes."
+            )
+            return self._result(answer, devices)
+        if query in self._purchase_questions:
+            purchases = self._current(facts, "purchased")
+            answer = (
+                f"Tu as acheté {_join_french([f'un {item.object}' for item in purchases])}."
+                if purchases
+                else "Je ne connais encore aucun de tes achats."
+            )
+            return self._result(answer, purchases)
         return None
 
     @staticmethod
@@ -140,6 +348,89 @@ class MemoryReasoner:
             and not fact.retracted
             and not fact.conflict
         ]
+
+    @staticmethod
+    def _personal_facts(
+        facts: list[LifecycleKnowledgeFact],
+    ) -> list[LifecycleKnowledgeFact]:
+        return [
+            fact
+            for fact in facts
+            if (
+                fact.subject == "user"
+                or fact.subject == "user.spouse"
+                or fact.predicate == "relation_to_user"
+            )
+        ]
+
+    @staticmethod
+    def _describe(facts: list[LifecycleKnowledgeFact]) -> str:
+        labels = {
+            "name": "nom",
+            "lives_at": "résidence",
+            "works_at": "emploi",
+            "spouse": "épouse",
+            "has_child": "enfant",
+            "likes": "préférence",
+            "birth_date": "date de naissance",
+            "is": "identité",
+            "children_count": "nombre d’enfants",
+            "relation_to_user": "relation",
+        }
+        return "; ".join(
+            f"{labels.get(fact.predicate, fact.predicate)} : {fact.object}"
+            for fact in facts
+        )
+
+    def _audit(self, facts: list[LifecycleKnowledgeFact]) -> str:
+        if not facts:
+            return "Je ne connais encore aucun fait personnel sur toi."
+        return "Mémoire personnelle : " + self._describe(facts) + "."
+
+    @staticmethod
+    def _number(value: int) -> str:
+        return {
+            0: "zéro",
+            1: "un",
+            2: "deux",
+            3: "trois",
+            4: "quatre",
+            5: "cinq",
+        }.get(value, str(value))
+
+    def _family_facts(
+        self,
+        facts: list[LifecycleKnowledgeFact],
+    ) -> list[LifecycleKnowledgeFact]:
+        return [
+            *self._current(facts, "spouse"),
+            *self._current(facts, "has_child"),
+        ]
+
+    def _family(
+        self,
+        facts: list[LifecycleKnowledgeFact],
+    ) -> tuple[str, list[LifecycleKnowledgeFact]]:
+        family = self._family_facts(facts)
+        spouse = [fact.object for fact in family if fact.predicate == "spouse"]
+        children = [
+            fact.object for fact in family if fact.predicate == "has_child"
+        ]
+        parts = []
+        if spouse:
+            parts.append(f"ta femme {spouse[-1]}")
+        if children:
+            parts.append(f"tes enfants {_join_french(children)}")
+        return (
+            (
+                "Les personnes de ta famille que je connais sont "
+                + _join_french(parts)
+                + "."
+            )
+            if parts
+            else "Je ne connais encore personne de ta famille.",
+            family,
+        )
 
     @staticmethod
     def _current(
@@ -202,13 +493,7 @@ class MemoryReasoner:
         if spouse:
             sentences.append(f"Ta femme s'appelle {spouse.object}.")
         if children:
-            count = {
-                1: "un",
-                2: "deux",
-                3: "trois",
-                4: "quatre",
-                5: "cinq",
-            }.get(len(children), str(len(children)))
+            count = self._number(len(children))
             sentences.append(
                 f"Tu as {count} enfant{'s' if len(children) != 1 else ''} : "
                 f"{_join_french([fact.object for fact in children])}."

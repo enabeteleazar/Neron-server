@@ -25,6 +25,7 @@ class PredicateDefinition:
     labels: dict[str, str]
     inverse_predicate: str | None = None
     recall_templates: dict[str, str] = field(default_factory=dict)
+    replacement_scope_key: str | None = None
 
 
 PREDICATES: dict[str, PredicateDefinition] = {
@@ -76,6 +77,38 @@ PREDICATES: dict[str, PredicateDefinition] = {
         "owns_vehicle", "many", "accumulate", True, "ownership",
         {"fr": "véhicule possédé"},
     ),
+    "owns_device": PredicateDefinition(
+        "owns_device", "many", "accumulate", True, "devices",
+        {"fr": "appareil possédé"},
+        replacement_scope_key="device_slot",
+    ),
+    "owns_object": PredicateDefinition(
+        "owns_object", "many", "accumulate", True, "possessions",
+        {"fr": "objet possédé"},
+    ),
+    # Deliberately accumulate for this phase: event execution remains outside
+    # scope while purchases stay historical and idempotent.
+    "purchased": PredicateDefinition(
+        "purchased", "many", "accumulate", True, "purchases",
+        {"fr": "achat"},
+    ),
+    "uses_device": PredicateDefinition(
+        "uses_device", "many", "accumulate", True, "devices",
+        {"fr": "appareil utilisé"},
+        replacement_scope_key="device_slot",
+    ),
+    "type": PredicateDefinition(
+        "type", "one", "replace", True, "devices",
+        {"fr": "type d’objet"},
+    ),
+    "brand": PredicateDefinition(
+        "brand", "one", "replace", True, "devices",
+        {"fr": "marque"},
+    ),
+    "acquired_by": PredicateDefinition(
+        "acquired_by", "one", "replace", True, "purchases",
+        {"fr": "mode d’acquisition"},
+    ),
     "projects": PredicateDefinition(
         "projects", "many", "accumulate", True, "project",
         {"fr": "projet"},
@@ -110,4 +143,3 @@ def get_predicate(predicate: str) -> PredicateDefinition:
         return PREDICATES[predicate]
     except KeyError as exc:
         raise ValueError(f"unknown ontology predicate: {predicate}") from exc
-

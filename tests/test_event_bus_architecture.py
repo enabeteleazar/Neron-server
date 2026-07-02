@@ -63,7 +63,7 @@ async def test_memory_save_emits_update_after_persistence(monkeypatch, tmp_path)
     from agents.builtin.core import memory_agent
     from core.providers.memory import ObliviaProvider
     from core.providers.registry import ProviderRegistry
-    from memory.oblivia.manager import ObliviaMemoryManager
+    from memory.oblivia import ObliviaMemoryManager
 
     registry = ProviderRegistry()
     registry.register(ObliviaProvider(ObliviaMemoryManager(

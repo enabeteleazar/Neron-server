@@ -360,7 +360,11 @@ class SQLiteMemoryAdapter:
         if lifecycle == "replace":
             return self._upsert_replace(fact, lifecycle)
         if lifecycle == "accumulate":
-            return self._upsert_accumulate(fact, lifecycle)
+            return self._upsert_accumulate(
+                fact,
+                lifecycle,
+                replacement_scope_key=definition.replacement_scope_key,
+            )
         if lifecycle == "preference":
             return self._upsert_preference(fact, lifecycle)
         raise ValueError(f"unsupported lifecycle: {lifecycle}")
@@ -434,9 +438,12 @@ class SQLiteMemoryAdapter:
         self,
         fact: KnowledgeFact,
         lifecycle: str,
+        *,
+        replacement_scope_key: str | None = None,
     ) -> LifecycleKnowledgeFact:
+        existing = self._facts_for(fact.subject, fact.predicate)
         same = self._same_object(
-            self._facts_for(fact.subject, fact.predicate),
+            existing,
             fact.object,
         )
         active = next(
@@ -445,6 +452,36 @@ class SQLiteMemoryAdapter:
         )
         if active:
             return self._noop(active)
+        if replacement_scope_key:
+            scope = fact.metadata.get(replacement_scope_key)
+            scoped_current = [
+                item
+                for item in existing
+                if scope is not None
+                and item.metadata.get(replacement_scope_key) == scope
+                and item.is_current
+                and not item.retracted
+            ]
+            if scoped_current:
+                transition_at = now_utc()
+                with self._connect() as conn:
+                    conn.executemany(
+                        """
+                        UPDATE knowledge_facts
+                        SET is_current = 0, valid_to = ?, updated_at = ?
+                        WHERE id = ?
+                        """,
+                        [
+                            (transition_at, transition_at, item.id)
+                            for item in scoped_current
+                        ],
+                    )
+                    conn.commit()
+                return self._insert_fact(
+                    fact,
+                    lifecycle,
+                    timestamp=transition_at,
+                )
         return self._insert_fact(fact, lifecycle)
 
     def _upsert_preference(

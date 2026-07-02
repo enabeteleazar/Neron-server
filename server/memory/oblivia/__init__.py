@@ -1,11 +1,9 @@
-"""Oblivia cognitive memory implementation.
-
-This package is the only business-memory implementation in NéronOS.
-"""
+"""Public API for the only NéronOS memory implementation."""
 
 from .manager import ObliviaMemoryManager
 from .schemas import (
     KnowledgeFact,
+    MemoryCategory,
     MemoryQuery,
     MemoryRecord,
     MemorySearchResult,
@@ -13,20 +11,14 @@ from .schemas import (
     LifecycleKnowledgeFact,
     TemporalLivesAtFact,
 )
-from .ontology import PREDICATES, PredicateDefinition, get_predicate
-from .reasoner import MemoryReasoner
-
 __all__ = [
     "KnowledgeFact",
+    "MemoryCategory",
     "MemoryQuery",
     "MemoryRecord",
     "MemorySearchResult",
     "MemoryStatus",
     "LifecycleKnowledgeFact",
     "TemporalLivesAtFact",
-    "PREDICATES",
-    "PredicateDefinition",
-    "get_predicate",
-    "MemoryReasoner",
     "ObliviaMemoryManager",
 ]

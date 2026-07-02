@@ -71,13 +71,13 @@ def test_provider_registry_registers_lists_gets_and_filters():
 
 async def test_oblivia_provider_health_remember_recall_search_status(tmp_path, monkeypatch):
     monkeypatch.setattr(
-        "core.modules.oblivia.semantic.vector_index.LocalEmbedder",
+        "memory.oblivia.semantic.vector_index.LocalEmbedder",
         lambda: type("Embedder", (), {"embed": lambda self, text: [0.0, 1.0]})(),
     )
     db_path = tmp_path / "memory.db"
     vault_path = tmp_path / "obsidian"
 
-    from core.modules.oblivia.manager import ObliviaMemoryManager
+    from memory.oblivia import ObliviaMemoryManager
 
     provider = ObliviaProvider(
         ObliviaMemoryManager(

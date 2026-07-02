@@ -10,8 +10,12 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from memory.oblivia.manager import ObliviaMemoryManager
-from memory.oblivia.schemas import MemoryCategory, MemoryQuery, MemoryRecord
+from memory.oblivia import (
+    MemoryCategory,
+    MemoryQuery,
+    MemoryRecord,
+    ObliviaMemoryManager,
+)
 from server.common.registry.client import RegistryClient
 
 

@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from .schemas import KnowledgeFact
+from .predicate_discovery import PredicateDiscovery
 from .timeline import project_unique_timeline
 
 
@@ -78,6 +79,9 @@ class KnowledgeExtractor:
         ),
     )
 
+    def __init__(self) -> None:
+        self.predicate_discovery = PredicateDiscovery()
+
     def extract(self, text: str, *, source: str = "user") -> list[KnowledgeFact]:
         value = self._memory_directive.sub("", text.strip()).strip()
         temporal = self._extract_temporal_lives_at(value, source=source)
@@ -131,7 +135,7 @@ class KnowledgeExtractor:
                         raw_text=value,
                     )
                 ]
-        return []
+        return self.predicate_discovery.extract(value, source=source)
 
     @staticmethod
     def _extract_correction(

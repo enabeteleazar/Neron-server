@@ -8,7 +8,7 @@ import pytest
 from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia.manager import ObliviaMemoryManager
+from memory.oblivia import ObliviaMemoryManager
 from memory.oblivia.ontology import PREDICATES, SUPPORTED_LIFECYCLES
 
 
