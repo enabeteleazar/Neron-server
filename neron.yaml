@@ -44,7 +44,7 @@ llm:
   temperature: 0.7
 
 neron_llm:
-  url: http://localhost:8765
+  url: http://u5-provider-llm-01:8765
   timeout: 120
   retry: 2
 
