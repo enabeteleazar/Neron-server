@@ -13,10 +13,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_DATA_DIR
+
 logger = logging.getLogger("world_model.store")
 
 # Chemins
-_WM_DIR      = Path(os.getenv("NERON_WORLD_MODEL_DIR", "/etc/neron/data/world_model"))
+_WM_DIR = Path(
+    os.getenv("NERON_WORLD_MODEL_DIR", str(NERON_DATA_DIR / "world_model"))
+)
 _SNAPSHOT_PATH = _WM_DIR / "current.json"
 _DB_PATH       = _WM_DIR / "history.db"
 

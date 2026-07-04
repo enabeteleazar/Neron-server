@@ -5,14 +5,15 @@ import threading
 import unicodedata
 from pathlib import Path
 
+from common.paths import NERON_DATA_DIR, NERON_SERVER_DIR
 from modules.events.event import Event
 from modules.events.event_bus import event_bus
 from modules.events.event_types import TOOL_REGISTERED
 from tools.models import ToolSpec
 
 
-DEFAULT_REGISTRY_PATH = Path("/etc/neron/data/tool_registry.json")
-DEFAULT_GENERATED_TOOLS = Path("/etc/neron/server/tools/generated")
+DEFAULT_REGISTRY_PATH = NERON_DATA_DIR / "tool_registry.json"
+DEFAULT_GENERATED_TOOLS = NERON_SERVER_DIR / "tools" / "generated"
 
 
 def _normalize(value: str) -> str:

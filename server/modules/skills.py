@@ -13,11 +13,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+from common.paths import NERON_WORKSPACE_DIR
 from core.identity import get_identity
 
 logger = logging.getLogger("neron.skills")
 
-WORKSPACE_DIR = Path(os.getenv("NERON_WORKSPACE_DIR", Path.home() / ".neron" / "workspace"))
+WORKSPACE_DIR = NERON_WORKSPACE_DIR
 SKILLS_DIR    = WORKSPACE_DIR / "skills"
 
 # ──────────────────────────────────────────────────────────────────────────────

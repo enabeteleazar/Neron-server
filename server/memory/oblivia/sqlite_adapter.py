@@ -17,7 +17,7 @@ from .schemas import (
 )
 from .text_utils import normalize_text
 
-DEFAULT_DB = "/etc/neron/server/memory/neron_memory.db"
+DEFAULT_DB = "/etc/neronOS/server/memory/neron_memory.db"
 
 _FACT_COLUMNS = """
 id, subject, predicate, object, fact_type, source, confidence, raw_text,

@@ -9,9 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from common.paths import NERON_DATA_DIR
 
 AGENT_REGISTRY = {}
-PRODUCTION_GENERATED_AGENTS = Path("/etc/neron/data/generated_agents")
+PRODUCTION_GENERATED_AGENTS = NERON_DATA_DIR / "generated_agents"
 DEFAULT_GENERATED_AGENTS = Path(
     os.getenv(
         "NERON_GENERATED_AGENTS_DIR",

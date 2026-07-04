@@ -4,6 +4,7 @@ import json
 import logging
 from pathlib import Path
 
+from common.paths import NERON_WORKSPACE_DIR
 from modules.events.event import Event
 from modules.events.event_bus import event_bus
 from modules.self_repair.diagnostic import diagnose_alert
@@ -11,7 +12,7 @@ from modules.self_repair.repair_planner import propose_repair
 
 logger = logging.getLogger("neron.self_repair")
 
-REPORT_DIR = Path("/etc/neron/workspace/repairs")
+REPORT_DIR = NERON_WORKSPACE_DIR / "repairs"
 
 
 async def handle_system_alert_for_repair(event: Event) -> None:

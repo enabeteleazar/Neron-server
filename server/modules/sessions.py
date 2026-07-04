@@ -12,11 +12,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_DATA_DIR
 from core.identity import build_identity_prompt
 
 logger = logging.getLogger("neron.sessions")
 
-SESSIONS_DIR = Path(os.getenv("NERON_SESSIONS_DIR", Path.home() / ".neron" / "sessions"))
+SESSIONS_DIR = Path(
+    os.getenv("NERON_SESSIONS_DIR", str(NERON_DATA_DIR / "sessions"))
+)
 MAX_HISTORY_TOKENS = int(os.getenv("NERON_MAX_HISTORY_TOKENS", "8000"))
 
 # ──────────────────────────────────────────────────────────────────────────────

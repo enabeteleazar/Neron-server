@@ -82,8 +82,8 @@ logs:
 memory:
   obsidian:
     enabled: true
-    vault_path: /etc/neron/obsidian-vault
-  db_path: /etc/neron/data/memory.db
+    vault_path: /etc/neronOS/server/memory/obsidian
+  db_path: /etc/neronOS/data/memory.db
   retention_days: 30
 
 neron:
@@ -130,8 +130,8 @@ twilio:
   to_number_env: TWILIO_TO_NUMBER
 
 workspace:
-  path: /etc/neron/workspace
-  generator_script: /etc/neron/workspace/generateur.py
+  path: /etc/neronOS/workspace
+  generator_script: /etc/neronOS/workspace/generateur.py
 
 NEWS_API_KEY_ENV: NEWS_API_KEY
 NEWS_COUNTRY: "fr"
@@ -141,8 +141,8 @@ WEATHER_DEFAULT_CITY: "Paris"
 
 doctor:
   paths:
-    core: /etc/neron/core
-    llm: /etc/neron/llm
+    core: /etc/neronOS/server/core
+    llm: /etc/neronOS/server/llm
     logs: /var/log/neron
 
   endpoints:
