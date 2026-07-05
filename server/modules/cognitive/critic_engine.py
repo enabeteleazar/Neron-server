@@ -6,13 +6,14 @@ import json
 import os
 from datetime import datetime, timezone
 
+from common.paths import NERON_DATA_DIR
 from modules.cognitive.history import append_jsonl, compact_cognitive_state
 
 
 CRITIC_HISTORY_PATH = Path(
     os.getenv(
         "NERON_CRITIC_HISTORY_PATH",
-        "/etc/neron/data/critic_history.jsonl",
+        str(NERON_DATA_DIR / "critic_history.jsonl"),
     )
 )
 

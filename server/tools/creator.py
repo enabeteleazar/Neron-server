@@ -11,6 +11,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_WORKSPACE_DIR
 from tools.code_generator import (
     CodexToolCodeGenerator,
     DeterministicToolCodeGenerator,
@@ -48,7 +49,7 @@ class ToolCreator:
         registry: ToolRegistry | None = None,
         runtime: ToolRuntime | None = None,
         *,
-        workspace: Path = Path("/etc/neron/workspace/tools"),
+        workspace: Path = NERON_WORKSPACE_DIR / "tools",
         generated_tools: Path | None = None,
         spec_builder: ToolSpecBuilder | None = None,
         deterministic_generator: ToolCodeGenerator | None = None,

@@ -8,6 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from common.paths import NERON_ROOT
 from modules.evolution.models import CommandResult
 
 CODEX_MISSING_ERROR = "Codex CLI introuvable. Configure NERON_CODEX_BIN ou PATH systemd."
@@ -127,7 +128,7 @@ class CodexRunner:
     def __init__(
         self,
         *,
-        workspace: Path = Path("/etc/neron"),
+        workspace: Path = NERON_ROOT,
         timeout_seconds: int | None = None,
         dry_run: bool | None = None,
     ) -> None:

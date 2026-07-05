@@ -5,6 +5,7 @@ import re
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from common.paths import NERON_WORKSPACE_DIR
 from modules.evolution.codex_runner import CodexRunner
 from tools.models import ToolNeed, ToolSpec
 from tools.templates import (
@@ -75,7 +76,7 @@ class CodexToolCodeGenerator(ToolCodeGenerator):
     def __init__(
         self,
         *,
-        workspace: Path = Path("/etc/neron/workspace/tools"),
+        workspace: Path = NERON_WORKSPACE_DIR / "tools",
         runner: CodexRunner | None = None,
     ) -> None:
         self.workspace = workspace

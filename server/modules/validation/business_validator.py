@@ -6,6 +6,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_ROOT
 from core.runtime.sandbox.agent_sandbox import AgentSandbox
 
 _GENERIC_RESPONSE_MARKERS = (
@@ -29,7 +30,7 @@ class BusinessValidator:
         sandbox: AgentSandbox | None = None,
     ) -> None:
         self.python_executable = python_executable or sys.executable
-        self.project_root = (project_root or Path("/etc/neron")).resolve()
+        self.project_root = (project_root or NERON_ROOT).resolve()
         self.timeout = timeout
         self.sandbox = sandbox or AgentSandbox(
             python_executable=self.python_executable,

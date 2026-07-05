@@ -11,6 +11,8 @@ import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+from common.paths import NERON_ROOT
 from typing import Any, Literal
 
 from agents.factory.registry import DEFAULT_GENERATED_AGENTS, DynamicAgentRegistry
@@ -30,7 +32,7 @@ from core.runtime.sandbox.agent_sandbox import AgentSandbox
 from modules.validation.business_validator import BusinessValidator
 
 
-DEFAULT_PROJECT_ROOT = Path(os.getenv("NERON_PROJECT_ROOT", "/etc/neron"))
+DEFAULT_PROJECT_ROOT = Path(os.getenv("NERON_PROJECT_ROOT", str(NERON_ROOT)))
 DEFAULT_WORKSPACE_ROOT = Path(
     os.getenv("NERON_WORKSPACE", str(DEFAULT_PROJECT_ROOT / "workspace"))
 )

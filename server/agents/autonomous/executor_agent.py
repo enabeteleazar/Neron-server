@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from common.paths import NERON_ROOT
 from agents.autonomous.action_registry import ActionRegistry
 from agents.autonomous.reasoning_agent import ReasoningAgent
 
@@ -200,5 +201,5 @@ class ExecutorAgent:
     ) -> dict:
 
         return self.sandbox.execute(
-            "cd /etc/neron && git pull"
+            f"cd {NERON_ROOT} && git pull"
         )

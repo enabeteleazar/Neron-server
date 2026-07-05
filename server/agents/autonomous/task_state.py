@@ -4,6 +4,7 @@ from typing import Literal
 import json
 from pathlib import Path
 
+from common.paths import NERON_DATA_DIR
 
 TaskStatus = Literal["created", "planned", "waiting_validation", "done", "failed"]
 
@@ -23,7 +24,7 @@ class AutonomousTask:
 
 
 class TaskStore:
-    def __init__(self, path: str = "/etc/neron/data/autonomous_tasks.json"):
+    def __init__(self, path: str = str(NERON_DATA_DIR / "autonomous_tasks.json")):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 

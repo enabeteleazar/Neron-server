@@ -1,5 +1,5 @@
-NERON_API_KEY_HEADER = "X-Neron-API-Key"
+AUTHORIZATION_HEADER = "Authorization"
 
 
 def api_key_headers(api_key: str) -> dict[str, str]:
-    return {NERON_API_KEY_HEADER: api_key} if api_key else {}
+    return {AUTHORIZATION_HEADER: f"Bearer {api_key}"} if api_key else {}

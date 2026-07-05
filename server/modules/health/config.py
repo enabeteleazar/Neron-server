@@ -1,5 +1,5 @@
 # app/config.py
-# Configuration chargée depuis /etc/neron/neron.yaml (section "doctor:")
+# Configuration chargée depuis NERON_CONFIG (section "doctor:")
 # Fallback sur des valeurs par défaut si la clé est absente.
 
 import os

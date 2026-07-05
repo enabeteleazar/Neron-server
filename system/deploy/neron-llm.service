@@ -3,8 +3,11 @@ Description=Neron LLM API
 After=network.target
 
 [Service]
-WorkingDirectory=/etc/neron
-ExecStart=/etc/neron/venv/bin/python -m llm.api.app
+WorkingDirectory=/etc/neronOS/server
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+Environment=PYTHONPATH=/etc/neronOS/server
+ExecStart=/etc/neronOS/venv/bin/python -m llm.api.app
 Restart=always
 
 [Install]

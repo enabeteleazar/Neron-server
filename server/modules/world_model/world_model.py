@@ -11,6 +11,7 @@ from typing import Any
 
 import psutil
 
+from common.paths import NERON_DATA_DIR
 from modules.events import event_types
 from modules.events.event import Event
 from modules.events.event_bus import event_bus
@@ -19,7 +20,7 @@ from modules.events.event_bus import event_bus
 WORLD_STATE_PATH = Path(
     os.getenv(
         "NERON_WORLD_MODEL_STATE_PATH",
-        "/etc/neron/data/world_model_state.json",
+        str(NERON_DATA_DIR / "world_model_state.json"),
     )
 )
 

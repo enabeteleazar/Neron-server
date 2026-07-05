@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Optional, List
 
 
-# Determine repo root (/etc/neron)
+# Determine the repository root from the current installation.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BACKUP_DIR = REPO_ROOT / "server" / "data" / "code_backups"
 EXCLUDE_DIRS = {"__pycache__", "venv", ".git", "data", "docs", "scripts"}

@@ -48,3 +48,32 @@ def test_legacy_neron_service_is_marked_and_not_used_by_server_script():
     assert "server.core.app:app" in legacy_content
     assert 'SERVICE="neron-core.service"' in server_content
     assert 'SERVICE="neron.service"' not in server_content
+
+
+def test_neronos_unit_uses_python_module_entrypoint_and_server_pythonpath():
+    unit = ROOT / "system" / "deploy" / "systemd" / "neronOS.service"
+    content = unit.read_text(encoding="utf-8")
+
+    assert "WorkingDirectory=/etc/neronOS/server" in content
+    assert "Environment=PYTHONPATH=/etc/neronOS/server" in content
+    assert (
+        "ExecStart=/etc/neronOS/venv/bin/python -m uvicorn core.app:app "
+        "--host 0.0.0.0 --port 8010"
+    ) in content
+
+
+def test_goal_and_memory_units_use_current_runtime_paths():
+    for name, module, port in (
+        ("neron-goal.service", "goal.app:app", "8030"),
+        ("neron-memory.service", "memory.app:app", "8040"),
+    ):
+        content = (ROOT / "system" / "deploy" / name).read_text(encoding="utf-8")
+
+        assert "WorkingDirectory=/etc/neronOS/server" in content
+        assert "Environment=NERON_ROOT=/etc/neronOS" in content
+        assert "Environment=NERON_CONFIG=/etc/neronOS/neron.yaml" in content
+        assert "/etc/neron/" not in content
+        assert (
+            f"/etc/neronOS/venv/bin/python -m uvicorn {module} "
+            f"--host 127.0.0.1 --port {port}"
+        ) in content

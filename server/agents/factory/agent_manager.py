@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_DATA_DIR, NERON_ROOT, NERON_WORKSPACE_DIR
 from agents.factory.registry import DEFAULT_GENERATED_AGENTS, DynamicAgentRegistry
 from agents.factory.promotion import AgentPromotionService
 from agents.factory.validator import validate_agent
@@ -16,12 +17,12 @@ from agents.runtime.runtime import get_agent_runtime
 from modules.evolution.codex_runner import CodexRunner, redact_secrets
 
 
-_WORKSPACE_ROOT = Path(os.getenv("NERON_WORKSPACE", "/etc/neron/workspace"))
-_DATA_ROOT = Path(os.getenv("NERON_DATA_DIR", "/etc/neron/data"))
+_WORKSPACE_ROOT = Path(os.getenv("NERON_WORKSPACE", str(NERON_WORKSPACE_DIR)))
+_DATA_ROOT = NERON_DATA_DIR
 DEFAULT_WORKSPACE_AGENTS = _WORKSPACE_ROOT / "agents"
 DEFAULT_WORKSPACE_TESTS = _WORKSPACE_ROOT / "agent_tests"
 DEFAULT_BACKUPS_DIR = _DATA_ROOT / "agent_backups"
-DEFAULT_PROJECT_ROOT = Path(os.getenv("NERON_PROJECT_ROOT", "/etc/neron"))
+DEFAULT_PROJECT_ROOT = Path(os.getenv("NERON_PROJECT_ROOT", str(NERON_ROOT)))
 
 PROTECTED_AGENTS = {
     "event_countdown_agent",

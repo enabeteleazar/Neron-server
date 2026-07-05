@@ -10,6 +10,7 @@ import tokenize
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_ROOT
 from modules.evolution.models import EvolutionProposal
 
 
@@ -17,7 +18,7 @@ TODO_MARKER_RE = re.compile(r"(?<![A-Za-z0-9_/])(?:TODO|FIXME)(?::|\s|$)")
 
 
 class ProposalEngine:
-    def __init__(self, workspace: Path = Path("/etc/neron")) -> None:
+    def __init__(self, workspace: Path = NERON_ROOT) -> None:
         self.workspace = workspace
 
     def observe(self) -> dict[str, Any]:
@@ -297,7 +298,7 @@ class ProposalEngine:
         estimate: str,
     ) -> EvolutionProposal:
         prompt = (
-            "Tu travailles sur le projet Néron OS dans /etc/neron.\n\n"
+            f"Tu travailles sur le projet Néron OS dans {NERON_ROOT}.\n\n"
             f"Mission validée par l'utilisateur: {title}\n\n"
             f"Résumé: {summary}\n"
             f"Gain attendu: {expected_gain}\n"

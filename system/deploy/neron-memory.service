@@ -1,17 +1,20 @@
 [Unit]
 Description=NéronOS Memory Daemon
-After=network-online.target neron-core.service
+After=network-online.target neronOS.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=neron
 Group=neron-dev
-WorkingDirectory=/etc/neron
-EnvironmentFile=/etc/neron/secrets.env
+WorkingDirectory=/etc/neronOS/server
+EnvironmentFile=-/etc/neronOS/secrets.env
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
 Environment=NERON_SERVICE_PORT=8040
-ExecStart=/etc/neron/venv/bin/uvicorn memory.app:app --host 127.0.0.1 --port 8040
+ExecStart=/etc/neronOS/venv/bin/python -m uvicorn memory.app:app --host 127.0.0.1 --port 8040
 Restart=always
 RestartSec=10
 

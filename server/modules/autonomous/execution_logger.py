@@ -4,9 +4,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 import json
 
+from common.paths import NERON_ROOT
+
 
 class ExecutionLogger:
-    def __init__(self, path: str = "/etc/neron/logs/executions.jsonl"):
+    def __init__(self, path: str = str(NERON_ROOT / "logs" / "executions.jsonl")):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -96,7 +96,7 @@ async def _post_text(
             "source_channel": "telegram",
             "user_id": user_id,
         },
-        headers={"X-API-Key": NERON_API_KEY},
+        headers={"Authorization": f"Bearer {NERON_API_KEY}"},
     )
     resp.raise_for_status()
     return resp.json()

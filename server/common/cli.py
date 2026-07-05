@@ -7,13 +7,14 @@ from typing import Any
 
 import httpx
 
+from common.paths import NERON_SECRETS_FILE
 
 def _api_key() -> str:
     configured = os.getenv("NERON_API_KEY", "")
     if configured:
         return configured
     try:
-        for line in open("/etc/neron/secrets.env", encoding="utf-8"):
+        for line in NERON_SECRETS_FILE.open(encoding="utf-8"):
             name, separator, value = line.strip().partition("=")
             if separator and name.strip() == "NERON_API_KEY":
                 return value.strip().strip("\"'")
@@ -25,7 +26,7 @@ def _api_key() -> str:
 def _request(path: str) -> dict[str, Any]:
     core_url = os.getenv("NERON_CORE_URL", "http://localhost:8010").rstrip("/")
     api_key = _api_key()
-    headers = {"X-Neron-API-Key": api_key} if api_key else {}
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
         response = httpx.get(
             f"{core_url}{path}",

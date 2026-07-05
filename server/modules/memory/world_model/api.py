@@ -10,8 +10,7 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.security.api_key import APIKeyHeader
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from core.config import settings
 from .builder import build_world_model
@@ -27,15 +26,14 @@ _store = WorldModelStore()
 # ThreadPool dédié pour les opérations bloquantes (build_world_model, SQLite I/O)
 _wm_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="wm_io")
 
-# Auth — réutilise le même header que app.py
-_API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
-
-
-async def _verify_key(api_key: str = Depends(_API_KEY_HEADER)) -> None:
+async def _verify_key(authorization: str | None = Header(default=None)) -> None:
     if not settings.API_KEY or settings.API_KEY == "changez_moi":
         return
+    api_key = None
+    if authorization and authorization.startswith("Bearer "):
+        api_key = authorization.split(" ", 1)[1].strip() or None
     if not api_key or api_key != settings.API_KEY:
-        raise HTTPException(status_code=403, detail="API Key invalide")
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────

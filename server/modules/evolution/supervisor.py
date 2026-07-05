@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from common.paths import NERON_ROOT
 from modules.evolution.codex_runner import CODEX_MISSING_ERROR, CodexRunner, redact_secrets
 from modules.evolution.models import EvolutionProposal
 from modules.evolution.proposal_engine import ProposalEngine
@@ -26,7 +27,7 @@ class EvolutionSupervisor:
         proposal_engine: ProposalEngine | None = None,
         codex_runner: CodexRunner | None = None,
         project_manager: ProjectManager | None = None,
-        workspace: Path = Path("/etc/neron"),
+        workspace: Path = NERON_ROOT,
         timeout_seconds: int | None = None,
         telegram_notifier: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:

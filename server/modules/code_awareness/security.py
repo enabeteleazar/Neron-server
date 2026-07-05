@@ -3,8 +3,9 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
+from common.paths import NERON_SERVER_DIR
 
-PROJECT_ROOT = Path("/etc/neron/server").resolve()
+PROJECT_ROOT = NERON_SERVER_DIR.resolve()
 
 ALLOWED_TOP_LEVEL_DIRS = {
     "core",

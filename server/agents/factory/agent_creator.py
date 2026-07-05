@@ -9,11 +9,12 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from common.paths import NERON_DATA_DIR, NERON_ROOT
 
 DEFAULT_PROPOSALS_PATH = Path(
     os.getenv(
         "NERON_AGENT_PROPOSALS_PATH",
-        "/etc/neron/data/agent_creator_proposals.jsonl",
+        str(NERON_DATA_DIR / "agent_creator_proposals.jsonl"),
     )
 )
 
@@ -32,7 +33,7 @@ class AgentCreator:
         project_root: Path | None = None,
     ) -> None:
         self.proposals_path = proposals_path
-        self.project_root = project_root or Path("/etc/neron")
+        self.project_root = project_root or NERON_ROOT
 
     def request_agent_creation(
         self,

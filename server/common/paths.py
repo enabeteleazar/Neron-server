@@ -23,3 +23,12 @@ NERON_SERVER_DIR = Path(
 NERON_WORKSPACE_DIR = Path(
     os.getenv("NERON_WORKSPACE_DIR", str(NERON_ROOT / "workspace"))
 ).expanduser()
+NERON_SECRETS_FILE = Path(
+    os.getenv("NERON_SECRETS_FILE", str(NERON_ROOT / "secrets.env"))
+).expanduser()
+NERON_IDENTITY_PATH = Path(
+    os.getenv(
+        "NERON_IDENTITY_PATH",
+        str(NERON_SERVER_DIR / "memory" / "obsidian" / "identity" / "NERON.md"),
+    )
+).expanduser()

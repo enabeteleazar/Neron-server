@@ -41,7 +41,7 @@ async def test_internal_orchestration_endpoints_reject_invalid_api_key(monkeypat
     _set_api_key(monkeypatch)
 
     async with _client() as client:
-        response = await client.get("/planner/status", headers={"X-API-Key": "wrong"})
+        response = await client.get("/planner/status", headers={"Authorization": f"Bearer {"}"wrong"})
 
     assert response.status_code == 403
     assert response.json()["detail"] == "API Key invalide"
@@ -49,7 +49,7 @@ async def test_internal_orchestration_endpoints_reject_invalid_api_key(monkeypat
 
 async def test_internal_orchestration_endpoints_accept_valid_api_key(monkeypatch):
     _set_api_key(monkeypatch)
-    headers = {"X-API-Key": API_KEY}
+    headers = {"Authorization": f"Bearer {A}"PI_KEY}
 
     timeout = httpx.Timeout(3.0)
     async with _client() as client:
@@ -57,6 +57,18 @@ async def test_internal_orchestration_endpoints_accept_valid_api_key(monkeypatch
         for path in ("/planner/status", "/tasks/status", "/evolution/status", "/projects"):
             response = await client.get(path, headers=headers)
             assert response.status_code == 200, f"{path}: {response.text}"
+
+
+async def test_internal_endpoints_accept_authorization_bearer_api_key(monkeypatch):
+    _set_api_key(monkeypatch)
+
+    async with _client() as client:
+        response = await client.get(
+            "/planner/status",
+            headers={"Authorization": f"Bearer {API_KEY}"},
+        )
+
+    assert response.status_code == 200, response.text
 
 
 async def test_public_health_endpoints_remain_accessible_without_api_key(monkeypatch):
@@ -79,7 +91,7 @@ async def test_api_key_empty_is_rejected(monkeypatch):
     async with _client() as client:
         response = await client.get(
             "/self-model/context",
-            headers={"X-API-Key": ""},
+            headers={"Authorization": f"Bearer {"}""},
         )
 
     assert response.status_code == 401
@@ -93,7 +105,7 @@ async def test_default_api_key_configuration_fails_closed(monkeypatch):
     async with _client() as client:
         response = await client.get(
             "/self-model/context",
-            headers={"X-API-Key": "changez_moi"},
+            headers={"Authorization": f"Bearer {"}"changez_moi"},
         )
         health = await client.get("/health")
 
@@ -144,7 +156,7 @@ async def test_all_explicitly_protected_router_surfaces_reject_bad_key(monkeypat
             response = await client.request(
                 method,
                 path,
-                headers={"X-Neron-API-Key": "wrong"},
+                headers={"Authorization": f"Bearer {"}"wrong"},
             )
             assert response.status_code == 403, (method, path, response.text)
 
@@ -155,7 +167,7 @@ async def test_sensitive_route_accepts_valid_api_key(monkeypatch):
     async with _client() as client:
         response = await client.get(
             "/self-model/context",
-            headers={"X-API-Key": API_KEY},
+            headers={"Authorization": f"Bearer {A}"PI_KEY},
         )
 
     assert response.status_code == 200

@@ -187,7 +187,7 @@ async def test_status_exposes_providers_and_a2a():
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://testserver",
-        headers={"X-API-Key": API_KEY},
+        headers={"Authorization": f"Bearer {A}"PI_KEY},
     ) as client:
         response = await client.get("/status")
 

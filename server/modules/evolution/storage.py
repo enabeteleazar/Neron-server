@@ -7,13 +7,14 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_DATA_DIR
 from modules.evolution.models import EvolutionProposal, EvolutionRun, utc_now_iso
 
 
 EVOLUTION_STATE_PATH = Path(
     os.getenv(
         "NERON_EVOLUTION_STATE_PATH",
-        "/etc/neron/data/evolution_state.json",
+        str(NERON_DATA_DIR / "evolution_state.json"),
     )
 )
 

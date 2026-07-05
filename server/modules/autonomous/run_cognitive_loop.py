@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from common.paths import NERON_DATA_DIR
 from goal.goals.goal_manager import get_goal_manager
 from goal.planning import AutonomousPlanner
 from goal.planning.storage import PlanStorage
@@ -24,7 +25,7 @@ logger = logging.getLogger("neron.cognitive_loop")
 ACTION_HISTORY_PATH = Path(
     os.getenv(
         "NERON_ACTION_HISTORY_PATH",
-        "/etc/neron/data/action_history.jsonl",
+        str(NERON_DATA_DIR / "action_history.jsonl"),
     )
 )
 

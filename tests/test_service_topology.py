@@ -124,15 +124,15 @@ async def test_topology_routes_are_protected_and_return_service():
         protected = await client.get("/registry/topology")
         topology = await client.get(
             "/registry/topology",
-            headers={"X-Neron-API-Key": API_KEY},
+            headers={"Authorization": f"Bearer {A}"PI_KEY},
         )
         service = await client.get(
             "/registry/topology/goal",
-            headers={"X-Neron-API-Key": API_KEY},
+            headers={"Authorization": f"Bearer {A}"PI_KEY},
         )
         missing = await client.get(
             "/registry/topology/missing",
-            headers={"X-Neron-API-Key": API_KEY},
+            headers={"Authorization": f"Bearer {A}"PI_KEY},
         )
 
     assert protected.status_code == 401

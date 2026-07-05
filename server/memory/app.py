@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import FastAPI, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from common.paths import NERON_SERVER_DIR
 from memory.oblivia import (
     MemoryCategory,
     MemoryQuery,
@@ -21,7 +22,7 @@ from server.common.registry.client import RegistryClient
 
 logger = logging.getLogger("memory.app")
 VERSION = "0.1.0"
-MEMORY_ROOT = Path("/etc/neron/server/memory")
+MEMORY_ROOT = NERON_SERVER_DIR / "memory"
 SQLITE_PATH = MEMORY_ROOT / "neron_memory.db"
 OBSIDIAN_PATH = MEMORY_ROOT / "obsidian"
 
