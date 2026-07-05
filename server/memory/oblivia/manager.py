@@ -12,6 +12,7 @@ from .semantic.semantic_search import ObsidianSemanticSearch
 from .text_utils import normalize_text
 from .knowledge import KnowledgeExtractor, natural_answer
 from .reasoner import MemoryReasoner
+from core.modules.self_model.integration import emit_memory_event
 
 
 class ObliviaMemoryManager:
@@ -82,6 +83,15 @@ class ObliviaMemoryManager:
         }:
             self.obsidian.add(record)
 
+        emit_memory_event(
+            "memory.remembered",
+            {
+                "operation": "remember",
+                "provider": "oblivia",
+                "status": "completed",
+                "record_id": record.id,
+            },
+        )
         return record
 
     def recall_knowledge(self, question: str, limit: int = 10) -> dict:
@@ -95,7 +105,17 @@ class ObliviaMemoryManager:
         }
 
     def forget(self, query: str) -> dict[str, int]:
-        return {"forgotten": self.sqlite.forget_facts(query)}
+        result = {"forgotten": self.sqlite.forget_facts(query)}
+        emit_memory_event(
+            "memory.deleted",
+            {
+                "operation": "forget",
+                "provider": "oblivia",
+                "status": "completed",
+                "record_id": None,
+            },
+        )
+        return result
 
     def recent(self, limit: int = 10) -> list[MemorySearchResult]:
         return [
@@ -188,7 +208,21 @@ class ObliviaMemoryManager:
         except Exception:
             pass
 
-        return sorted(results, key=lambda item: item.score, reverse=True)
+        sorted_results = sorted(
+            results,
+            key=lambda item: item.score,
+            reverse=True,
+        )
+        emit_memory_event(
+            "memory.search",
+            {
+                "operation": "search",
+                "provider": "oblivia",
+                "status": "completed",
+                "record_id": None,
+            },
+        )
+        return sorted_results
 
     def recall(self, query: MemoryQuery):
         return self.search(query.query, query.limit)

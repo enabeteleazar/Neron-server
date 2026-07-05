@@ -1,11 +1,3 @@
-[submodule "ui_client"]
-	path = web/legacy/web
-	url = git@github.com:enabeteleazar/neronOS_client.git
-
-[submodule "ui_vocal"]
-	path = web/legacy/vocal
-	url = git@github.com:enabeteleazar/neron_vocal.git
-
 [submodule "doctor"]
 	path = server/doctor
 	url = git@github.com:enabeteleazar/neronOS_doctor.git
@@ -14,10 +6,6 @@
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
 
-[submodule "neronHUB"]
-	path = web/legacy/dashboard
-	url = git@github.com:enabeteleazar/neronHUB.git
-
 [submodule "core"]
 	path = server/core
 	url = git@github.com:enabeteleazar/neron_core.git
@@ -25,18 +13,11 @@
 [submodule "goal"]
 	path = server/goal
 	url = git@github.com:enabeteleazar/neron_goal.git
-[submodule "homelab"]
-	path = web/legacy/homelab
-	url = https://github.com/enabeteleazar/Neron-homelab
-[submodule "neron_app"]
-	path = web/neron-app
-	url = git@github.com:enabeteleazar/neron_app.git
-[submodule "web/neron-app"]
-	path = web/neron-app
-	url = git@github.com:enabeteleazar/neron_app.git
+
 [submodule "server/llm"]
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
+
 [submodule "server/doctor"]
 	path = server/doctor
 	url = git@github.com:enabeteleazar/neronOS_doctor.git

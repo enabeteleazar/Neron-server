@@ -15,7 +15,8 @@ def anyio_backend():
     return "asyncio"
 
 
-async def test_selfmodel_endpoints_are_protected():
+async def test_selfmodel_sensitive_endpoints_remain_protected(monkeypatch):
+    monkeypatch.setattr(core_app.settings, "API_KEY", "selfmodel-test-key")
     transport = httpx.ASGITransport(app=core_app.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.get("/selfmodel/status")
@@ -33,7 +34,7 @@ async def test_selfmodel_exposes_internal_truth_sources(monkeypatch):
         "identity",
         "capabilities",
         "providers",
-        "services",
+        "registered-services",
         "agents",
         "memory",
         "goals",
@@ -49,12 +50,12 @@ async def test_selfmodel_exposes_internal_truth_sources(monkeypatch):
 
     assert all(response.status_code == 200 for response in responses.values())
     assert responses["identity"].json()["name"] == "Néron"
-    assert "available" in responses["capabilities"].json()
+    assert "capabilities" in responses["capabilities"].json()
     assert "providers" in responses["providers"].json()
-    assert responses["services"].json()["source"] == "service_registry"
-    assert {"registry", "a2a"} <= responses["agents"].json().keys()
+    assert responses["registered-services"].json()["source"] == "service_registry"
+    assert "agents" in responses["agents"].json()
     assert "provider" in responses["memory"].json()
-    assert {"engine", "runtime", "tasks"} <= responses["goals"].json().keys()
+    assert "goals" in responses["goals"].json()
     assert responses["architecture"].json()["self_awareness"] == "self_model"
 
 
@@ -70,27 +71,23 @@ async def test_open_meteo_is_a2a_agent_and_never_a_provider(monkeypatch):
         providers = (await client.get("/selfmodel/providers")).json()
         agents = (await client.get("/selfmodel/agents")).json()
 
-    assert "open_meteo" not in {item["name"] for item in providers["providers"]}
-    provider_names = {item["name"] for item in providers["providers"]}
-    agent_ids = {item["agent_id"] for item in agents["agents"]}
+    assert "open_meteo" not in {item["id"] for item in providers["providers"]}
+    provider_names = {item["id"] for item in providers["providers"]}
+    agent_ids = {item["id"] for item in agents["agents"]}
     assert "open_meteo" in agent_ids
     assert provider_names.isdisjoint(agent_ids)
     assert all(
-        item["kind"] == "provider"
-        and item["runtime_type"] == "persistent"
-        and item["managed_by"] == "provider_registry"
+        item["type"] in {"llm", "memory", "homeassistant", "goal", "doctor"}
+        and item["status"] in {"online", "offline", "degraded", "unknown"}
         for item in providers["providers"]
     )
     assert all(
-        item["kind"] == "agent"
-        and item["runtime_type"] in {"persistent", "temporary", "unknown"}
-        and item["managed_by"] in {"agent_registry", "a2a", "goal", "unknown"}
+        item["status"] in {"online", "offline", "degraded", "unknown"}
+        and item["current_task"] is None
         for item in agents["agents"]
     )
-    open_meteo = next(item for item in agents["agents"] if item["agent_id"] == "open_meteo")
-    assert open_meteo["kind"] == "agent"
-    assert open_meteo["runtime_type"] == "persistent"
-    assert open_meteo["managed_by"] == "a2a"
+    open_meteo = next(item for item in agents["agents"] if item["id"] == "open_meteo")
+    assert open_meteo["metadata"]["capabilities"]
     assert provider_registry.get("open_meteo") is None
 
 

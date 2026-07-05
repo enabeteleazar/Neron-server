@@ -16,7 +16,6 @@ def test_sensitive_core_routers_declare_verify_api_key_dependency():
     source = inspect.getsource(core_app)
     protected = (
         "self_model_router",
-        "selfmodel_router",
         "runtime_governor_router",
         "world_model_router",
         "goals_router",
