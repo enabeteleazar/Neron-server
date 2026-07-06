@@ -10,3 +10,6 @@
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
 
+[submodule "server/memory"]
+	path = server/memory
+	url = git@github.com:enabeteleazar/neronMemory.git
