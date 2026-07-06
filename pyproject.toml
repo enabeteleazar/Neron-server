@@ -17,14 +17,12 @@ include = [
     "agents*",
     "common*",
     "core*",
-    "doctor*",
     "goal*",
     "llm*",
     "memory*",
     "modules*",
     "providers*",
     "tools*",
-    "watchdog*",
 ]
 exclude = ["core.core*"]
 namespaces = true

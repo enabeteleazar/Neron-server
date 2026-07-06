@@ -41,7 +41,7 @@ async def test_internal_orchestration_endpoints_reject_invalid_api_key(monkeypat
     _set_api_key(monkeypatch)
 
     async with _client() as client:
-        response = await client.get("/planner/status", headers={"Authorization": f"Bearer {"}"wrong"})
+        response = await client.get("/planner/status", headers={"Authorization": "Bearer wrong"})
 
     assert response.status_code == 403
     assert response.json()["detail"] == "API Key invalide"
@@ -49,7 +49,7 @@ async def test_internal_orchestration_endpoints_reject_invalid_api_key(monkeypat
 
 async def test_internal_orchestration_endpoints_accept_valid_api_key(monkeypatch):
     _set_api_key(monkeypatch)
-    headers = {"Authorization": f"Bearer {A}"PI_KEY}
+    headers = {"Authorization": f"Bearer {API_KEY}"}
 
     timeout = httpx.Timeout(3.0)
     async with _client() as client:
@@ -91,7 +91,7 @@ async def test_api_key_empty_is_rejected(monkeypatch):
     async with _client() as client:
         response = await client.get(
             "/self-model/context",
-            headers={"Authorization": f"Bearer {"}""},
+            headers={"Authorization": "Bearer "},
         )
 
     assert response.status_code == 401
@@ -105,7 +105,7 @@ async def test_default_api_key_configuration_fails_closed(monkeypatch):
     async with _client() as client:
         response = await client.get(
             "/self-model/context",
-            headers={"Authorization": f"Bearer {"}"changez_moi"},
+            headers={"Authorization": "Bearer changez_moi"},
         )
         health = await client.get("/health")
 
@@ -156,7 +156,7 @@ async def test_all_explicitly_protected_router_surfaces_reject_bad_key(monkeypat
             response = await client.request(
                 method,
                 path,
-                headers={"Authorization": f"Bearer {"}"wrong"},
+                headers={"Authorization": "Bearer wrong"},
             )
             assert response.status_code == 403, (method, path, response.text)
 
@@ -167,7 +167,7 @@ async def test_sensitive_route_accepts_valid_api_key(monkeypatch):
     async with _client() as client:
         response = await client.get(
             "/self-model/context",
-            headers={"Authorization": f"Bearer {A}"PI_KEY},
+            headers={"Authorization": f"Bearer {API_KEY}"},
         )
 
     assert response.status_code == 200

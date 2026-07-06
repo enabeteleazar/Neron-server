@@ -40,7 +40,6 @@ from telegram.ext import (
 
 from core.constants import CODE_KEYWORDS, NERON_HELP_TEXT
 from agents.builtin.base_agent import get_logger
-from agents.builtin.automation.watchdog_agent import get_health_score, get_status
 from core.config import settings
 from agents.builtin.communication.twilio_agent import call as twilio_call
 
@@ -783,13 +782,6 @@ async def cmd_archive_done_plans(update: Update, context: ContextTypes.DEFAULT_T
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not is_authorized(update):
         return await unauthorized(update)
-
-    try:
-        import server.agents.builtin.watchdog_agent as _wdog_mod
-
-        _wdog_mod._last_conversation = time.monotonic()
-    except Exception:
-        pass
 
     user_message = update.message.text
     await update.message.chat.send_action("typing")

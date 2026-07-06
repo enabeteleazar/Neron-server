@@ -99,12 +99,11 @@ async def _task_daily_report():
     if not _notify_fn:
         return
     try:
-        from agents.builtin.automation.watchdog_agent import get_status, get_health_score
-        # FIX: renommé sys_ en sys_status pour éviter la collision avec le module 'sys'
-        #      et corriger la NameError sur sys_ vs sys
+        from core.status import get_status, get_health_score
+
         sys_status = get_status()
-        score      = get_health_score()
-        now        = datetime.now().strftime("%d/%m/%Y %H:%M")
+        score = get_health_score()
+        now = datetime.now().strftime("%d/%m/%Y %H:%M")
 
         msg = (
             f"📊 <b>Rapport quotidien Néron</b>\n"

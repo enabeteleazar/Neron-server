@@ -32,7 +32,7 @@ def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=core_app.app),
         base_url="http://testserver",
-        headers={"Authorization": f"Bearer {A}"PI_KEY},
+        headers={"Authorization": f"Bearer {API_KEY}"},
     )
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 from modules.events.event import Event
-from agents.builtin.automation.watchdog_agent import send_watchdog_notification
+
 
 logger = logging.getLogger("neron.events.alert_notifier")
 
@@ -28,9 +28,4 @@ async def notify_system_alert(event: Event) -> None:
     if execution_time_ms is not None:
         message += f"\nTemps : {execution_time_ms} ms"
 
-    try:
-        await send_watchdog_notification(message)
-    except TypeError:
-        send_watchdog_notification(message)
-    except Exception as exc:
-        logger.warning("telegram_alert_failed reason=%s error=%s", reason, exc)
+    logger.info("system_alert: %s", message)

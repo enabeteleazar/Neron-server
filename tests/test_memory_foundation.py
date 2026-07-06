@@ -723,7 +723,7 @@ async def test_existing_knowledge_is_updated_then_forgotten(tmp_path):
 
 
 def test_core_has_no_memory_storage_or_business_implementation():
-    core_memory = Path("/etc/neron/server/core/modules/memory")
+    core_memory = Path(__file__).resolve().parents[1] / "server/core/modules/memory"
     assert not (core_memory / "store.py").exists()
     service = (core_memory / "service.py").read_text(encoding="utf-8")
     assert "sqlite3" not in service
@@ -732,7 +732,7 @@ def test_core_has_no_memory_storage_or_business_implementation():
 
 
 def test_goal_has_no_embedded_memory_backend():
-    goal_root = Path("/etc/neron/server/goal")
+    goal_root = Path(__file__).resolve().parents[1] / "server/goal"
     source = "\n".join(
         path.read_text(encoding="utf-8")
         for path in goal_root.rglob("*.py")

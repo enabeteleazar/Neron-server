@@ -28,7 +28,7 @@ async def test_selfmodel_exposes_internal_truth_sources(monkeypatch):
     ensure_default_providers()
     monkeypatch.setattr(core_app.settings, "API_KEY", "selfmodel-test-key")
     transport = httpx.ASGITransport(app=core_app.app)
-    headers = {"Authorization": f"Bearer {"}"selfmodel-test-key"}
+    headers = {"Authorization": "Bearer selfmodel-test-key"}
     paths = (
         "status",
         "identity",
@@ -66,7 +66,7 @@ async def test_open_meteo_is_a2a_agent_and_never_a_provider(monkeypatch):
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"Authorization": f"Bearer {"}"selfmodel-test-key"},
+        headers={"Authorization": "Bearer selfmodel-test-key"},
     ) as client:
         providers = (await client.get("/selfmodel/providers")).json()
         agents = (await client.get("/selfmodel/agents")).json()
@@ -97,7 +97,7 @@ async def test_selfmodel_architecture_documents_strict_separation(monkeypatch):
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"Authorization": f"Bearer {"}"selfmodel-test-key"},
+        headers={"Authorization": "Bearer selfmodel-test-key"},
     ) as client:
         architecture = (await client.get("/selfmodel/architecture")).json()
 
@@ -113,7 +113,7 @@ async def test_existing_status_route_remains_available(monkeypatch):
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"Authorization": f"Bearer {"}"selfmodel-test-key"},
+        headers={"Authorization": "Bearer selfmodel-test-key"},
     ) as client:
         response = await client.get("/status")
 

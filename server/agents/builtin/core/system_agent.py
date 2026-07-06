@@ -4,17 +4,13 @@ import subprocess
 
 from agents.builtin.base_agent import get_logger
 from core.runtime.governor import get_runtime_governor
+from core.status import get_status, get_health_score
 
 logger = get_logger("system_agent")
 
 
 class SystemAgent:
     async def run(self, query: str) -> str:
-        from agents.builtin.automation.watchdog_agent import (
-            get_status,
-            get_health_score,
-            get_anomalies,
-        )
 
         q = query.lower()
 
@@ -29,7 +25,7 @@ class SystemAgent:
                 return self._format_resources(get_status())
 
             if any(w in q for w in ["anomalie", "anomalies", "probleme", "problème", "erreur", "crash"]):
-                return self._format_anomalies(get_anomalies(days=7))
+                return "Analyse des anomalies désactivée (module Watchdog retiré)."
 
             return self._format_health(get_status(), get_health_score())
 

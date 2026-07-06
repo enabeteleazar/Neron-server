@@ -138,33 +138,3 @@ NEWS_COUNTRY: "fr"
 NEWS_MAX_HEADLINES: 5
 
 WEATHER_DEFAULT_CITY: "Paris"
-
-doctor:
-  paths:
-    core: /etc/neronOS/server/core
-    llm: /etc/neronOS/server/llm
-    logs: /var/log/neron
-
-  endpoints:
-    server_health: http://localhost:8010/health
-    server_status: http://localhost:8010/status
-    llm_health: http://localhost:8765/llm/health
-    ollama: http://localhost:11434/api/tags
-
-  services:
-    - neron-core
-    - neron-llm
-    - ollama
-
-  api_key_env: DOCTOR_API_KEY
-
-  timing:
-    http_timeout: 5
-    fix_retry_count: 3
-    fix_retry_delay: 4
-    journal_lines: 100
-
-  thresholds:
-    cpu: 80.0
-    mem: 85.0
-    disk: 90.0

@@ -228,7 +228,7 @@ async def test_capability_analyze_api(monkeypatch, tmp_path):
     async with httpx.AsyncClient(
         transport=transport,
         base_url="http://test",
-        headers={"Authorization": f"Bearer {"}"test-api-key"},
+        headers={"Authorization": "Bearer test-api-key"},
     ) as client:
         response = await client.post(
             "/capabilities/analyze",

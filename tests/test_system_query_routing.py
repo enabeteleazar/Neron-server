@@ -117,7 +117,7 @@ async def test_input_text_keeps_system_query_out_of_llm(monkeypatch):
     ) as client:
         response = await client.post(
             "/input/text",
-            headers={"Authorization": f"Bearer {a}"pi_key},
+            headers={"Authorization": f"Bearer {api_key}"},
             json={"text": "Quel service gère Home Assistant ?"},
         )
 
