@@ -21,3 +21,6 @@
 [submodule "server/doctor"]
 	path = server/doctor
 	url = git@github.com:enabeteleazar/neronOS_doctor.git
+[submodule "server/watchdog"]
+	path = server/watchdog
+	url = git@github.com:enabeteleazar/neronWatchdog.git
