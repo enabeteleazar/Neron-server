@@ -1,11 +1,3 @@
-[submodule "doctor"]
-	path = server/doctor
-	url = git@github.com:enabeteleazar/neronOS_doctor.git
-
-[submodule "llm"]
-	path = server/llm
-	url = git@github.com:enabeteleazar/neron_llm.git
-
 [submodule "core"]
 	path = server/core
 	url = git@github.com:enabeteleazar/neron_core.git
@@ -14,13 +6,7 @@
 	path = server/goal
 	url = git@github.com:enabeteleazar/neron_goal.git
 
-[submodule "server/llm"]
+[submodule "llm"]
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
 
-[submodule "server/doctor"]
-	path = server/doctor
-	url = git@github.com:enabeteleazar/neronOS_doctor.git
-[submodule "server/watchdog"]
-	path = server/watchdog
-	url = git@github.com:enabeteleazar/neronWatchdog.git
