@@ -1,0 +1,35 @@
+{
+  "source_event_id": "9e8c5160-b363-4013-8878-b1c438225c08",
+  "source_event_type": "system.alert",
+  "created_at": "2026-07-07T12:01:25.942839+00:00",
+  "alert": {
+    "level": "warning",
+    "reason": "high_ram",
+    "ram_usage": 92.1
+  },
+  "diagnostic": {
+    "kind": "unknown",
+    "severity": "low",
+    "summary": "Alerte non reconnue : high_ram",
+    "probable_causes": [
+      "cause inconnue"
+    ],
+    "safe_actions": [
+      "inspection manuelle recommandée"
+    ],
+    "metadata": {
+      "level": "warning",
+      "reason": "high_ram",
+      "ram_usage": 92.1
+    }
+  },
+  "proposal": {
+    "title": "Inspection manuelle recommandée",
+    "risk": "low",
+    "requires_human_approval": true,
+    "proposed_steps": [
+      "inspection manuelle recommandée"
+    ],
+    "target": null
+  }
+}

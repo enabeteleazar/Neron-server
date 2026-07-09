@@ -1,0 +1,35 @@
+{
+  "source_event_id": "2cb5ff63-6532-4a8d-b85f-9ad8e144d8cc",
+  "source_event_type": "system.alert",
+  "created_at": "2026-07-06T07:15:30.846876+00:00",
+  "alert": {
+    "level": "warning",
+    "reason": "high_cpu",
+    "cpu_usage": 100.0
+  },
+  "diagnostic": {
+    "kind": "unknown",
+    "severity": "low",
+    "summary": "Alerte non reconnue : high_cpu",
+    "probable_causes": [
+      "cause inconnue"
+    ],
+    "safe_actions": [
+      "inspection manuelle recommandée"
+    ],
+    "metadata": {
+      "level": "warning",
+      "reason": "high_cpu",
+      "cpu_usage": 100.0
+    }
+  },
+  "proposal": {
+    "title": "Inspection manuelle recommandée",
+    "risk": "low",
+    "requires_human_approval": true,
+    "proposed_steps": [
+      "inspection manuelle recommandée"
+    ],
+    "target": null
+  }
+}

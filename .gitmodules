@@ -13,3 +13,11 @@
 [submodule "server/memory"]
 	path = server/memory
 	url = git@github.com:enabeteleazar/neronMemory.git
+
+[submodule "desktop"]
+	path = desktop
+	url = git@github.com:enabeteleazar/NeronOS_Desktop.git
+
+[submodule "mobile"]
+	path = mobile
+	url = git@github.com:enabeteleazar/neronOS_mobile.git
