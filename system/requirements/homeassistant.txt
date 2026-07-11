@@ -239,11 +239,6 @@ pydantic-settings==2.1.0
 # Telegram
 python-telegram-bot==20.7
 
-# STT
-faster-whisper==1.0.3
-ffmpeg-python==0.2.0
-numpy==1.26.4
-
 # TTS
 pyttsx3==2.90
 
