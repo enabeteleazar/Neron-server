@@ -21,3 +21,4 @@
 [submodule "mobile"]
 	path = mobile
 	url = git@github.com:enabeteleazar/neron-voice-interface.git
+	branch = develop
