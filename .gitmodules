@@ -25,3 +25,6 @@
 [submodule "neron-voice-interface"]
 	path = neron-voice-interface
 	url = git@github.com:enabeteleazar/neron-voice-interface.git
+[submodule "voice"]
+	path = voice
+	url = git@github.com:enabeteleazar/neron-voice.git
