@@ -18,13 +18,10 @@
 	path = desktop
 	url = git@github.com:enabeteleazar/NeronOS_Desktop.git
 
-[submodule "mobile"]
-	path = mobile
-	url = git@github.com:enabeteleazar/neron-voice-interface.git
-	branch = develop
 [submodule "neron-voice-interface"]
 	path = neron-voice-interface
 	url = git@github.com:enabeteleazar/neron-voice-interface.git
+
 [submodule "voice"]
 	path = voice
 	url = git@github.com:enabeteleazar/neron-voice.git
