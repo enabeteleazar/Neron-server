@@ -1,15 +1,11 @@
 from __future__ import annotations
 
-import unicodedata
-
 from modules.capabilities.models import CapabilityDecision
+from core.pipeline.nlp.french_normalizer import normalize_text as normalize_french_text
 
 
 def normalize_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.lower())
-    normalized = "".join(
-        char for char in normalized if unicodedata.category(char) != "Mn"
-    )
+    normalized = normalize_french_text(text)
     return " ".join(
         "".join(char if char.isalnum() or char in "./:" else " " for char in normalized).split()
     )
