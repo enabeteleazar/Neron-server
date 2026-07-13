@@ -1,144 +1,103 @@
-Néron Core
+# Néron Voice Interface
 
-Néron Core est le noyau cognitif du système Néron.
+Interface vocale web (mobile & desktop) pour [NéronOS](https://github.com/enabeteleazar), l'assistant IA
+personnel auto-hébergé exécuté sur homebox. L'app se connecte en WebSocket au
+gateway JSON-RPC de NéronOS pour envoyer de l'audio, recevoir la transcription,
+le flux de réponse texte, puis la synthèse vocale (TTS).
 
-Il fournit les capacités fondamentales nécessaires au fonctionnement de Néron et constitue la base sur laquelle s’appuient les autres composants du système.
+## Sommaire
 
-Mission
+- [Stack](#stack)
+- [Structure du repo](#structure-du-repo)
+- [Prérequis](#prérequis)
+- [Installation](#installation)
+- [Développement](#développement)
+- [Build de production](#build-de-production)
+- [Variables d'environnement](#variables-denvironnement)
 
-Néron Core est responsable de :
+## Stack
 
-* l’identité du système
-* l’orchestration cognitive
-* la mémoire fondamentale
-* le routage des intentions
-* la supervision runtime
-* les capacités cognitives essentielles
+- **pnpm workspaces**, Node.js 24, TypeScript 5.9
+- **Frontend** : React 19, Vite 7, Tailwind CSS 4, Framer Motion, shadcn/ui (Radix)
+- **Communication temps réel** : WebSocket JSON-RPC vers le gateway NéronOS
+  (méthodes `gateway.auth`, `voice.send`, événements `voice.transcription`,
+  `agent.token`, `voice.audio`, etc.)
+- **Audio** : `MediaRecorder` avec sélection automatique du format supporté
+  (`audio/mp4` sur iOS Safari, `audio/webm;codecs=opus` sur Chrome/Android)
 
-Néron Core n’est pas un assistant conversationnel.
+## Structure du repo
 
-Il constitue le moteur central d’un système d’exploitation personnel piloté par l’IA.
+```
+artifacts/
+  neron/            → @workspace/neron — l'application réelle (voir .replit-artifact/artifact.toml)
+scripts/             → @workspace/scripts — utilitaires internes (placeholder pour l'instant)
+neron-api.json       → spec OpenAPI de Néron Core, utilisée comme référence côté client
+```
 
-⸻
+Seul `artifacts/neron` est buildé et servi en production (voir
+`artifacts/neron/.replit-artifact/artifact.toml`).
 
-Architecture
+> `artifacts/mockup-sandbox` (canvas de prototypage géré par l'agent Design de
+> Replit) existe sur `develop` mais est volontairement absent de cette
+> branche/tag de release : il ne fait pas partie de l'application livrée.
 
-Identity
-Timer
-Status
-Memory
-        ↓
-Orchestrator
-        ↓
-Runtime
+## Prérequis
 
-Les modules présents dans le Core doivent toujours être disponibles.
+- Node.js 24
+- pnpm (`corepack enable` ou `npm install -g pnpm`)
+- Une instance NéronOS accessible (gateway WebSocket, port `18789` par défaut)
 
-Ils ne peuvent pas être désactivés.
+## Installation
 
-⸻
+```bash
+git clone https://github.com/enabeteleazar/neron-voice-interface neron
+cd neron
+pnpm install
+```
 
-Modules cognitifs
+## Développement
 
-Identity
+```bash
+pnpm --filter @workspace/neron run dev
+```
 
-Répond à la question :
+Le serveur de dev écoute sur `0.0.0.0:<PORT>` (voir variables d'environnement
+ci-dessous).
 
-Qui suis-je ?
+## Build de production
 
-Source de vérité :
+```bash
+PORT=20506 BASE_PATH=/ pnpm --filter @workspace/neron run build
+```
 
-NERON.md
+Le build statique est généré dans `artifacts/neron/dist/public`.
 
-⸻
+> ⚠️ `PORT` et `BASE_PATH` sont **obligatoires**, y compris pour le build
+> statique (contrainte héritée de la config Vite/Replit). Sans ces variables,
+> `pnpm run build` échoue immédiatement.
 
-Timer
+Pour lancer le typecheck complet du monorepo :
 
-Répond à la question :
+```bash
+pnpm run typecheck
+```
 
-Quand sommes-nous ?
+## Variables d'environnement
 
-Fonctions :
+Définies dans `artifacts/neron/.env` (voir `.env.example`) :
 
-* date
-* heure
-* temps
+| Variable              | Description                                                              | Défaut                         |
+|------------------------|---------------------------------------------------------------------------|----------------------------------|
+| `VITE_NERON_WS_URL`    | URL du gateway WebSocket NéronOS                                          | `ws://homebox.local:18789/ws`   |
+| `VITE_NERON_TOKEN`     | Token d'authentification attendu par le gateway (`NERON_TOKEN` côté serveur) | vide (pas d'auth)               |
 
-⸻
+Variables de build (non liées à `.env`, à passer à la commande) :
 
-Status
+| Variable     | Description                                  |
+|--------------|-----------------------------------------------|
+| `PORT`       | Port du serveur Vite (dev/preview) et requis au build |
+| `BASE_PATH`  | Base path de déploiement (`/` en standalone)  |
 
-Répond à la question :
+## Licence
 
-Dans quel état suis-je ?
-
-Fonctions :
-
-* état opérationnel
-* état du Core
-* état runtime
-
-⸻
-
-Memory
-
-Répond à la question :
-
-Que sais-je ?
-
-Fonctions :
-
-* mémorisation
-* rappel
-* stockage persistant
-
-Backend :
-
-SQLite
-
-⸻
-
-Principes
-
-Le Core doit rester :
-
-* simple
-* stable
-* prévisible
-* indépendant
-
-Toute fonctionnalité non essentielle doit être développée hors du Core.
-
-⸻
-
-Dépôts associés
-
-neronOS
-└── utilise
-    └── neron_core
-neron_core
-├── Identity
-├── Timer
-├── Status
-└── Memory
-
-⸻
-
-Version
-
-Version actuelle :
-
-0.2.0
-
-⸻
-
-Philosophie
-
-Le Core doit pouvoir répondre aux questions fondamentales :
-
-Qui suis-je ?
-Quand sommes-nous ?
-Dans quel état suis-je ?
-Que sais-je ?
-
-Les capacités avancées sont construites au-dessus de ces fondations.
+MIT — voir [LICENSE](./LICENSE).
