@@ -18,6 +18,7 @@ include = [
     "common*",
     "core*",
     "goal*",
+    "integrations*",
     "llm*",
     "memory*",
     "modules*",

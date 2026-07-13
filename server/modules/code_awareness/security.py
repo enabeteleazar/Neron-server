@@ -13,7 +13,7 @@ ALLOWED_TOP_LEVEL_DIRS = {
     "agents",
     "common",
     "doctor",
-    "homeassistant_bridge",
+    "integrations",
     "llm",
     "memory",
     "modules",

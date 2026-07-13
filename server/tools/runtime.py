@@ -44,15 +44,32 @@ class ToolRuntime:
     ) -> None:
         self.registry = registry or get_tool_registry()
         self.log_provider = log_provider
+
+        from integrations.homeassistant.tool import (
+            HOMEASSISTANT_TOOL_SLUG,
+            execute as execute_homeassistant,
+        )
+
         self.handlers: dict[str, ToolHandler] = {
             "neron_log_reader_tool": self._read_logs,
             "neron_log_error_filter_tool": self._filter_errors,
             "neron_log_summary_tool": self._summarize_errors,
+            HOMEASSISTANT_TOOL_SLUG: execute_homeassistant,
             **(handlers or {}),
         }
+        self._ensure_builtin_tools()
 
     def register_handler(self, slug: str, handler: ToolHandler) -> None:
         self.handlers[slug] = handler
+
+    def _ensure_builtin_tools(self) -> None:
+        from integrations.homeassistant.tool import (
+            HOMEASSISTANT_TOOL_SLUG,
+            tool_spec as homeassistant_tool_spec,
+        )
+
+        if self.registry.get_tool(HOMEASSISTANT_TOOL_SLUG) is None:
+            self.registry.register_tool(homeassistant_tool_spec())
 
     async def execute_tool(
         self,
