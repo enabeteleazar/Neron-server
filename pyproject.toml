@@ -23,6 +23,7 @@ include = [
     "modules*",
     "providers*",
     "tools*",
+    "voice*",
 ]
 exclude = ["core.core*"]
 namespaces = true
