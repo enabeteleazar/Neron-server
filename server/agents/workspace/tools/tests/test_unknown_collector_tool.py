@@ -6,7 +6,7 @@ from tools.models import ToolResult
 
 
 def test_generated_tool_returns_tool_result():
-    spec = importlib.util.spec_from_file_location("generated_tool", '/etc/neronOS/workspace/tools/unknown_collector_tool.py')
+    spec = importlib.util.spec_from_file_location("generated_tool", '/srv/homelab/server-1/neronOS/workspace/tools/unknown_collector_tool.py')
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(module)

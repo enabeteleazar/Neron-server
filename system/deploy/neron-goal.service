@@ -7,14 +7,14 @@ Wants=network-online.target
 Type=simple
 User=neron
 Group=neron-dev
-WorkingDirectory=/etc/neronOS/server
-EnvironmentFile=-/etc/neronOS/secrets.env
-Environment=NERON_ROOT=/etc/neronOS
-Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+WorkingDirectory=/srv/homelab/server-1/neronOS/server
+EnvironmentFile=-/srv/homelab/server-1/neronOS/secrets.env
+Environment=NERON_ROOT=/srv/homelab/server-1/neronOS
+Environment=NERON_CONFIG=/srv/homelab/server-1/neronOS/neron.yaml
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
+Environment=PYTHONPATH=/srv/homelab/server-1/neronOS:/srv/homelab/server-1/neronOS/server
 Environment=NERON_SERVICE_PORT=8030
-ExecStart=/etc/neronOS/venv/bin/python -m uvicorn goal.app:app --host 127.0.0.1 --port 8030
+ExecStart=/srv/homelab/server-1/neronOS/venv/bin/python -m uvicorn goal.app:app --host 127.0.0.1 --port 8030
 Restart=always
 RestartSec=10
 

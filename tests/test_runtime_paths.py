@@ -25,5 +25,5 @@ def test_canonical_paths_default_to_current_runtime(monkeypatch):
 
     source = (SERVER / "common" / "paths.py").read_text(encoding="utf-8")
 
-    assert 'os.getenv("NERON_ROOT", "/etc/neronOS")' in source
+    assert 'os.getenv("NERON_ROOT", "/srv/homelab/server-1/neronOS")' in source
     assert 'os.getenv("NERON_CONFIG", str(NERON_ROOT / "neron.yaml"))' in source

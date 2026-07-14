@@ -38,7 +38,7 @@ Réponds UNIQUEMENT en JSON valide, sans texte autour :
 {{"score": <int>, "critique": "<string ou null>", "correction": "<string ou null>"}}"""
 
 
-def load_env_var(key: str, env_file: str = "/etc/neronOS/secrets.env") -> str:
+def load_env_var(key: str, env_file: str = "/srv/homelab/server-1/neronOS/secrets.env") -> str:
     with open(env_file) as f:
         for line in f:
             if line.startswith(f"{key}="):

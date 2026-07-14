@@ -5,5 +5,4 @@
 
 -r core.txt
 -r llm.txt
--r doctor.txt
 -r scripts.txt

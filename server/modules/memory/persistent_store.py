@@ -1,46 +1,66 @@
-from memory.oblivia.manager import ObliviaMemoryManager
-from memory.oblivia.schemas import MemoryRecord
+from __future__ import annotations
+
+import os
+from typing import Any
+
+import httpx
 
 
-_manager = None
+MEMORY_URL = os.getenv(
+    "NERON_MEMORY_URL",
+    "http://127.0.1.4:8040",
+).rstrip("/")
 
 
-class PersistentStoreAdapter:
+async def query_memory(
+    query: str,
+) -> dict[str, Any]:
+    """
+    Proxy vers le service neron-memory distant.
+    """
 
-    def __init__(self):
-        self.memory = ObliviaMemoryManager(
-            sqlite_path="memory/neron_memory.db"
-        )
-
-    def push_event(
-        self,
-        event_id,
-        event_type,
-        source,
-        payload,
-        created_at
-    ):
-        record = MemoryRecord(
-            id=event_id,
-            source=source,
-            category=event_type,
-            content=str(payload),
-            metadata={
-                "event": True
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.post(
+            f"{MEMORY_URL}/memory/query",
+            json={
+                "query": query,
             },
-            created_at=created_at
         )
 
-        self.memory.remember(record)
+        response.raise_for_status()
+
+        return response.json()
 
 
-_store = None
+async def store_memory(
+    content: str,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Stockage mémoire distant.
+    """
+
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        response = await client.post(
+            f"{MEMORY_URL}/memory/store",
+            json={
+                "content": content,
+                "metadata": metadata or {},
+            },
+        )
+
+        response.raise_for_status()
+
+        return response.json()
 
 
-def get_store():
-    global _store
+async def get_store() -> dict[str, str]:
+    """
+    Compatibilité temporaire.
+    Le stockage est maintenant géré par server4-memory.
+    """
 
-    if _store is None:
-        _store = PersistentStoreAdapter()
-
-    return _store
+    return {
+        "backend": "remote",
+        "url": MEMORY_URL,
+    }

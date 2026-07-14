@@ -3,7 +3,7 @@ import importlib.util
 import pathlib
 import pytest
 
-AGENT_FILE = pathlib.Path('/etc/neronOS/workspace/agents/durable_repond_a_agent.py')
+AGENT_FILE = pathlib.Path('/srv/homelab/server-1/neronOS/workspace/agents/durable_repond_a_agent.py')
 
 def load_agent():
     spec = importlib.util.spec_from_file_location('generated_agent_under_test', AGENT_FILE)

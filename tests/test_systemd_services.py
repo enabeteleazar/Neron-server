@@ -54,10 +54,10 @@ def test_neronos_unit_uses_python_module_entrypoint_and_server_pythonpath():
     unit = ROOT / "system" / "deploy" / "systemd" / "neronOS.service"
     content = unit.read_text(encoding="utf-8")
 
-    assert "WorkingDirectory=/etc/neronOS/server" in content
-    assert "Environment=PYTHONPATH=/etc/neronOS/server" in content
+    assert "WorkingDirectory=/srv/homelab/server-1/neronOS/server" in content
+    assert "Environment=PYTHONPATH=/srv/homelab/server-1/neronOS/server" in content
     assert (
-        "ExecStart=/etc/neronOS/venv/bin/python -m uvicorn core.app:app "
+        "ExecStart=/srv/homelab/server-1/neronOS/venv/bin/python -m uvicorn core.app:app "
         "--host 0.0.0.0 --port 8010"
     ) in content
 
@@ -69,11 +69,11 @@ def test_goal_and_memory_units_use_current_runtime_paths():
     ):
         content = (ROOT / "system" / "deploy" / name).read_text(encoding="utf-8")
 
-        assert "WorkingDirectory=/etc/neronOS/server" in content
-        assert "Environment=NERON_ROOT=/etc/neronOS" in content
-        assert "Environment=NERON_CONFIG=/etc/neronOS/neron.yaml" in content
+        assert "WorkingDirectory=/srv/homelab/server-1/neronOS/server" in content
+        assert "Environment=NERON_ROOT=/srv/homelab/server-1/neronOS" in content
+        assert "Environment=NERON_CONFIG=/srv/homelab/server-1/neronOS/neron.yaml" in content
         assert "/etc/neron/" not in content
         assert (
-            f"/etc/neronOS/venv/bin/python -m uvicorn {module} "
+            f"/srv/homelab/server-1/neronOS/venv/bin/python -m uvicorn {module} "
             f"--host 127.0.0.1 --port {port}"
         ) in content

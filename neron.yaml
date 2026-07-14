@@ -3,6 +3,32 @@
 # Secrets dans /etc/neron/secrets.env
 # ═══════════════════════════════════════════════════════════════════
 
+instance:
+  id: server1-core
+  role: neron-core
+
+service:
+  host: 127.0.1.1
+  port: 8010
+
+cluster:
+  enabled: true
+  llm:
+    url: http://127.0.1.2:8765
+
+paths:
+  root: .
+
+# -------------- #
+
+memory:
+  enabled: true
+  url: http://127.0.1.4:8040
+  timeout: 10
+  retry: 2
+
+# =============== #
+
 model_map:
   fast: gemma4:31b-cloud
   default: mistral:latest
@@ -79,12 +105,6 @@ logs:
   max_size_mb: 10
   backup_count: 5
 
-memory:
-  obsidian:
-    enabled: true
-    vault_path: /etc/neronOS/server/memory/obsidian
-  db_path: /etc/neronOS/data/memory.db
-  retention_days: 30
 
 neron:
   endpoint: http://localhost:8010/input/text
@@ -130,8 +150,8 @@ twilio:
   to_number_env: TWILIO_TO_NUMBER
 
 workspace:
-  path: /etc/neronOS/workspace
-  generator_script: /etc/neronOS/workspace/generateur.py
+  path: /srv/homelab/server-1/neronOS/workspace
+  generator_script: /srv/homelab/server-1/neronOS/workspace/generateur.py
 
 NEWS_API_KEY_ENV: NEWS_API_KEY
 NEWS_COUNTRY: "fr"

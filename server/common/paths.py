@@ -1,7 +1,7 @@
 """Canonical runtime paths for NeronOS.
 
 Every path can be overridden for development or alternate deployments while
-keeping /etc/neronOS as the production default.
+keeping /srv/homelab/server-1/neronOS as the production default.
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 
 
-NERON_ROOT = Path(os.getenv("NERON_ROOT", "/etc/neronOS")).expanduser()
+NERON_ROOT = Path(os.getenv("NERON_ROOT", "/srv/homelab/server-1/neronOS")).expanduser()
 NERON_CONFIG = Path(
     os.getenv("NERON_CONFIG", str(NERON_ROOT / "neron.yaml"))
 ).expanduser()
