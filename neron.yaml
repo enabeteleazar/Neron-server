@@ -1,11 +1,12 @@
 # ═══════════════════════════════════════════════════════════════════
-# neron.yaml — Configuration centrale de NeronOS
-# Secrets dans /etc/neron/secrets.env
-# ═══════════════════════════════════════════════════════════════════
 
-instance:
-  id: server1-core
-  role: neron-core
+# neron.yaml — Configuration centrale de NeronOS
+
+# Configuration serveur locale dans neron.server.yaml
+
+# Secrets dans /etc/neron/secrets.env
+
+# ═══════════════════════════════════════════════════════════════════
 
 service:
   host: 127.0.1.1
@@ -18,6 +19,9 @@ cluster:
 
 paths:
   root: .
+
+config:
+  server_override: neron.server.yaml
 
 # -------------- #
 

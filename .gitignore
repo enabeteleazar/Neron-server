@@ -37,7 +37,7 @@ secrets.env
 *.env
 .env.
 .env.local
-
+neron.server.yaml
 homebox.tail7f8e60.ts.net.*
 
 # =========================
