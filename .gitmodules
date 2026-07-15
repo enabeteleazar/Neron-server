@@ -18,3 +18,9 @@
 	path = neron-voice-interface
 	url = git@github.com:enabeteleazar/neron-voice-interface.git
 
+[submodule "server/memory"]
+	path = server/memory
+	url = https://github.com/enabeteleazar/neronMemory
+[submodule "voice"]
+	path = voice
+	url = https://github.com/enabeteleazar/neron-voice
