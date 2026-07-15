@@ -10,13 +10,33 @@
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
 
-[submodule "neron-voice-interface"]
-	path = neron-voice-interface
-	url = git@github.com:enabeteleazar/neron-voice-interface.git
-
 [submodule "server/memory"]
 	path = server/memory
 	url = https://github.com/enabeteleazar/neronMemory
 [submodule "voice"]
 	path = voice
 	url = https://github.com/enabeteleazar/neron-voice
+[submodule "client/neronVoice"]
+	path = client/neronVoice
+	url = git@github.com:enabeteleazar/neron-voice-interface.git
+[submodule "client/neronHUB"]
+	path = client/neronHUB
+	url = git@github.com:enabeteleazar/neronHUB.git
+[submodule "client/voice"]
+	path = client/voice
+	url = git@github.com:enabeteleazar/neronVoice.git
+[submodule "server/watchdog"]
+	path = server/watchdog
+	url = git@github.com:enabeteleazar/neronWatchdog.git
+[submodule "client/homelab"]
+	path = client/homelab
+	url = git@github.com:enabeteleazar/neronHomelab.git
+[submodule "client/vocal"]
+	path = client/vocal
+	url = git@github.com:enabeteleazar/neronVocal.git
+[submodule "client/client"]
+	path = client/client
+	url = git@github.com:enabeteleazar/neronClient.git
+[submodule "server/doctor"]
+	path = server/doctor
+	url = git@github.com:enabeteleazar/neronDoctor.git

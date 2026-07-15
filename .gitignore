@@ -2,9 +2,7 @@
 # SUBMODULE
 # =========================
 llm/
-doctor/
 llama/
-client*/
 
 # =========================
 # PYTHON
