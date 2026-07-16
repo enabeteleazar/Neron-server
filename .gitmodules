@@ -28,9 +28,6 @@
 [submodule "server/watchdog"]
 	path = server/watchdog
 	url = git@github.com:enabeteleazar/neronWatchdog.git
-[submodule "client/vocal"]
-	path = client/vocal
-	url = git@github.com:enabeteleazar/neronVocal.git
 [submodule "client/client"]
 	path = client/client
 	url = git@github.com:enabeteleazar/neronClient.git
