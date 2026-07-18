@@ -1,21 +1,12 @@
 # ═══════════════════════════════════════════════════════════════════
-
-# neron.yaml — Configuration centrale de NeronOS
-
-# Configuration serveur locale dans neron.server.yaml
-
-# Secrets dans /etc/neron/secrets.env
-
+# NERONOS - Configuration fonctionnelle
+#
+# Ce fichier contient uniquement la configuration du comportement
+# de Néron. Aucune information d'infrastructure ou de secret.
+#
+# Infrastructure : neron.server.yaml
+# Secrets        : secrets.env
 # ═══════════════════════════════════════════════════════════════════
-
-service:
-  host: 127.0.1.1
-  port: 8010
-
-cluster:
-  enabled: true
-  llm:
-    url: http://127.0.1.2:8765
 
 paths:
   root: .
@@ -23,18 +14,26 @@ paths:
 config:
   server_override: neron.server.yaml
 
-# -------------- #
+# ==================================================================
+# SERVICES
+# ==================================================================
+
+neron_llm:
+  enabled: true
+  timeout: 120
+  retry: 2
 
 memory:
   enabled: true
-  url: http://127.0.1.4:8040
   timeout: 10
   retry: 2
 
-# =============== #
+# ==================================================================
+# MODELS
+# ==================================================================
 
 model_map:
-  fast: gemma4:31b-cloud
+  fast: llama3.2:3b
   default: mistral:latest
   code: deepseek-coder:6.7b
 
@@ -42,9 +41,9 @@ routing:
   code: Qwen2.5-Coder:1.5b
   reasoning: Qwen2.5-Coder:1.5b
   agent: Qwen2.5-Coder:1.5b
-  chat: gemma4:31b-cloud
-  fast: gemma4:31b-cloud
-  default: gemma4:31b-cloud
+  chat: glm-5.2:cloud
+  fast: glm-5.2:cloud
+  default: glm-5.2:cloud
 
 strategy:
   code: parallel
@@ -52,35 +51,37 @@ strategy:
   chat: single
   agent: single
 
+# ==================================================================
+# LLM
+# ==================================================================
+
 llm:
   default_provider: ollama
   timeout: 300
   race_timeout: 60
-  host: http://localhost:11434
+
   ollama_max_connections: 50
   ollama_max_keepalive_connections: 10
-  llama_cpp_host: http://localhost:8081
+
   llama_cpp_max_connections: 4
   llama_cpp_max_keepalive_connections: 2
   llama_cpp_n_predict: 512
   llama_cpp_temperature: 0.7
+
   llama_cpp_stop:
     - "</s>"
     - "User:"
     - "Assistant:"
+
   claude_max_tokens: 1024
   claude_max_connections: 20
   claude_max_keepalive_connections: 5
+
   temperature: 0.7
 
-neron_llm:
-  url: http://u5-provider-llm-01:8765
-  timeout: 120
-  retry: 2
-
-gguf_map:
-  "gemma4:31b-cloud": /etc/neron/llama/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf
-  "mistral:latest": /etc/neron/llama/models/mistral-7b.gguf
+# ==================================================================
+# CODE AGENT
+# ==================================================================
 
 code_agent:
   enabled: true
@@ -89,18 +90,27 @@ code_agent:
   sandbox_timeout: 10
   self_review_on_startup: false
 
+# ==================================================================
+# HOME ASSISTANT
+# ==================================================================
+
 home_assistant:
   enabled: true
-  url: http://100.90.194.109:8123
-  token_env: HOMEASSISTANT_TOKEN
   sync_interval: 60
+
+# ==================================================================
+# STT
+# ==================================================================
 
 stt:
   model: tiny
   language: fr
   device: cpu
   compute_type: int8
-  port: 8001
+
+# ==================================================================
+# LOGS
+# ==================================================================
 
 logs:
   dir: logs
@@ -109,11 +119,17 @@ logs:
   max_size_mb: 10
   backup_count: 5
 
+# ==================================================================
+# CORE
+# ==================================================================
 
 neron:
-  endpoint: http://localhost:8010/input/text
   api_key_env: NERON_API_KEY
   log_level: INFO
+
+# ==================================================================
+# SCHEDULER
+# ==================================================================
 
 scheduler:
   enabled: true
@@ -122,29 +138,19 @@ scheduler:
   self_review_hour: 3
   memory_cleanup_days: 30
 
-searxng:
-  url: http://localhost:8080
-  max_results: 5
-  timeout: 10.0
-
-server:
-  host: 0.0.0.0
-  port: 8010
-  cors_origins:
-    - http://localhost:3000
-    - http://127.0.0.1:3000
-    - http://localhost:8080
-    - http://127.0.0.1:8080
-    - https://homebox.tail7f8e60.ts.net:8443
-
-system:
-  watchdog_url: http://localhost:8003
+# ==================================================================
+# TELEGRAM
+# ==================================================================
 
 telegram:
   enabled: true
   bot_token_env: TELEGRAM_BOT_TOKEN
   chat_id_env: TELEGRAM_CHAT_ID
   notify_on_start: true
+
+# ==================================================================
+# TWILIO
+# ==================================================================
 
 twilio:
   enabled: true
@@ -153,12 +159,25 @@ twilio:
   from_number_env: TWILIO_FROM_NUMBER
   to_number_env: TWILIO_TO_NUMBER
 
+# ==================================================================
+# WORKSPACE
+# ==================================================================
+
 workspace:
   path: /srv/homelab/server-1/neronOS/workspace
   generator_script: /srv/homelab/server-1/neronOS/workspace/generateur.py
 
-NEWS_API_KEY_ENV: NEWS_API_KEY
-NEWS_COUNTRY: "fr"
-NEWS_MAX_HEADLINES: 5
+# ==================================================================
+# NEWS
+# ==================================================================
 
-WEATHER_DEFAULT_CITY: "Paris"
+news:
+  country: fr
+  max_headlines: 5
+
+# ==================================================================
+# WEATHER
+# ==================================================================
+
+weather:
+  default_city: Paris
