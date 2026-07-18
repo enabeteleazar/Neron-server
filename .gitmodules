@@ -34,3 +34,6 @@
 [submodule "server/doctor"]
 	path = server/doctor
 	url = git@github.com:enabeteleazar/neronDoctor.git
+[submodule "client/dashboard"]
+	path = client/dashboard
+	url = https://github.com/enabeteleazar/neronDashboard
