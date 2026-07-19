@@ -909,6 +909,15 @@ async def text_input(input_data: TextInput, _: None = Depends(verify_api_key)):
             await _publish_response_ready(intent_result, "code_agent", result)
 
             return result
+        elif intent_result.intent == Intent.WEATHER_QUERY:
+            await _publish_agent_selected(intent_result, "weather_agent")
+
+            result = await _handle_weather_query(query, intent_result, metadata, start)
+
+            await _publish_agent_executed(intent_result, "weather_agent", result)
+            await _publish_response_ready(intent_result, "weather_agent", result)
+
+            return result
 
         if _is_repair_query(query):
             return await _handle_repairs(query, intent_result, metadata, start)
@@ -1318,6 +1327,17 @@ async def _handle_ha_action(query, intent_result, metadata, start) -> CoreRespon
         intent=intent_result.intent.value, agent="ha_agent",
         confidence=intent_result.confidence, timestamp=utc_now_iso(),
         execution_time_ms=elapsed, error=result.error, metadata={},
+    )
+
+
+async def _handle_weather_query(query, intent_result, metadata, start) -> CoreResponse:
+    from core.agents.io.weather_agent import WeatherAgent
+
+    response_text = await WeatherAgent().run(query)
+    return CoreResponse(
+        response=response_text, intent=intent_result.intent.value, agent="weather_agent",
+        confidence=intent_result.confidence, timestamp=utc_now_iso(),
+        execution_time_ms=round((time.monotonic() - start) * 1000, 2), metadata=metadata,
     )
 
 

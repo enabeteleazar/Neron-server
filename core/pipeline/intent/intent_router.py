@@ -241,6 +241,17 @@ def _fallback_intent(query: str) -> Intent | None:
         "temps demain",
         "prevision meteo",
         "previsions meteo",
+        "quel temps",
+        "temps fait",
+        "temps qu'il fait",
+        "temps aujourd'hui",
+        "va-t-il pleuvoir",
+        "va t il pleuvoir",
+        "il pleut",
+        "fait-il beau",
+        "fait il beau",
+        "climat aujourd'hui",
+        "degres dehors",
     ]
 
     news_keywords = [

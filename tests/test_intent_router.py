@@ -50,6 +50,8 @@ class TestIntentWeather:
     @pytest.mark.parametrize("query", [
         "cherche la météo à Paris",
         "météo demain",
+        "quel temps fait-il à Paris ?",
+        "va-t-il pleuvoir demain",
     ])
     async def test_weather_keywords(self, router, query):
         result = await router.route(query)
