@@ -1,11 +1,23 @@
 [Unit]
-Description=Neron World Model Loop
-After=network.target
+Description=NéronOS World Model Loop
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
-WorkingDirectory=/etc/neron
-ExecStart=/etc/neron/venv/bin/python -m modules.world_model.world_model_loop
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neronOS/server
+EnvironmentFile=-/etc/neronOS/secrets.env
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
+ExecStart=/etc/neronOS/venv/bin/python -m modules.world_model.world_model_loop
 Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

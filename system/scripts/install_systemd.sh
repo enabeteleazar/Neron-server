@@ -6,15 +6,20 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
-BASE_DIR="/etc/neron"
+BASE_DIR="/etc/neronOS"
 SYSTEMD_DIR="$BASE_DIR/system/deploy"
 PYTHON="$BASE_DIR/venv/bin/python"
 UNITS=(
   "neron-core.service"
   "neron-llm.service"
-  "neron-doctor.service"
+  "neron-goal.service"
+  "neron-memory.service"
   "neron-web.service"
-  "neron-watchdog.service"
+  "neron-web-registry.service"
+  "neron-homeassistant-registry.service"
+  "neron-cognitive-loop.service"
+  "neron-self-model-loop.service"
+  "neron-world-model-loop.service"
 )
 
 echo "Installing NéronOS Python packages..."

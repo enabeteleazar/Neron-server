@@ -30,7 +30,7 @@ submodules:
 clean:
 	@neron clean
 
-uapdate:
+update:
 	python -m pip install --upgrade pip
 
 ollama:

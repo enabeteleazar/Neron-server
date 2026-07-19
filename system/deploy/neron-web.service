@@ -1,14 +1,18 @@
 [Unit]
-Description=Neron Web
-After=network.target neron-core.service
+Description=NéronOS Web (Next.js)
+After=network-online.target neron-core.service
 Requires=neron-core.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=neron
-WorkingDirectory=/etc/neron/web/neron-app
-Environment=NODE_ENV=development
-ExecStart=/usr/bin/npm run dev -- --host 0.0.0.0 --port 8080
+Group=neron-dev
+WorkingDirectory=/etc/neronOS/client/client
+Environment=NODE_ENV=production
+# Prérequis : npm run build exécuté au déploiement (voir DEPLOY)
+ExecStart=/usr/bin/npm run start -- --hostname 0.0.0.0 --port 8080
 Restart=always
 RestartSec=5
 

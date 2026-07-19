@@ -1,20 +1,24 @@
 [Unit]
 Description=NéronOS Memory Daemon
-After=network-online.target neronOS.service
+After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=neron
 Group=neron-dev
-WorkingDirectory=/srv/homelab/server-1/neronOS/server
-EnvironmentFile=-/srv/homelab/server-1/neronOS/secrets.env
-Environment=NERON_ROOT=/srv/homelab/server-1/neronOS
-Environment=NERON_CONFIG=/srv/homelab/server-1/neronOS/neron.yaml
+WorkingDirectory=/etc/neronOS/server
+EnvironmentFile=-/etc/neronOS/secrets.env
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+Environment=NERON_CORE_URL=http://127.0.1.1:8010
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/srv/homelab/server-1/neronOS:/srv/homelab/server-1/neronOS/server
+Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
+Environment=NERON_SERVICE_HOST=127.0.1.4
 Environment=NERON_SERVICE_PORT=8040
-ExecStart=/srv/homelab/server-1/neronOS/venv/bin/python -m uvicorn memory.app:app --host 127.0.0.1 --port 8040
+ExecStart=/etc/neronOS/venv/bin/python -m uvicorn memory.app:app --host 127.0.1.4 --port 8040
 Restart=always
 RestartSec=10
 

@@ -1,14 +1,21 @@
 [Unit]
-Description=Neron Core API
-After=network.target
+Description=NéronOS Core API
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=neron
 Group=neron-dev
-WorkingDirectory=/etc/neron
-EnvironmentFile=/etc/neron/secrets.env
-ExecStart=/etc/neron/venv/bin/uvicorn core.app:app --host 0.0.0.0 --port 8010
+WorkingDirectory=/etc/neronOS/server
+EnvironmentFile=-/etc/neronOS/secrets.env
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
+ExecStart=/etc/neronOS/venv/bin/python -m uvicorn core.app:app --host 0.0.0.0 --port 8010
 Restart=always
 RestartSec=5
 

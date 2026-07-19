@@ -46,7 +46,7 @@ routing:
   default: glm-5.2:cloud
 
 strategy:
-  code: parallel
+  code: single
   reasoning: single
   chat: single
   agent: single

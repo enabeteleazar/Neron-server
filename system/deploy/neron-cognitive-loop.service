@@ -1,11 +1,23 @@
 [Unit]
-Description=Neron Cognitive Loop
-After=network.target
+Description=NéronOS Cognitive Loop
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
-WorkingDirectory=/etc/neron
-ExecStart=/etc/neron/venv/bin/python modules/autonomous/run_cognitive_loop.py
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neronOS/server
+EnvironmentFile=-/etc/neronOS/secrets.env
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
+ExecStart=/etc/neronOS/venv/bin/python -m modules.autonomous.run_cognitive_loop
 Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target

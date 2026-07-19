@@ -2,16 +2,23 @@
 Description=NéronOS Web Registry Sidecar
 After=network-online.target neron-core.service neron-web.service
 PartOf=neron-web.service
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
 User=neron
 Group=neron-dev
-WorkingDirectory=/etc/neron
-EnvironmentFile=/etc/neron/secrets.env
+WorkingDirectory=/etc/neronOS/server
+EnvironmentFile=-/etc/neronOS/secrets.env
+Environment=NERON_ROOT=/etc/neronOS
+Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
+Environment=NERON_CORE_URL=http://127.0.1.1:8010
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
 Environment=NERON_SERVICE_PORT=8080
-ExecStart=/etc/neron/venv/bin/python -m web_bridge.registry_runner
+ExecStart=/etc/neronOS/venv/bin/python -m web_bridge.registry_runner
 Restart=always
 RestartSec=10
 

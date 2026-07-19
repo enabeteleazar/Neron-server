@@ -1,5 +1,5 @@
 [Unit]
-Description=LEGACY Neron API service
+Description=LEGACY — remplacé par neronOS.service, ne pas activer
 After=network.target
 
 [Service]
