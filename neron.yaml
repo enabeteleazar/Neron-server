@@ -60,6 +60,19 @@ llm:
   timeout: 300
   race_timeout: 60
 
+  # Durée pendant laquelle Ollama garde un modèle chargé en RAM après une
+  # génération, avant de le décharger. Défaut Ollama = 5m — trop court
+  # pour un usage conversationnel : chaque silence > 5 min entraîne un
+  # rechargement à froid (~10-30s de pénalité selon la taille du modèle,
+  # observé en prod sur Homebox).
+  #
+  # Fixé à 10m plutôt que plus long : Homebox tourne à 7.2 Gi RAM totale,
+  # ~3.6 Gi disponible et déjà du swap actif (mesuré via `free -h`).
+  # Garder qwen3:latest (5.2 Go) chargé simultanément à llama3.2:3b (2 Go)
+  # sur une fenêtre de 30m dépasserait la RAM dispo. "-1" = ne jamais
+  # décharger — à proscrire ici tant que la RAM n'est pas augmentée.
+  keep_alive: 10m
+
   ollama_max_connections: 50
   ollama_max_keepalive_connections: 10
 
