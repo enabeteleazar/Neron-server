@@ -6,7 +6,7 @@
 
 [submodule "client/dashboard"]
         path = client/dashboard
-        url = git@github.com:enabeteleazar/neronDashboard
+        url = git@github.com:enabeteleazar/neronDashboard.git
 
 [submodule "client/neronVoice"]
         path = client/neronVoice
@@ -32,11 +32,11 @@
 
 [submodule "server/memory"]
 	path = server/memory
-	url = git@github.com:enabeteleazar/neronMemory
+	url = git@github.com:enabeteleazar/neronMemory.git
 
 [submodule "server/voice"]
 	path = server/voice
-	url = git@gituhb.com:enabeteleazar/neron-voice
+	url = git@github.com:enabeteleazar/neron-voice.git
 
 [submodule "server/watchdog"]
 	path = server/watchdog
