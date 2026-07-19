@@ -18,15 +18,15 @@
 
 
 ##   	SERVER	##
-[submodule "core"]
+[submodule "server/core"]
 	path = server/core
 	url = git@github.com:enabeteleazar/neron_core.git
 
-[submodule "goal"]
+[submodule "server/goal"]
 	path = server/goal
 	url = git@github.com:enabeteleazar/neron_goal.git
 
-[submodule "llm"]
+[submodule "server/llm"]
 	path = server/llm
 	url = git@github.com:enabeteleazar/neron_llm.git
 
