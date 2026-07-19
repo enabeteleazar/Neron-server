@@ -34,16 +34,16 @@ memory:
 
 model_map:
   fast: llama3.2:3b
-  default: mistral:latest
-  code: deepseek-coder:6.7b
+  default: llama3.2:3b
+  code: Qwen2.5-Coder:1.5b
 
 routing:
   code: Qwen2.5-Coder:1.5b
-  reasoning: Qwen2.5-Coder:1.5b
+  reasoning: qwen3:latest
   agent: Qwen2.5-Coder:1.5b
-  chat: glm-5.2:cloud
-  fast: glm-5.2:cloud
-  default: glm-5.2:cloud
+  chat: llama3.2:3b
+  fast: llama3.2:3b
+  default: llama3.2:3b
 
 strategy:
   code: single
