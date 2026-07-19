@@ -294,7 +294,10 @@ async def lifespan(app: FastAPI):
         ha_agent = HAAgent()
 
         stt_agent = STTAgent()
-        await asyncio.get_event_loop().run_in_executor(None, load_model)
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, load_model)
+        except Exception as exc:
+            logger.warning("STT model load failed: %s", exc)
 
         tts_agent = TTSAgent()
 

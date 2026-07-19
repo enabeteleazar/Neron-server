@@ -13,6 +13,11 @@ import pytest
 from fastapi import HTTPException
 from unittest.mock import patch
 
+pytest.importorskip(
+    "llm.core.manager",
+    reason="neron_llm submodule (llm/) not present in this checkout",
+)
+
 from llm.core.manager import LLMManager, MAX_RETRIES
 from llm.core.router import LLMRouter
 from llm.core.strategy import StrategyEngine
