@@ -78,14 +78,14 @@ def diagnose_alert(payload: dict[str, Any]) -> dict[str, Any]:
             "severity": "high" if (cpu or 0) >= 95 else "medium",
             "summary": f"Charge CPU élevée ({cpu}%).",
             "probable_causes": [
-                "stratégie LLM 'parallel' faisant courir plusieurs modèles",
+                "mode LLM 'parallel'/'race' faisant courir plusieurs modèles",
                 "inférence locale (Ollama/llama.cpp) saturant les cœurs",
                 "boucle autonome (cognitive/self/world model) trop fréquente",
                 "transcription STT (faster-whisper) en cours",
             ],
             "safe_actions": [
                 "identifier le processus dominant (ps aux --sort=-%cpu | head)",
-                "passer strategy.code de 'parallel' à 'single' dans neron.yaml",
+                "passer tasks.code.mode de 'parallel' à 'single' dans neron.yaml",
                 "espacer les boucles autonomes (intervalle plus long)",
                 "limiter les threads Ollama (OLLAMA_NUM_PARALLEL=1)",
             ],
@@ -104,7 +104,7 @@ def diagnose_alert(payload: dict[str, Any]) -> dict[str, Any]:
             ],
             "safe_actions": [
                 "décharger les modèles inutilisés (ollama stop)",
-                "utiliser un modèle plus petit dans model_map",
+                "utiliser un modèle plus petit dans tasks.<tâche>.model",
                 "redémarrer le service dont la RSS croît sans redescendre",
             ],
             "metadata": payload,

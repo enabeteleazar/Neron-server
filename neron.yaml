@@ -29,33 +29,29 @@ memory:
   retry: 2
 
 # ==================================================================
-# MODELS
-# ==================================================================
-
-model_map:
-  fast: llama3.2:3b
-  default: llama3.2:3b
-  code: Qwen2.5-Coder:1.5b
-
-routing:
-  code: Qwen2.5-Coder:1.5b
-  reasoning: qwen3:latest
-  agent: Qwen2.5-Coder:1.5b
-  chat: llama3.2:3b
-  fast: llama3.2:3b
-  default: llama3.2:3b
-
-strategy:
-  code: single
-  reasoning: single
-  chat: single
-  agent: single
-
-# ==================================================================
 # LLM
 # ==================================================================
 
 llm:
+  # Provider utilisé si une tâche ci-dessous n'a pas de config valide
+  # (absente, provider hors liste blanche, ou pas encore implémenté).
+  # NE JAMAIS mettre autre chose qu'ollama ici — c'est le filet de
+  # sécurité qui garantit qu'aucune génération ne part vers l'extérieur
+  # par défaut, même si la config ci-dessous est cassée ou incomplète.
+  safety_floor_provider: ollama
+
+  # Liste blanche des providers utilisables, tous usages confondus.
+  # Un provider absent de cette liste est ignoré par le routeur, quelle
+  # que soit la config d'une tâche individuelle.
+  #   - ollama : actif, utilisé aujourd'hui.
+  #   - claude, codex : préparés pour un usage futur, PAS utilisés
+  #     aujourd'hui. codex n'a d'ailleurs pas encore de code Provider —
+  #     le sélectionner retombe automatiquement sur le plancher.
+  providers_allowed:
+    - ollama
+    - claude
+    - codex
+
   default_provider: ollama
   timeout: 300
   race_timeout: 60
@@ -91,6 +87,56 @@ llm:
   claude_max_keepalive_connections: 5
 
   temperature: 0.7
+
+# ==================================================================
+# TASKS — remplace les anciennes sections model_map / routing / strategy
+# (fusionnées ici : un seul bloc par tâche, provider(s) + modèle + mode).
+#
+# 'providers' est une liste ordonnée :
+#   - mode 'single'            → seul le premier élément est utilisé
+#     (les suivants ne servent qu'en repli si le premier échoue).
+#   - mode 'parallel' / 'race' → tous les éléments listés sont appelés,
+#     et EUX SEULS (jamais un provider hors de cette liste).
+# Chaque provider listé passe par llm.providers_allowed puis par la
+# liste des providers réellement implémentés avant d'être utilisé ;
+# sinon repli sur llm.safety_floor_provider.
+# ==================================================================
+
+tasks:
+  code:
+    providers: [ollama]
+    model: qwen2.5-coder:14b
+    mode: single
+
+  reasoning:
+    providers: [ollama]
+    model: qwen3:latest
+    mode: single
+
+  agent:
+    providers: [ollama]
+    model: qwen2.5-coder:14b
+    mode: single
+
+  chat:
+    providers: [ollama]
+    model: llama3.2:3b
+    mode: race
+
+  fast:
+    providers: [ollama]
+    model: llama3.2:3b
+    mode: single
+
+  summary:
+    providers: [ollama]
+    model: llama3.2:3b
+    mode: single
+
+  default:
+    providers: [ollama]
+    model: llama3.2:3b
+    mode: single
 
 # ==================================================================
 # CODE AGENT
