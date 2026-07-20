@@ -12,12 +12,6 @@
         path = client/neronVoice
         url = git@github.com:enabeteleazar/neron-voice-interface.git
 
-[submodule "client/neronHUB"]
-        path = client/neronHUB
-        url = git@github.com:enabeteleazar/neronHUB.git
-
-
-##   	SERVER	##
 [submodule "server/core"]
 	path = server/core
 	url = git@github.com:enabeteleazar/neron_core.git
