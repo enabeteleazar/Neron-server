@@ -105,8 +105,9 @@ llm:
 tasks:
   code:
     providers: [ollama]
-    model: qwen2.5-coder:14b
+    model: Qwen2.5-Coder:1.5b   # au lieu de qwen2.5-coder:14b
     mode: single
+
 
   reasoning:
     providers: [ollama]
