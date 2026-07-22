@@ -14,7 +14,7 @@ EnvironmentFile=-/etc/neronOS/secrets.env
 Environment=NERON_ROOT=/etc/neronOS
 Environment=NERON_CONFIG=/etc/neronOS/neron.yaml
 Environment=NERON_LLM_URL=http://127.0.1.2:8765/llm
-Environment=NERON_LLM_TIMEOUT=120
+Environment=NERON_LLM_TIMEOUT=240
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=/etc/neronOS:/etc/neronOS/server
 ExecStart=/etc/neronOS/venv/bin/python -m uvicorn core.app:app --host 0.0.0.0 --port 8010
