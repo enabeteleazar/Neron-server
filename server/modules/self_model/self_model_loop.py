@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from modules.self_model.self_model import get_self_model
+from core.modules.self_model import get_self_model
 
 logging.basicConfig(
     level=logging.INFO,

@@ -6,7 +6,7 @@ import time
 
 from modules.events.event import Event
 from modules.events.event_bus import event_bus
-from modules.self_model.self_model import get_self_model
+from core.modules.self_model import get_self_model
 
 logger = logging.getLogger("neron.self_monitor")
 

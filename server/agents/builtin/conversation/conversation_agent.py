@@ -6,7 +6,7 @@ from typing import Any
 
 from agents.factory.registry import DynamicAgentRegistry
 from agents.runtime.runtime import AgentRuntime
-from modules.self_model.self_model import get_self_model
+from core.modules.self_model import get_self_model
 
 
 class ConversationAgent:
