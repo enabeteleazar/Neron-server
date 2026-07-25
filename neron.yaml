@@ -105,18 +105,18 @@ llm:
 tasks:
   code:
     providers: [ollama]
-    model: Qwen2.5-Coder:1.5b   # au lieu de qwen2.5-coder:14b
+    model: Qwen2.5-Coder:1.5b  # au lieu de qwen2.5-coder:14b
     mode: single
 
 
   reasoning:
     providers: [ollama]
-    model: qwen3:latest
+    model: qwen3:1.7b
     mode: single
 
   agent:
     providers: [ollama]
-    model: qwen2.5-coder:14b
+    model: qwen2.5-coder:1.5b  # au lieu de qwen2.5-coder:14b
     mode: single
 
   chat:
@@ -241,3 +241,12 @@ news:
 
 weather:
   default_city: Paris
+
+server:
+  cors_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+    - "http://localhost:8080"
+    - "http://127.0.0.1:8080"
+    - "https://homebox.tail7f8e60.ts.net:8443"
+    - "http://homebox.tail7f8e60.ts.net:4400"
