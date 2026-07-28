@@ -1,0 +1,7 @@
+[Unit]
+Description=NeronOS stack
+Wants=neron@core.service neron@llm.service neron@goal.service neron@memory.service neron@voice.service
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target

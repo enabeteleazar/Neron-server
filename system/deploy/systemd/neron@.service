@@ -1,0 +1,23 @@
+[Unit]
+Description=NeronOS %i
+PartOf=neron.target
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neronOS/server
+
+EnvironmentFile=-/etc/neronOS/secrets.env
+EnvironmentFile=/etc/neronOS/env/common.env
+
+ExecStart=/etc/neronOS/venv/bin/python -m common.serve %i
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

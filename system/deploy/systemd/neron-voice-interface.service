@@ -1,0 +1,23 @@
+[Unit]
+Description=Neron Voice Interface
+After=network.target neron@core.service
+Requires=neron@core.service
+
+[Service]
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neronOS/client/neronVoice
+Environment=VITE_NERON_WS_URL=wss://homebox.tail7f8e60.ts.net:8443/ws
+Environment=VITE_NERON_API_URL=http://localhost:8010
+Environment=BASE_PATH=/
+Environment=PORT=4200
+EnvironmentFile=-/etc/neronOS/secrets.env
+ExecStart=/usr/bin/pnpm start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
