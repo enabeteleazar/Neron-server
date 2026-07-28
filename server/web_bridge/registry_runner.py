@@ -4,6 +4,7 @@ import asyncio
 import logging
 import signal
 
+from server.common.paths import service_version
 from server.common.registry.client import RegistryClient
 
 
@@ -13,7 +14,7 @@ logger = logging.getLogger("web.registry")
 def create_registry_client() -> RegistryClient:
     return RegistryClient(
         service_name="web",
-        version="0.1.0",
+        version=service_version(__file__),
         host="localhost",
         port=8080,
         capabilities=["dashboard", "chat_ui", "monitoring_ui", "admin_ui"],

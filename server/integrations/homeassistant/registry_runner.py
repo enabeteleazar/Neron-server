@@ -11,6 +11,7 @@ import logging
 import os
 import signal
 
+from server.common.paths import service_version
 from server.common.registry.client import RegistryClient
 
 
@@ -20,7 +21,7 @@ logger = logging.getLogger("homeassistant.registry")
 def create_registry_client() -> RegistryClient:
     return RegistryClient(
         service_name="homeassistant",
-        version="0.1.0",
+        version=service_version(__file__),
         host=os.getenv("NERON_SERVICE_HOST", "127.0.1.6"),
         port=int(os.getenv("NERON_SERVICE_PORT", "8123")),
         capabilities=["home_automation", "entity_registry", "device_control"],

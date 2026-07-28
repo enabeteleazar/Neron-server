@@ -23,6 +23,29 @@ NERON_SERVER_DIR = Path(
 NERON_WORKSPACE_DIR = Path(
     os.getenv("NERON_WORKSPACE_DIR", str(NERON_ROOT / "workspace"))
 ).expanduser()
+
+
+def service_version(start: str, default: str = "0.0.0") -> str:
+    """Version du service, lue depuis le premier fichier VERSION trouve.
+
+    `start` est le chemin du module appelant, typiquement `__file__`.
+    Le prefixe v/V eventuel est retire.
+    """
+
+    for parent in Path(start).resolve().parents:
+
+        candidate = parent / "VERSION"
+
+        if candidate.is_file():
+            try:
+                text = candidate.read_text(encoding="utf-8").strip()
+            except OSError:
+                break
+
+            if text:
+                return text.lstrip("vV")
+
+    return default
 NERON_SECRETS_FILE = Path(
     os.getenv("NERON_SECRETS_FILE", str(NERON_ROOT / "secrets.env"))
 ).expanduser()
