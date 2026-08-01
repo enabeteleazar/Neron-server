@@ -1,3 +1,4 @@
+# /etc/systemd/system/neron-voice-interface.service
 [Unit]
 Description=Neron Voice Interface
 After=network.target neron@core.service
@@ -8,12 +9,23 @@ Type=simple
 User=neron
 Group=neron-dev
 WorkingDirectory=/etc/neronOS/client/neronVoice
-Environment=VITE_NERON_WS_URL=wss://homebox.tail7f8e60.ts.net:8443/ws
-Environment=VITE_NERON_API_URL=http://localhost:8010
-Environment=BASE_PATH=/
+
+# Servie sous /voice/ par Caddy. BASE_PATH est lu par vite.config.ts et doit
+# etre present AU BUILD, pas seulement au demarrage.
+Environment=BASE_PATH=/voice/
 Environment=PORT=4200
+
+# WebSocket via le reverse proxy. La barre finale est requise : Caddy route
+# /ws/* et retire le prefixe.
+Environment=VITE_NERON_WS_URL=wss://homebox.tail7f8e60.ts.net/ws/
+
 EnvironmentFile=-/etc/neronOS/secrets.env
+
+# Le token d authentification vient de secrets.env, jamais ecrit ici en clair.
+ExecStartPre=/usr/bin/env VITE_NERON_TOKEN=${NERON_API_KEY} /usr/bin/pnpm --filter @workspace/neron run build
 ExecStart=/usr/bin/pnpm start
+
+TimeoutStartSec=600
 Restart=always
 RestartSec=5
 StandardOutput=journal

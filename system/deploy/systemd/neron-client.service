@@ -1,0 +1,22 @@
+[Unit]
+Description=NeronOS Next.js Client
+After=network.target
+
+[Service]
+Type=simple
+User=neron
+Group=neron-dev
+WorkingDirectory=/etc/neronOS/client/client
+Environment=NODE_ENV=production
+Environment=PORT=4100
+EnvironmentFile=-/etc/neronOS/secrets.env
+ExecStartPre=/usr/bin/env NEXT_PUBLIC_NERON_TOKEN=${NERON_API_KEY} /usr/bin/pnpm build
+TimeoutStartSec=600
+ExecStart=/usr/bin/pnpm start
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
