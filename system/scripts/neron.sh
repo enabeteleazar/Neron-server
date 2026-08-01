@@ -7,19 +7,14 @@ REPO="/etc/neronOS"
 VENV="$REPO/venv"
 API_URL="${NERON_API_URL:-http://localhost:8010}"
 
-SERVICES=(
-  "neron-core.service"
-  "neron-memory.service"
-  "neron-goal.service"
-  "neron-llm.service"
-  "ollama.service"
-  "neron-voice.service"
-
-  "neron-dashboard.service"
-  "neron-client.service"
-  "neronhub.service"
-  "neron-voice-interface.service"
+# Inventaire decouvert, jamais fige : tout ce qui porte le prefixe neron-
+# ou une instance du gabarit neron@. ollama reste explicite, il n a pas le prefixe.
+mapfile -t SERVICES < <(
+  systemctl list-units 'neron*' --type=service --all --no-legend \
+    | sed 's/^[^a-zA-Z]*//' \
+    | awk '{print $1}'
 )
+SERVICES+=("ollama.service")
 
 ok() {
   echo "✔ $1"
@@ -193,19 +188,19 @@ cmd_registry_cli() {
 # ─────────────────────────────────────────────────────────────
 
 start() {
-  sudo systemctl start "${SERVICES[@]}"
-  ok "services démarrés"
+  sudo systemctl start neron.target
+  ok "coeur démarré (neron.target)"
 }
 
 stop() {
-  sudo systemctl stop "${SERVICES[@]}"
-  ok "services arrêtés"
+  sudo systemctl stop neron.target
+  ok "coeur arrêté (neron.target)"
 }
 
 restart() {
-  sudo systemctl restart "${SERVICES[@]}"
-  ok "services redémarrés"
-  neron status
+  sudo systemctl restart neron.target
+  ok "coeur redémarré (neron.target)"
+  status
 }
 
 status() {
