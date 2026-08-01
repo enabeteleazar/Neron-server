@@ -1,146 +1,409 @@
 #!/usr/bin/env bash
-# scripts/neron.sh
 
-set -e
 clear
+set -euo pipefail
 
-# =========================
-# COLORS
-# =========================
-BOLD="\033[1m"
-BLUE="\033[34m"
-YELLOW="\033[33m"
-GREEN="\033[32m"
-RED="\033[31m"
-NC="\033[0m"
+REPO="/etc/neronOS"
+VENV="$REPO/venv"
+API_URL="${NERON_API_URL:-http://localhost:8010}"
 
-# =========================
-# UI FUNCTIONS
-# =========================
-slow_echo() {
-    local text="$1"
-    local delay="${2:-0.02}"
-    for ((i=0; i<${#text}; i++)); do
-        printf "%s" "${text:$i:1}"
-        sleep $delay
-    done
-    echo
+SERVICES=(
+  "neron-core.service"
+  "neron-memory.service"
+  "neron-goal.service"
+  "neron-llm.service"
+  "ollama.service"
+  "neron-voice.service"
+
+  "neron-dashboard.service"
+  "neron-client.service"
+  "neronhub.service"
+  "neron-voice-interface.service"
+)
+
+ok() {
+  echo "✔ $1"
 }
 
-spinner() {
-    local pid=$1
-    local delay=0.1
-    local spinstr='|/-\\'
-    while ps -p "$pid" > /dev/null 2>&1; do
-        local temp=${spinstr#?}
-        printf " [%c]  " "${spinstr}"
-        spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
-        printf "\b\b\b\b\b\b"
-    done
-    printf "      \b\b\b\b\b\b"
+warn() {
+  echo "⚠ $1"
 }
 
-echo ""
-echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "  🤖 Configuration Néron"
-echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo ""
 
-# =========================
-# CONFIG
-# =========================
-BASE_DIR="/etc/neron"
-FILE="$BASE_DIR/neron.yaml"
+# ─────────────────────────────────────────────────────────────
+# AIDE
+# ─────────────────────────────────────────────────────────────
 
-# =========================
-# GUARD
-# =========================
-if [ ! -f "$FILE" ]; then
-    echo -e "${RED}❌ neron.yaml introuvable${NC}"
-    exit 1
-fi
+show_help() {
+  cat <<'EOF'
+Néron CLI
 
-# =========================
-# DISPLAY CONFIG
-# =========================
-python3 - <<EOF
-import yaml
+Usage:
+  neron <commande>
 
-file = "$FILE"
+Commandes utilisateur:
+  status              Affiche l'état rapide de Néron
+  version             Affiche les versions du Core et des submodules
+  goal "demande"      Envoie un objectif à Néron
+  chat "message"      Envoie un message simple à Néron
+  registry            Affiche la topologie complète des services
+  services            Affiche la liste compacte des services
+  service <nom>       Affiche le détail d'un service
 
-with open(file) as f:
-    data = yaml.safe_load(f)
+Développement:
+  Utiliser make
 
-def section(title):
-    print("\n" + title)
-    print("-" * len(title))
-
-section("🤖 CORE NÉRON")
-core = data.get("neron", {})
-print(f"Version      : {core.get('version')}")
-print(f"Log level    : {core.get('log_level')}")
-
-section("🧠 LLM")
-llm = data.get("llm", {})
-print(f"Host         : {llm.get('host')}")
-print(f"Model        : {llm.get('model')}")
-print(f"Max tokens   : {llm.get('max_tokens')}")
-print(f"Température  : {llm.get('temperature')}")
-
-section("🧩 CODE AGENT")
-ca = data.get("code_agent", {})
-print(f"Enabled      : {ca.get('enabled')}")
-print(f"Model        : {ca.get('model')}")
-print(f"Timeout      : {ca.get('sandbox_timeout')}s")
-
-section("💾 MEMORY")
-mem = data.get("memory", {})
-print(f"DB Path      : {mem.get('db_path')}")
-print(f"Retention    : {mem.get('retention_days')} days")
-
-section("📅 SCHEDULER")
-sch = data.get("scheduler", {})
-print(f"Enabled      : {sch.get('enabled')}")
-print(f"Report hour  : {sch.get('daily_report_hour')}")
-print(f"Cleanup days : {sch.get('memory_cleanup_days')}")
-
-section("🌐 SYSTEM")
-srv = data.get("server", {})
-sys = data.get("system", {})
-print(f"Host         : {srv.get('host')}")
-print(f"Port         : {srv.get('port')}")
-print(f"Watchdog     : {sys.get('watchdog_url')}")
-
-section("🔌 INTEGRATIONS")
-
-ha = data.get("home_assistant", {})
-print("\nHome Assistant")
-print(f"  Enabled : {ha.get('enabled')}")
-print(f"  URL     : {ha.get('url')}")
-
-tg = data.get("telegram", {})
-print("\nTelegram")
-print(f"  Enabled : {tg.get('enabled')}")
-print(f"  Chat ID : {tg.get('chat_id')}")
-
-tw = data.get("twilio", {})
-print("\nTwilio")
-print(f"  Enabled : {tw.get('enabled')}")
-
-ws = data.get("watchdog", {})
-print("\nWatchdog")
-print(f"  Enabled    : {ws.get('enabled')}")
-print(f"  CPU alert  : {ws.get('cpu_alert')}%")
-print(f"  RAM alert  : {ws.get('ram_alert')}%")
-print(f"  Disk alert : {ws.get('disk_alert')}%")
-
-section("🔎 SEARCH")
-sea = data.get("searxng", {})
-print(f"URL          : {sea.get('url')}")
-print(f"Timeout      : {sea.get('timeout')}s")
-print(f"Max results  : {sea.get('max_results')}")
+Exemples:
+  neron status
+  neron version
+  neron goal "Créer un agent de test"
+  neron chat "Bonjour Néron"
 EOF
+}
 
-echo ""
-echo -e "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+usage() {
+  cat <<EOF
+
+Néron CLI
+
+Usage:
+  neron <commande>
+
+Services:
+  start
+  stop
+  restart
+  status
+  journal
+
+Maintenance:
+  clean
+  backup
+  restore
+
+Outils:
+  config
+  telegram
+  ollama
+
+Tâches:
+  task
+  tasks
+  task-show
+  task-logs
+
+Utilisateur:
+  version
+  goal "demande"
+  chat "message"
+  help
+
+EOF
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# COMMANDES UTILISATEUR
+# ─────────────────────────────────────────────────────────────
+
+cmd_status() {
+  for service in "${SERVICES[@]}"; do
+    status=$(systemctl is-active "$service")
+
+    case "$status" in
+        active)   icon="✅" ;;
+        inactive) icon="⚪" ;;
+        failed)   icon="❌" ;;
+        *)        icon="⚠️" ;;
+    esac
+
+    printf "%-35s %s %s\n" "$service" "$icon" "$status"
+done
+}
+
+cmd_version() {
+  cd "$REPO"
+
+  echo "NÉRON VERSION"
+  echo "============="
+  echo
+
+  echo "NeronOS:"
+  echo " Branch : $(git branch --show-current)"
+  echo " Commit : $(git rev-parse --short HEAD)"
+  echo " Version: $(git describe --tags --always)"
+  echo
+
+  echo "Submodules:"
+
+  git submodule foreach --quiet '
+    branch=$(git branch --show-current)
+    [ -z "$branch" ] && branch="detached"
+
+    echo " $name:"
+    echo "   Branch : $branch"
+    echo "   Commit : $(git rev-parse --short HEAD)"
+    echo "   Version: $(git describe --tags --always)"
+    echo
+  ' || true
+}
+
+cmd_goal() {
+  local goal="${*:-}"
+
+  if [ -z "$goal" ]; then
+    echo "Erreur: objectif manquant."
+    echo 'Exemple: neron goal "Créer un agent de test"'
+    exit 1
+  fi
+
+  curl -s \
+    -X POST "$API_URL/goal" \
+    -H "Content-Type: application/json" \
+    -d "{\"goal\":\"$goal\"}"
+
+  echo
+}
+
+cmd_chat() {
+  local message="${*:-}"
+
+  if [ -z "$message" ]; then
+    echo "Erreur: message manquant."
+    echo 'Exemple: neron chat "Bonjour Néron"'
+    exit 1
+  fi
+
+  curl -s \
+    -X POST "$API_URL/chat" \
+    -H "Content-Type: application/json" \
+    -d "{\"message\":\"$message\"}"
+
+  echo
+}
+
+cmd_registry_cli() {
+  PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" \
+    "$VENV/bin/python" -m server.common.cli "$@"
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# SERVICES
+# ─────────────────────────────────────────────────────────────
+
+start() {
+  sudo systemctl start "${SERVICES[@]}"
+  ok "services démarrés"
+}
+
+stop() {
+  sudo systemctl stop "${SERVICES[@]}"
+  ok "services arrêtés"
+}
+
+restart() {
+  sudo systemctl restart "${SERVICES[@]}"
+  ok "services redémarrés"
+  neron status
+}
+
+status() {
+  for service in "${SERVICES[@]}"; do
+    state="$(systemctl is-active "$service" 2>/dev/null || true)"
+
+    case "$state" in
+      active) icon="✅" ;;
+      inactive) icon="⚪" ;;
+      activating) icon="🟡" ;;
+      failed) icon="❌" ;;
+      *) icon="⚠️"; state="${state:-unknown}" ;;
+    esac
+
+    printf "%-35s %s %s\n" "$service" "$icon" "$state"
+  done
+}
+
+journal() {
+  journalctl $(systemctl list-units --type=service --all --no-legend | awk '/neron-/ {print "-u", $1}') -f | ccze -A
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# MAINTENANCE
+# ─────────────────────────────────────────────────────────────
+
+clean() {
+    find "$REPO" -type f \( -name "*.pyc" -o -name "*.pyo" \) -delete
+
+    for cache in __pycache__ .pytest_cache .mypy_cache .ruff_cache; do
+        find "$REPO" -type d -name "$cache" -prune -exec rm -rf {} +
+    done
+
+    ok "caches nettoyés"
+}
+
+backup() {
+  bash "$REPO/scripts/backup.sh" backup
+}
+
+restore() {
+  bash "$REPO/scripts/backup.sh" restore
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# OUTILS
+# ─────────────────────────────────────────────────────────────
+
+config() {
+  bash "$REPO/scripts/neron.sh"
+}
+
+telegram() {
+  bash "$REPO/scripts/telegram.sh"
+}
+
+ollama() {
+  bash "$REPO/scripts/ollama.sh"
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# TASKS
+# ─────────────────────────────────────────────────────────────
+
+task() {
+  need_neronctl
+  neronctl task "$@"
+}
+
+tasks() {
+  need_neronctl
+  neronctl task list "$@"
+}
+
+task_show() {
+  need_neronctl
+  neronctl task show "$@"
+}
+
+task_logs() {
+  need_neronctl
+  neronctl task logs "$@"
+}
+
+
+# ─────────────────────────────────────────────────────────────
+# ROUTING
+# ─────────────────────────────────────────────────────────────
+
+case "${1:-help}" in
+
+  help|-h|--help)
+    show_help
+    ;;
+
+  start)
+    start
+    ;;
+
+  stop)
+    stop
+    ;;
+
+  restart)
+    restart
+    ;;
+
+  status)
+    status
+    ;;
+
+  journal)
+    journal
+    ;;
+
+  clean)
+    clean
+    ;;
+
+  backup)
+    backup
+    ;;
+
+  restore)
+    restore
+    ;;
+
+  config)
+    config
+    ;;
+
+  telegram)
+    telegram
+    ;;
+
+  ollama)
+    ollama
+    ;;
+
+  client-install)
+    client_install
+    ;;
+
+  client-start)
+    client_start
+    ;;
+
+  task)
+    shift
+    task "$@"
+    ;;
+
+  tasks)
+    shift
+    tasks "$@"
+    ;;
+
+  task-show)
+    shift
+    task_show "$@"
+    ;;
+
+  task-logs)
+    shift
+    task_logs "$@"
+    ;;
+
+  version)
+    cmd_version
+    ;;
+
+  goal)
+    shift
+    cmd_goal "$@"
+    ;;
+
+  chat)
+    shift
+    cmd_chat "$@"
+    ;;
+
+  registry|services)
+    cmd_registry_cli "$1"
+    ;;
+
+  service)
+    shift
+    cmd_registry_cli service "$@"
+    ;;
+
+  *)
+    echo "Commande inconnue: ${1}"
+    echo
+    usage
+    exit 1
+    ;;
+
+esac

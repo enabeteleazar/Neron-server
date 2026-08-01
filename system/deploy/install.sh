@@ -12,6 +12,7 @@ RC=0
 MAP=(
   "$HERE/env/common.env:/etc/neronOS/env/common.env"
   "$HERE/caddy/Caddyfile:/etc/caddy/Caddyfile"
+  "$HERE/../scripts/neron.sh:/usr/local/bin/neron"
 )
 for u in "$HERE"/systemd/*; do
   MAP+=("$u:/etc/systemd/system/$(basename "$u")")
@@ -36,7 +37,7 @@ case "$MODE" in
     for pair in "${MAP[@]}"; do
       src="${pair%%:*}"; dst="${pair#*:}"
       mkdir -p "$(dirname "$dst")"
-      cp -r "$src" "$(dirname "$dst")/"
+      cp -rT "$src" "$dst"
       echo "installe   $dst"
     done
     systemctl daemon-reload
