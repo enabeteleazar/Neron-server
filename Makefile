@@ -3,7 +3,7 @@
 # ============================================
 
 
-.PHONY: help test status submodules clean install-dev
+.PHONY: help test status submodules clean install-dev install install-check
 
 help:
 	@echo "NÉRON DEV"
@@ -15,6 +15,8 @@ help:
 	@echo "  make clean        	Nettoie les caches Python/Pytest"
 	@echo "  make update		Met a jours les paquets venv"
 	@echo "  make install-dev	Installe les dépendances"
+	@echo "  make install-check    Compare la config deployee au depot"
+	@echo "  make install          Installe la config de deploiement (sudo)"
 
 test:
 	pytest
@@ -38,3 +40,9 @@ ollama:
 
 install-dev:
 	pip install -r requirements/dev.txt
+
+install-check:
+	@./system/deploy/install.sh check
+
+install:
+	sudo ./system/deploy/install.sh install
