@@ -101,20 +101,6 @@ EOF
 # COMMANDES UTILISATEUR
 # ─────────────────────────────────────────────────────────────
 
-cmd_status() {
-  for service in "${SERVICES[@]}"; do
-    status=$(systemctl is-active "$service")
-
-    case "$status" in
-        active)   icon="✅" ;;
-        inactive) icon="⚪" ;;
-        failed)   icon="❌" ;;
-        *)        icon="⚠️" ;;
-    esac
-
-    printf "%-35s %s %s\n" "$service" "$icon" "$status"
-done
-}
 
 cmd_version() {
   cd "$REPO"
@@ -215,7 +201,7 @@ status() {
       *) icon="⚠️"; state="${state:-unknown}" ;;
     esac
 
-    printf "%-35s %s %s\n" "$service" "$icon" "$state"
+    printf "%-38s %s %s\n" "$service" "$icon" "$state"
   done
 }
 

@@ -1,30 +1,29 @@
 homebox.tail7f8e60.ts.net {
+	handle /dashboard* {
+		reverse_proxy 127.0.0.1:4400
+	}
 
-    handle /dashboard* {
-        reverse_proxy 127.0.0.1:4400
-    }
+	handle /voice* {
+		reverse_proxy 127.0.0.1:4200
+	}
 
-    handle /voice* {
-        reverse_proxy 127.0.0.1:4200
-    }
+	handle /mobile* {
+		reverse_proxy 127.0.0.1:4100
+	}
 
-    handle /mobile* {
-        reverse_proxy 127.0.0.1:4100
-    }
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8010
+	}
 
-    handle_path /api/* {
-        reverse_proxy 127.0.0.1:8010
-    }
+	handle_path /ws/* {
+		reverse_proxy 127.0.0.1:18789
+	}
 
-    handle_path /ws/* {
-        reverse_proxy 127.0.0.1:18789
-    }
+	handle_path /stt/* {
+		reverse_proxy 127.0.1.5:8045
+	}
 
-    handle_path /stt/* {
-        reverse_proxy 127.0.1.5:8045
-    }
-
-    handle {
-        redir * /dashboard/ 302
-    }
+	handle {
+		redir * /dashboard/ 302
+	}
 }
