@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import time
 
 import httpx
@@ -15,7 +16,9 @@ from agents.builtin.base_agent import AgentResult, get_logger
 
 logger = get_logger("voice_proxy")
 
-VOICE_SERVICE_BASE_URL = "http://127.0.0.1:8045"
+# Le service voice ecoute sur son alias loopback dedie (nodes.voice de
+# neron.server.yaml), pas sur 127.0.0.1. Surchargeable par NERON_VOICE_URL.
+VOICE_SERVICE_BASE_URL = os.getenv("NERON_VOICE_URL", "http://127.0.1.5:8045")
 _TIMEOUT = httpx.Timeout(30.0, connect=5.0)
 
 
