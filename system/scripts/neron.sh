@@ -31,33 +31,6 @@ warn() {
 
 show_help() {
   cat <<'EOF'
-Néron CLI
-
-Usage:
-  neron <commande>
-
-Commandes utilisateur:
-  status              Affiche l'état rapide de Néron
-  version             Affiche les versions du Core et des submodules
-  goal "demande"      Envoie un objectif à Néron
-  chat "message"      Envoie un message simple à Néron
-  registry            Affiche la topologie complète des services
-  services            Affiche la liste compacte des services
-  service <nom>       Affiche le détail d'un service
-
-Développement:
-  Utiliser make
-
-Exemples:
-  neron status
-  neron version
-  neron goal "Créer un agent de test"
-  neron chat "Bonjour Néron"
-EOF
-}
-
-usage() {
-  cat <<EOF
 
 Néron CLI
 
@@ -65,10 +38,10 @@ Usage:
   neron <commande>
 
 Services:
-  start
-  stop
-  restart
-  status
+  start               Démarre le coeur (neron.target)
+  stop                Arrête le coeur (neron.target)
+  restart             Redémarre le coeur puis affiche l'état
+  status              Affiche l'état de toutes les unités neron*
   journal
 
 Maintenance:
@@ -81,20 +54,38 @@ Outils:
   telegram
   ollama
 
+Client:
+  client-install
+  client-start
+
 Tâches:
   task
   tasks
   task-show
   task-logs
 
+Registry:
+  registry            Affiche la topologie complète des services
+  services            Affiche la liste compacte des services
+  service <nom>       Affiche le détail d'un service
+
 Utilisateur:
-  version
-  goal "demande"
-  chat "message"
-  help
+  version             Affiche les versions du Core et des submodules
+  goal "demande"      Envoie un objectif à Néron
+  chat "message"      Envoie un message simple à Néron
+  help                Affiche cette aide
+
+Développement:
+  Utiliser make
+
+Exemples:
+  neron status
+  neron goal "Créer un agent de test"
+  neron chat "Bonjour Néron"
 
 EOF
 }
+
 
 
 # ─────────────────────────────────────────────────────────────
@@ -383,7 +374,7 @@ case "${1:-help}" in
   *)
     echo "Commande inconnue: ${1}"
     echo
-    usage
+    show_help
     exit 1
     ;;
 
