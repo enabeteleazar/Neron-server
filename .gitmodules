@@ -30,7 +30,7 @@
 
 [submodule "server/voice"]
 	path = server/voice
-	url = git@github.com:enabeteleazar/neron-voice.git
+	url = git@github.com:enabeteleazar/neronVoice.git
 
 [submodule "server/watchdog"]
 	path = server/watchdog
