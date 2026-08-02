@@ -60,28 +60,32 @@ def create_service_app(
         app.state.started_at = time.monotonic()
         app.state.registry_client = None
 
-        if register:
-            try:
-                client = RegistryClient(
-                    service_name=name,
-                    version=version,
-                    host=os.getenv("NERON_SERVICE_HOST", "127.0.0.1"),
-                    port=_env_port(),
-                    capabilities=list(capabilities or []),
-                    metadata=dict(metadata or {}),
-                )
-                await client.start()
-                app.state.registry_client = client
-            except Exception:
-                # Le registre ne doit jamais empecher l API de servir.
-                logger.exception("%s : enregistrement au registry impossible", name)
+        async with (setup(app) if setup is not None else nullcontext()):
+            # On ne s annonce qu une fois le service reellement pret.
+            if register:
+                try:
+                    client = RegistryClient(
+                        service_name=name,
+                        version=version,
+                        host=os.getenv("NERON_SERVICE_HOST", "127.0.0.1"),
+                        port=_env_port(),
+                        capabilities=list(capabilities or []),
+                        metadata=dict(metadata or {}),
+                    )
+                    await client.start()
+                    app.state.registry_client = client
+                except Exception:
+                    # Le registre ne doit jamais empecher l API de servir.
+                    logger.exception("%s : enregistrement au registry impossible", name)
 
-        try:
-            async with (setup(app) if setup is not None else nullcontext()):
+            try:
                 yield
-        finally:
-            if app.state.registry_client is not None:
-                await app.state.registry_client.stop()
+            finally:
+                if app.state.registry_client is not None:
+                    try:
+                        await app.state.registry_client.stop()
+                    except Exception:
+                        logger.warning("%s : arret du client registry en erreur", name)
 
     app = FastAPI(title=title, version=version, lifespan=lifespan, **fastapi_kwargs)
     mount_metrics(app, name)
