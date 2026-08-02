@@ -10,19 +10,19 @@
 
 [submodule "client/neronVoice"]
         path = client/neronVoice
-        url = git@github.com:enabeteleazar/neron-voice-interface.git
+	url = git@github.com:enabeteleazar/neronVoiceInterface.git
 
 [submodule "server/core"]
 	path = server/core
-	url = git@github.com:enabeteleazar/neron_core.git
+	url = git@github.com:enabeteleazar/neronCore.git
 
 [submodule "server/goal"]
 	path = server/goal
-	url = git@github.com:enabeteleazar/neron_goal.git
+	url = git@github.com:enabeteleazar/neronGoal.git
 
 [submodule "server/llm"]
 	path = server/llm
-	url = git@github.com:enabeteleazar/neron_llm.git
+	url = git@github.com:enabeteleazar/neronLLM.git
 
 [submodule "server/memory"]
 	path = server/memory
