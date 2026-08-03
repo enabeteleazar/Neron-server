@@ -124,6 +124,11 @@ tasks:
     model: llama3.2:3b
     mode: race
 
+  memory:
+    providers: [ollama]
+    model: qwen3:4b-instruct
+    mode: single
+
   fast:
     providers: [ollama]
     model: llama3.2:3b
