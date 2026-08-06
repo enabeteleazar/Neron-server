@@ -7,6 +7,9 @@ homebox.tail7f8e60.ts.net {
 		reverse_proxy 127.0.0.1:4200
 	}
 
+	# Projets hors périmètre Néron : chacun livre son propre fichier.
+	import /etc/caddy/conf.d/*.caddy
+
 	handle /mobile* {
 		reverse_proxy 127.0.0.1:4100
 	}
@@ -21,6 +24,10 @@ homebox.tail7f8e60.ts.net {
 
 	handle_path /stt/* {
 		reverse_proxy 127.0.1.5:8045
+	}
+
+	handle_path /memoire/* {
+		reverse_proxy 127.0.1.4:8040
 	}
 
 	handle {
