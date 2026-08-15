@@ -39,3 +39,7 @@
 [submodule "server/doctor"]
 	path = server/doctor
 	url = git@github.com:enabeteleazar/neronDoctor.git
+[submodule "server/print"]
+	path = server/print
+	url = git@github.com:enabeteleazar/neronPrint.git
+	branch = develop
