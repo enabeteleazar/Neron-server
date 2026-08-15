@@ -33,6 +33,10 @@ nodes:
     stt_port: 8045
     ui_port: 8082
 
+  print:
+    host: 127.0.1.7
+    port: 8050
+
   homeassistant:
     host: 127.0.1.6
     port: 8123
