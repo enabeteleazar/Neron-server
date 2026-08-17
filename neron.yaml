@@ -121,7 +121,7 @@ tasks:
 
   chat:
     providers: [ollama]
-    model: llama3.2:3b
+    model: gemma4:31b-cloud
     mode: race
 
   memory:
@@ -246,6 +246,19 @@ news:
 
 weather:
   default_city: Paris
+
+# ==================================================================
+# DOCTOR
+# ==================================================================
+
+doctor:
+  services:
+    - neron@core
+    - neron@llm
+    - neron@goal
+    - neron@memory
+    - neron@voice
+    - ollama
 
 server:
   cors_origins:
