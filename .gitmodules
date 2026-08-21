@@ -43,3 +43,5 @@
 	path = server/print
 	url = git@github.com:enabeteleazar/neronPrint.git
 	branch = develop
+[submodule "server/reminders"]
+	branch = develop
