@@ -47,3 +47,7 @@
 	path = server/reminders
 	url = git@github.com:enabeteleazar/neronReminders.git
 	branch = develop
+[submodule "server/calendars"]
+	path = server/calendars
+	url = git@github.com:enabeteleazar/neronCalendars.git
+	branch = develop
