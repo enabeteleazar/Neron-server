@@ -41,6 +41,10 @@ nodes:
     host: 127.0.1.8
     port: 8070
 
+  calendars:
+    host: 127.0.1.10
+    port: 8071
+
   doctor:
     host: 127.0.1.9
     port: 8060
