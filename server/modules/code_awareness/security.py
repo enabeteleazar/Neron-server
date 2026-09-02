@@ -7,20 +7,25 @@ from common.paths import NERON_SERVER_DIR
 
 PROJECT_ROOT = NERON_SERVER_DIR.resolve()
 
+# Doit rester aligne sur les repertoires reellement presents sous server/.
+# "web_bridge" et "providers" ont ete retires : le premier a ete supprime
+# (commit a4fdda3), le second n a jamais existe sous server/.
 ALLOWED_TOP_LEVEL_DIRS = {
-    "core",
-    "goal",
     "agents",
+    "calendars",
     "common",
+    "core",
     "doctor",
+    "goal",
     "integrations",
     "llm",
     "memory",
     "modules",
-    "providers",
+    "print",
+    "reminders",
     "tools",
+    "voice",
     "watchdog",
-    "web_bridge",
 }
 
 DENIED_DIR_NAMES = {

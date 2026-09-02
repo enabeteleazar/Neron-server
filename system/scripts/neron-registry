@@ -1,4 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-exec /etc/neron/venv/bin/python -m server.common.cli "$@"
+exec /etc/neronOS/venv/bin/python -m server.common.cli "$@"

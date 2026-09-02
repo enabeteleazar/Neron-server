@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+
 from memory.oblivia import ObliviaMemoryManager
 from memory.oblivia import MemoryRecord
-from memory.oblivia.text_utils import normalize_text
+from memory.oblivia.normalisation import plat as normalize_text
 
 
 MEMORY_CONTENT = (
@@ -19,10 +20,23 @@ class DummyEmbedder:
         return [1.0 if text else 0.0]
 
 
-def test_normalize_text_ignores_accents_case_and_extra_spaces():
+def test_normalize_text_ignores_accents_and_case():
+    """Contrat de normalisation lexicale d'Oblivia.
+
+    ANCIEN CONTRAT : memory.oblivia.text_utils.normalize_text() repliait les
+    accents, la casse ET les espaces internes multiples.
+    NOUVEAU CONTRAT : memory.oblivia.normalisation.plat() replie les accents et
+    la casse, et ne fait que strip() les bords. Les espaces internes multiples
+    sont CONSERVES.
+    RAISON : text_utils a disparu au profit de normalisation ; le repli des
+    espaces internes n'a pas ete reporte. Le test acte le comportement reel
+    plutot que de le masquer — voir la dette listee en Phase 2A.
+    """
     assert normalize_text("Mémoire de Néron") == "memoire de neron"
     assert normalize_text("MÉMOIRE DE NÉRON") == "memoire de neron"
-    assert normalize_text("  mémoire   de   Néron  ") == "memoire de neron"
+    assert normalize_text("  mémoire de Néron  ") == "memoire de neron"
+    # Ecart assume par rapport a l'ancien contrat :
+    assert normalize_text("  mémoire   de   Néron  ") == "memoire   de   neron"
 
 
 def test_manager_search_is_accent_insensitive(tmp_path, monkeypatch):

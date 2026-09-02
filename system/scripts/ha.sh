@@ -50,7 +50,7 @@ echo ""
 # =========================
 # CONFIG
 # =========================
-BASE_DIR="/etc/neron"
+BASE_DIR="/etc/neronOS"
 REPO_DIR="$BASE_DIR"
 SERVICE="neron-homeassistant.service"
 CONFIG_FILE="$REPO_DIR/neron.yaml"
@@ -237,7 +237,7 @@ with open(config_file, "r") as f:
 config.setdefault("home_assistant", {})
 config["home_assistant"]["enabled"] = True
 config["home_assistant"]["url"] = url
-# token moved to /etc/neron/secrets.env as HOMEASSISTANT_TOKEN
+# token moved to /etc/neronOS/secrets.env as HOMEASSISTANT_TOKEN
 
 with open(config_file, "w") as f:
     yaml.dump(config, f, allow_unicode=True)

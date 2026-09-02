@@ -1,10 +1,4 @@
 # =========================
-# SUBMODULE
-# =========================
-llm/
-llama/
-
-# =========================
 # PYTHON
 # =========================
 pycache/
@@ -91,11 +85,10 @@ ollama/
 *.save
 
 # =========================
-# GIT (sécurité)
+# GIT
 # =========================
-.gitmodules
-.git
-.github
+# NB : .gitmodules et .github/ sont VOLONTAIREMENT suivis — ne pas les ignorer,
+# le clonage des sous-modules et la CI en dependent.
 venv/
 .venv/
 

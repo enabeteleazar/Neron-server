@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+import pytest
+
+# NERONOS PHASE 2A — test lourd.
+# ~18 s — routage d invocation, runtime d agents reel.
+# Exclu par defaut (pytest.ini : addopts = -m "not slow").
+# Pour l executer : pytest -m slow
+# L intention fonctionnelle est intacte : seul le declenchement change.
+pytestmark = pytest.mark.slow
+
+
 from types import SimpleNamespace
 
 import pytest

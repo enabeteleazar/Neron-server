@@ -54,6 +54,6 @@ class AgentPromotionService:
 
     @staticmethod
     def _get_runtime_governor() -> Any:
-        from core.runtime.governor import get_runtime_governor
+        from server.common.runtime.governor import get_runtime_governor
 
         return get_runtime_governor()

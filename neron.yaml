@@ -107,7 +107,7 @@ llm:
 tasks:
   code:
     providers: [ollama]
-    model: Qwen2.5-Coder:1.5b  # au lieu de qwen2.5-coder:14b
+    model: qwen2.5-coder:1.5b  # au lieu de qwen2.5-coder:14b
     mode: single
 
 
@@ -123,8 +123,8 @@ tasks:
 
   chat:
     providers: [ollama]
-    model: gemma4:31b-cloud
-    mode: race
+    model: qwen3.5:9b
+    mode: single
 
   memory:
     providers: [ollama]
@@ -132,18 +132,18 @@ tasks:
     mode: single
 
   fast:
-    providers: [llama_cpp]
-    model: qwen2.5-1.5b-instruct-q4_k_m.gguf
+    providers: [ollama]
+    model: qwen3.5:4b
     mode: single
 
   summary:
     providers: [ollama]
-    model: llama3.2:3b
+    model: qwen3.5:4b
     mode: single
 
   default:
     providers: [ollama]
-    model: llama3.2:3b
+    model: qwen3.5:4b
     mode: single
 
 # ==================================================================
@@ -152,7 +152,7 @@ tasks:
 
 code_agent:
   enabled: true
-  model: Qwen2.5-Coder:1.5b
+  model: qwen2.5-coder:1.5b
   backup_count: 10
   sandbox_timeout: 10
   self_review_on_startup: false
@@ -231,8 +231,8 @@ twilio:
 # ==================================================================
 
 workspace:
-  path: /srv/homelab/server-1/neronOS/workspace
-  generator_script: /srv/homelab/server-1/neronOS/workspace/generateur.py
+  path: /etc/neronOS/workspace
+  generator_script: /etc/neronOS/workspace/generateur.py
 
 # ==================================================================
 # NEWS
@@ -260,8 +260,17 @@ doctor:
     - neron@goal
     - neron@memory
     - neron@voice
+    - neron@doctor
+    - neron@print
+    - neron@reminders
+    - neron@calendars
     - ollama
 
+# Lu par server/core/config.py (SERVER_HOST/SERVER_PORT/CORS_ORIGINS).
+# Exception assumee a la regle « pas d infrastructure ici » : le Core ne lit
+# pas neron.server.yaml pour le CORS, et `config.server_override` ci-dessus
+# n est implemente par aucun chargeur. Voir la dette listee dans
+# system/docs/architecture/neronos-architecture.md.
 server:
   cors_origins:
     - "http://localhost:3000"

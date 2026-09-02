@@ -1,0 +1,10 @@
+[Unit]
+Description=Declenche le diagnostic NeronOS Doctor toutes les 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=neron-doctor-diagnose.service
+
+[Install]
+WantedBy=timers.target

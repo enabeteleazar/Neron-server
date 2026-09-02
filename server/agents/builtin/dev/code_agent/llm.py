@@ -1,6 +1,12 @@
 # llm.py
+import os
 import subprocess
 import shutil
+
+# Une generation qui part en boucle bloquerait l appelant indefiniment : le
+# CodeAgent tourne dans le Core, dont la boucle evenementielle serait figee.
+# Aligne par defaut sur llm.timeout de neron.yaml / NERON_LLM_TIMEOUT.
+DEFAULT_TIMEOUT = float(os.getenv("NERON_LLM_TIMEOUT", "300"))
 
 # ── Filtre anti-LLM invalide ──────────────────────────────────────────────────
 ALLOWED_MODELS = {
@@ -29,13 +35,20 @@ def ask(model: str, prompt: str) -> str:
     if not shutil.which("ollama"):
         raise RuntimeError("Ollama n'est pas installé ou absent du PATH.")
 
-    # 3. Appel sans timeout
-    result = subprocess.run(
-        ["ollama", "run", model],
-        input=prompt,
-        text=True,
-        capture_output=True,
-    )
+    # 3. Appel borne dans le temps
+    try:
+        result = subprocess.run(
+            ["ollama", "run", model],
+            input=prompt,
+            text=True,
+            capture_output=True,
+            timeout=DEFAULT_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Ollama n'a pas repondu en {DEFAULT_TIMEOUT:.0f}s "
+            f"pour le modele '{model}'."
+        ) from exc
 
     if result.returncode != 0:
         raise RuntimeError(

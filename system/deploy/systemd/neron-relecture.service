@@ -1,0 +1,11 @@
+[Unit]
+Description=NeronOS relecture nocturne de la memoire
+Wants=neron@memory.service
+After=neron@memory.service
+
+[Service]
+Type=oneshot
+# Sans cette ligne, systemd tuerait la relecture au bout de 90 s.
+TimeoutStartSec=5400
+EnvironmentFile=/etc/neronOS/secrets.env
+ExecStart=/etc/neronOS/tools/relecture_nuit.sh

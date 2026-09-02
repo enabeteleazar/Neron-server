@@ -9,7 +9,7 @@ if [ -n "$(git status --porcelain)" ]; then
   exit 1
 fi
 
-BASE_DIR="/etc/neron"
+BASE_DIR="/etc/neronOS"
 BACKUP_BRANCH="backup/pre-purge-$(date +%Y%m%d%H%M%S)"
 echo "Creating backup branch $BACKUP_BRANCH"
 git branch "$BACKUP_BRANCH"

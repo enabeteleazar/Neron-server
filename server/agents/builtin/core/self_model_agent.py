@@ -50,7 +50,10 @@ class SelfModelAgent:
         )
 
         lines.append(
-            f"- Self-Model : {'actif' if cognitive.get('self_model_loop') else 'inactif'}"
+            # Phase 2B : la cle 'self_model_loop' n a jamais ete produite par le
+            # snapshot cognitif (la ligne affichait donc toujours « inactif »), et
+            # la boucle dediee a ete supprimee : Core maintient le SelfModel.
+            f"- Self-Model : maintenu par Core"
         )
 
         active_services = [

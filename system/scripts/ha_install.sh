@@ -17,7 +17,7 @@ NC="\033[0m"
 # =========================
 # CONFIG
 # =========================
-BASE_DIR="/etc/neron"
+BASE_DIR="/etc/neronOS"
 HA_DIR="$BASE_DIR/client/homeassistant"
 VENV_DIR="$BASE_DIR/venv"
 HA_USER="eleazar"

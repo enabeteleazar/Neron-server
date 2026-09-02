@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import httpx
 import re
 
+from common.paths import NERON_SECRETS_FILE
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("critic_proxy")
 
@@ -31,7 +33,7 @@ Réponds UNIQUEMENT en JSON valide, sans texte autour :
 {{"score": <int>, "critique": "<string ou null>", "correction": "<string ou null>"}}"""
 
 
-def load_env_var(key: str, env_file: str = "/srv/homelab/server-1/neronOS/secrets.env") -> str:
+def load_env_var(key: str, env_file: str = str(NERON_SECRETS_FILE)) -> str:
     with open(env_file) as f:
         for line in f:
             if line.startswith(f"{key}="):

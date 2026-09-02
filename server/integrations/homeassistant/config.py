@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_SECRETS_PATHS = (
     ROOT / "secrets.env",
     ROOT / "secret.env",
-    Path("/etc/neron/secrets.env"),
+    Path("/etc/neronOS/secrets.env"),
 )
 
 

@@ -64,14 +64,12 @@ nodes:
 # ==================================================================
 # Réseau HTTP
 # ==================================================================
-
-server:
-  host: 0.0.0.0
-  port: 8010
-
-  cors_origins:
-    - http://localhost:3000
-    - http://127.0.0.1:3000
-    - http://localhost:8080
-    - http://127.0.0.1:8080
-    - https://homebox.tail7f8e60.ts.net:8443
+#
+# Il n'y a volontairement plus de section `server:` ici. Elle existait en
+# double avec celle de neron.yaml, avec des valeurs divergentes, alors
+# qu'aucun composant ne la lisait : seule la section `nodes` ci-dessus est
+# consommée (common/serve.py, core/pipeline/goal_client.py,
+# core/modules/self_model/homelab.py).
+#
+# Le bind et le port du Core viennent de `nodes.core` (bind/port).
+# Les origines CORS viennent de neron.yaml, section `server:`.

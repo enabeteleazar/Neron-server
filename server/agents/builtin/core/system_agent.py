@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 
 from agents.builtin.base_agent import get_logger
-from core.runtime.governor import get_runtime_governor
+from server.common.runtime.governor import get_runtime_governor
 from core.status import get_status, get_health_score
 
 logger = get_logger("system_agent")

@@ -13,18 +13,25 @@ neron = "common.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["server"]
+# Doit rester aligne sur les repertoires de server/.
+# "providers*" a ete retire (server/providers n a jamais existe) ; les services
+# ajoutes depuis (doctor, print, reminders, calendars, watchdog) sont declares.
 include = [
     "agents*",
+    "calendars*",
     "common*",
     "core*",
+    "doctor*",
     "goal*",
     "integrations*",
     "llm*",
     "memory*",
     "modules*",
-    "providers*",
+    "print*",
+    "reminders*",
     "tools*",
     "voice*",
+    "watchdog*",
 ]
 exclude = ["core.core*"]
 namespaces = true

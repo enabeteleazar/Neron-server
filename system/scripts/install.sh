@@ -13,10 +13,10 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 REPO_URL="https://github.com/enabeteleazar/neronOS.git"
-INSTALL_DIR="${NERON_DIR:-/etc/neron}"
+INSTALL_DIR="${NERON_DIR:-/etc/neronOS}"
 # Lire NERON_BRANCH depuis neron.yaml existant si disponible
-if [ -f "${NERON_DIR:-/etc/neron}/neron.yaml" ]; then
-    _BRANCH=$(grep "^NERON_BRANCH" "${NERON_DIR:-/etc/neron}/neron.yaml" 2>/dev/null | cut -d= -f2)
+if [ -f "${NERON_DIR:-/etc/neronOS}/neron.yaml" ]; then
+    _BRANCH=$(grep "^NERON_BRANCH" "${NERON_DIR:-/etc/neronOS}/neron.yaml" 2>/dev/null | cut -d= -f2)
 fi
 BRANCH="${_BRANCH:-${NERON_BRANCH:-master}}"
 
@@ -104,9 +104,9 @@ setup_telegram() {
 if [ "${1:-}" = "--telegram-only" ]; then
     set +e
     # Lire NERON_DIR depuis .env si disponible
-    ENV_FILE="${NERON_DIR:-/etc/neron}/.env"
+    ENV_FILE="${NERON_DIR:-/etc/neronOS}/.env"
     [ -f "$ENV_FILE" ] && NERON_DIR=$(grep "^NERON_DIR" "$ENV_FILE" | cut -d= -f2)
-    INSTALL_DIR="${NERON_DIR:-/etc/neron}"
+    INSTALL_DIR="${NERON_DIR:-/etc/neronOS}"
     RED='\033[0;31m'
     GREEN='\033[0;32m'
     YELLOW='\033[1;33m'

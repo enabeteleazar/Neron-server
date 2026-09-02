@@ -47,7 +47,7 @@ echo -e "  📱 Configuration Ollama + Model Manager"
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-BASE_DIR="/etc/neron"
+BASE_DIR="/etc/neronOS"
 LLMFIT="$BASE_DIR/scripts/llmfit/llmfit.py"
 CONFIG_FILE="$BASE_DIR/neron.yaml"
 

@@ -10,7 +10,7 @@ from typing import Any
 
 from agents.runtime.store import AgentRuntimeStore
 from common.paths import NERON_ROOT
-from core.runtime.governor import get_runtime_governor
+from server.common.runtime.governor import get_runtime_governor
 from tools.models import ToolResult, ToolSpec
 
 

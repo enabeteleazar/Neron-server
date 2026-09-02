@@ -829,7 +829,7 @@ class AgentBuildOrchestrator:
     def _get_runtime_governor(self) -> Any:
         if self.runtime_governor is not None:
             return self.runtime_governor
-        from core.runtime.governor import get_runtime_governor
+        from server.common.runtime.governor import get_runtime_governor
 
         return get_runtime_governor()
 

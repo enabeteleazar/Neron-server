@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
+
 import requests
 import yaml
 
 
-CONFIG_PATH = "/etc/neron/neron.yaml"
+CONFIG_PATH = os.getenv("NERON_CONFIG", "/etc/neronOS/neron.yaml")
 NERON_API = "http://localhost:8010/cognitive-core/report"
 
 

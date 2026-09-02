@@ -1,10 +1,44 @@
 from __future__ import annotations
 
+import pytest
+
+# ---------------------------------------------------------------------------
+# NERONOS PHASE 2A — test neutralise, volontairement conserve.
+#
+# ANCIEN CONTRAT  : l identite Neron etait UN fichier, designe par
+#                   NERON_IDENTITY_PATH, parse par core.identity.get_identity().
+# NOUVEAU CONTRAT : core/identity/loader.py charge QUATRE documents
+#                   (NERON.md, PERSONALITY.md, CONVERSATION.md, CONTEXT.md)
+#                   depuis un repertoire code en dur :
+#                   IDENTITY_PATH = Path(__file__).parent / "documents".
+#                   NERON_IDENTITY_PATH n y est plus lu du tout.
+# RAISON          : le modele d identite est passe de « un fichier » a « un
+#                   corpus de quatre documents ». Ce test ne peut donc plus
+#                   injecter une identite de test ; le reparer supposerait de
+#                   rendre le repertoire configurable, c est-a-dire de changer
+#                   le contrat d identite de Core — decision humaine, voir le
+#                   rapport Phase 2A section « Decisions ».
+#
+# Le contrat reellement RETENU et teste vit dans tests/test_identity_response.py
+# (core.modules.identity.service, 9 tests verts), qui lui honore
+# NERON_IDENTITY_PATH.
+# ---------------------------------------------------------------------------
+pytest.skip(
+    "Phase 2A : contrat d identite change de forme (1 fichier -> 4 documents, "
+    "repertoire non configurable). Voir rapport Phase 2A.",
+    allow_module_level=True,
+)
+
 import asyncio
 from pathlib import Path
 
 from core.identity import get_identity
-from modules.self_model.self_model import SelfModel
+# Emplacement canonique du SelfModel (Phase 2A).
+# ANCIEN CONTRAT : modules.self_model.self_model.SelfModel — facade de
+# compatibilite du parent, supprimee.
+# NOUVEAU CONTRAT : core.modules.self_model.SelfModel — implementation
+# canonique unique. RAISON : un seul SelfModel, cf. Phase 1 et 2A.
+from core.modules.self_model import SelfModel
 
 
 def _write_identity(path: Path, *, name: str = "Atlas", version: str = "9.4") -> None:

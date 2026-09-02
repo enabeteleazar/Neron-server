@@ -39,7 +39,8 @@ ollama:
 	curl -fsSL https://ollama.com/install.sh | sh
 
 install-dev:
-	pip install -r requirements/dev.txt
+	pip install -r system/requirements/dev.txt \
+		--constraint system/requirements/constraints.txt --prefer-binary
 
 install-check:
 	@./system/deploy/install.sh check
@@ -68,21 +69,20 @@ health:
 	http="$$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:4400/)"; \
 	if [ "$$http" = "200" ] || [ "$$http" = "301" ] || [ "$$http" = "302" ]; then dash="OK"; else dash="FAILED"; status=1; fi; \
 	printf "│ Dashboard     %-14s %-7s│\n" "HTTP $$http" "$$dash"; \
-	if curl -sf --max-time 3 http://127.0.0.1:8080/health >/dev/null; then llama="OK"; else llama="FAILED"; status=1; fi; \
-	printf "│ llama.cpp     %-14s %-7s│\n" "health" "$$llama"; \
-	for svc in core goal memory llm doctor voice; do \
+	if curl -sf --max-time 3 http://127.0.0.1:11434/api/tags >/dev/null; then ollama="OK"; else ollama="FAILED"; status=1; fi; \
+	printf "│ Ollama        %-14s %-7s│\n" "api/tags" "$$ollama"; \
+	for svc in core llm memory goal doctor voice print reminders calendars; do \
 		state="$$(systemctl is-active neron@$$svc.service)"; \
 		if [ "$$state" = "active" ]; then result="OK"; else result="FAILED"; status=1; fi; \
 		printf "│ %-13s %-14s %-7s│\n" "$$(echo $$svc | sed 's/.*/\u&/')" "$$state" "$$result"; \
 	done; \
-	for svc in cognitive-loop world-model-loop self-model-loop relecture; do \
+	for svc in cognitive-loop world-model-loop homeassistant-registry; do \
 		state="$$(systemctl is-active neron-$$svc.service)"; \
 		if [ "$$state" = "active" ]; then result="OK"; else result="FAILED"; status=1; fi; \
 		case "$$svc" in \
 			cognitive-loop) name="Cognitive" ;; \
 			world-model-loop) name="World Model" ;; \
-			self-model-loop) name="Self Model" ;; \
-			relecture) name="Relecture" ;; \
+			homeassistant-registry) name="HA Registry" ;; \
 		esac; \
 		printf "│ %-13s %-14s %-7s│\n" "$$name" "$$state" "$$result"; \
 	done; \

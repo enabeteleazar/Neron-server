@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import subprocess
 
-from core.runtime.governor import get_runtime_governor
+from server.common.runtime.governor import get_runtime_governor
 
 SERVICES = {
     "core":             "neron-core",
@@ -27,11 +27,17 @@ class ServiceManager:
         ):
             return "blocked_by_runtime_governor"
 
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-        )
+        # status_all() enchaine un appel par service : sans borne, un seul
+        # systemctl bloque fige toute la lecture d etat.
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except subprocess.TimeoutExpired:
+            return "timeout"
         return result.stdout.strip() or result.stderr.strip()
 
     def status_all(self) -> dict[str, str]:

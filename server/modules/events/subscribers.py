@@ -10,7 +10,7 @@ from modules.events.analyzer import analyze_event
 from modules.self_model.subscriber import update_self_model_from_event
 from modules.events.alert_notifier import notify_system_alert
 from modules.self_repair.subscriber import handle_system_alert_for_repair
-from core.runtime.governor import handle_self_model_governor_event
+from server.common.runtime.governor import handle_self_model_governor_event
 
 logger = logging.getLogger("neron.events.subscribers")
 

@@ -13,7 +13,7 @@ from modules.cognitive.reasoner import get_reasoner
 from modules.cognitive.decision_engine import get_decision_engine
 from modules.cognitive.action_executor import get_action_executor
 from goal.system.task_manager import normalize_task_title
-from core.runtime.governor import get_runtime_governor
+from server.common.runtime.governor import get_runtime_governor
 
 @dataclass
 class CognitiveState:

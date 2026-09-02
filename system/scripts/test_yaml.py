@@ -1,7 +1,9 @@
+import os
+
 import yaml
 from pathlib import Path
 
-p = Path("/etc/neron/neron.yaml")
+p = Path(os.getenv("NERON_CONFIG", "/etc/neronOS/neron.yaml"))
 try:
     yaml.safe_load(p.read_text())
     print("YAML OK")

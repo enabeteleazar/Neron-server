@@ -46,7 +46,7 @@ echo -e "  📱 Configuration Telegram"
 echo -e "${BOLD}${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-BASE_DIR="/etc/neron"
+BASE_DIR="/etc/neronOS"
 YAML_FILE="$BASE_DIR/neron.yaml"
 
 read -p "  Voulez-vous utiliser Telegram ? [O/n] " USE_TG

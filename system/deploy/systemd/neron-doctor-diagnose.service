@@ -1,0 +1,10 @@
+[Unit]
+Description=Diagnostic periodique NeronOS Doctor
+After=neron@doctor.service
+Wants=neron@doctor.service
+
+[Service]
+Type=oneshot
+User=neron
+Group=neron-dev
+ExecStart=/etc/neronOS/system/scripts/doctor_diagnose.sh

@@ -1,3 +1,11 @@
+# Gel de l environnement Home Assistant (pip freeze), fourni a titre de
+# reference pour reconstruire l installation HA a l identique.
+#
+# Ce fichier n est PAS tire par system/requirements/requirements.txt et ne
+# doit pas l etre : ses pins (numpy, av, pytest, starlette...) contredisent
+# volontairement system/requirements/constraints.txt, qui fait foi pour les
+# services NeronOS.
+
 APScheduler==3.11.2
 Babel==2.10.3
 HAP-python==4.9.2
@@ -220,41 +228,3 @@ wheel==0.42.0
 xmltodict==1.0.4
 yarl==1.18.3
 zeroconf==0.136.2
-=======
-# Neron AI - Requirements unifies
-
-# Web Framework
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-
-# HTTP Client (0.25.2 requis par python-telegram-bot)
-httpx==0.25.2
-aiohttp>=3.9.0
-requests==2.31.0
-
-# Validation
-pydantic==2.5.3
-pydantic-settings==2.1.0
-
-# Telegram
-python-telegram-bot==20.7
-
-# TTS
-pyttsx3==2.90
-
-# Web UI
-huggingface-hub==0.20.3
-
-# Base de données
-sqlite-utils>=3.39,<5.0
-
-# Utilitaires
-python-dotenv==1.0.0
-python-multipart==0.0.6
-psutil
-pyyaml>=6.0
-coloredlogs>=15.0
-
-# Testing
-pytest==7.4.3
-pytest-asyncio==0.23.3
