@@ -31,7 +31,9 @@ async def test_internal_orchestration_endpoints_reject_missing_api_key(monkeypat
     _set_api_key(monkeypatch)
 
     async with _client() as client:
-        for path in ("/planner/status", "/tasks/status", "/evolution/status", "/projects"):
+        # Phase 2E : "/projects" retire de l echantillon — cette route
+        # appartient a Goal:8030 et n est plus servie par Core.
+        for path in ("/planner/status", "/tasks/status", "/evolution/status"):
             response = await client.get(path)
             assert response.status_code == 401, path
             assert response.json()["detail"] == "API Key manquante"
@@ -54,7 +56,9 @@ async def test_internal_orchestration_endpoints_accept_valid_api_key(monkeypatch
     timeout = httpx.Timeout(3.0)
     async with _client() as client:
         client.timeout = timeout
-        for path in ("/planner/status", "/tasks/status", "/evolution/status", "/projects"):
+        # Phase 2E : "/projects" retire de l echantillon — cette route
+        # appartient a Goal:8030 et n est plus servie par Core.
+        for path in ("/planner/status", "/tasks/status", "/evolution/status"):
             response = await client.get(path, headers=headers)
             assert response.status_code == 200, f"{path}: {response.text}"
 
@@ -126,7 +130,8 @@ async def test_sensitive_routes_are_never_public(monkeypatch):
         "/critic/latest",
         "/world-model/status",
         "/runtime/governor/policy",
-        "/goals",
+        # Phase 2E : "/goals" retire — appartient a Goal:8030.
+        # "/goals/active/task" (route Core native) reste couverte plus bas.
     )
 
     async with _client() as client:
@@ -141,7 +146,6 @@ async def test_all_explicitly_protected_router_surfaces_reject_bad_key(monkeypat
         ("GET", "/self-model/status"),
         ("GET", "/runtime/governor/policy"),
         ("GET", "/world-model/status"),
-        ("GET", "/goals"),
         ("POST", "/goals/active/task"),
         ("GET", "/cognitive-core/state"),
         ("GET", "/cognitive-core/report"),

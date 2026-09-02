@@ -55,3 +55,54 @@ NERON_IDENTITY_PATH = Path(
         str(NERON_SERVER_DIR / "memory" / "obsidian" / "identity" / "NERON.md"),
     )
 ).expanduser()
+
+
+def _env_path(name: str) -> Path | None:
+    """Resolve an environment variable to an absolute path when present."""
+    value = os.getenv(name)
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (Path.cwd() / path).resolve(strict=False)
+
+
+def _iter_project_roots(start: Path | None = None) -> list[Path]:
+    """Walk upward from the current file or working directory to find the NeronOS root."""
+    seen: set[Path] = set()
+    bases = [start] if start is not None else []
+    bases.extend([Path(__file__).resolve(), Path.cwd()])
+
+    roots: list[Path] = []
+    for base in bases:
+        current = base if base.is_dir() else base.parent
+        while True:
+            current = current.resolve(strict=False)
+            if current not in seen:
+                seen.add(current)
+                roots.append(current)
+            if current.parent == current:
+                break
+            current = current.parent
+
+    return roots
+
+
+def find_neron_home() -> Path:
+    """Resolve the NeronOS root without relying on NERON_ROOT being set.
+
+    Priority: (1) NERON_ROOT env var, (2) directory scan from this file / cwd
+    up to a directory that looks like the project root, (3) NERON_ROOT default.
+    Used where a component may run before the standard environment (normally
+    set by systemd) is available — most callers should use NERON_ROOT instead.
+    """
+    env_root = _env_path("NERON_ROOT")
+    if env_root is not None:
+        return env_root.resolve(strict=False)
+
+    for candidate in _iter_project_roots():
+        if (candidate / "server" / "core").exists() and (
+            (candidate / "neron.yaml").exists() or (candidate / "neron.server.yaml").exists()
+        ):
+            return candidate.resolve(strict=False)
+
+    return NERON_ROOT.resolve(strict=False)

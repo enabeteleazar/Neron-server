@@ -5,13 +5,31 @@ from pathlib import Path
 from core.orchestration.command_dispatcher import NeronCommandDispatcher
 
 
-class FakeGoalOrchestrator:
-    def __init__(self) -> None:
-        self.goal_requests: list[tuple[str, str]] = []
-        self.executed_approvals: list[tuple[str, str]] = []
+# Phase 2E : `FakeGoalOrchestrator` a ete retire. Il simulait un orchestrateur
+# Goal en process, que `CoreOrchestrator` n appelle plus depuis la phase 3 (le
+# service goal est joint en HTTP). Il etait donc injecte mais jamais consulte,
+# ce qui laissait le test partir sur le reseau. Voir `_FakeGoalClient`.
 
-    async def run_goal(self, objective: str, source: str = "system") -> dict:
-        self.goal_requests.append((objective, source))
+
+class FakeEvolutionSupervisor:
+    def status(self) -> dict:
+        return {"active_run": {"run_id": "run-1", "status": "running", "current_step": "codex", "progress": 25}}
+
+
+class _FakeGoalClient:
+    """Isole le test du reseau : sans cela il POSTait un vrai objectif sur goal:8030.
+
+    `CoreOrchestrator.run_goal` n utilise plus `goal_orchestrator_factory`
+    (deprecie depuis la phase 3, ignore avec un avertissement) : il appelle
+    `GoalClient` en HTTP. Le test partait donc jusqu au service reel, lancait
+    une vraie execution et echouait en timeout.
+    """
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def run_goal(self, objective: str, *, source: str = "api") -> dict:
+        self.calls.append((objective, source))
         return {
             "status": "plan_finished",
             "plan": {
@@ -21,24 +39,15 @@ class FakeGoalOrchestrator:
             },
         }
 
-    def find_plan(self, plan_id: str) -> dict | None:
-        if plan_id == "missing":
-            return None
-        return {"id": "plan-12345678", "goal": "objectif", "approved": True}
 
-    async def execute_approved_plan(self, plan_id: str, approved_by: str = "system") -> dict:
-        self.executed_approvals.append((plan_id, approved_by))
-        return {"status": "plan_finished", "plan": {"id": "plan-12345678", "goal": "objectif"}}
-
-
-class FakeEvolutionSupervisor:
-    def status(self) -> dict:
-        return {"active_run": {"run_id": "run-1", "status": "running", "current_step": "codex", "progress": 25}}
-
-
-async def test_dispatcher_routes_goal_request_without_telegram_orchestrator_coupling():
-    orchestrator = FakeGoalOrchestrator()
-    dispatcher = NeronCommandDispatcher(goal_orchestrator_factory=lambda: orchestrator)
+async def test_dispatcher_routes_goal_request_without_telegram_orchestrator_coupling(
+    monkeypatch,
+):
+    goal_client = _FakeGoalClient()
+    monkeypatch.setattr(
+        "server.common.goal_client.get_goal_client", lambda: goal_client
+    )
+    dispatcher = NeronCommandDispatcher()
 
     result = await dispatcher.dispatch(
         {
@@ -50,7 +59,8 @@ async def test_dispatcher_routes_goal_request_without_telegram_orchestrator_coup
     )
 
     assert result["status"] == "plan_finished"
-    assert orchestrator.goal_requests == [("Créer un agent météo", "telegram")]
+    # L objectif part vers le service goal, pas vers un orchestrateur en process.
+    assert goal_client.calls == [("Créer un agent météo", "telegram")]
     assert "Objectif reçu" in result["messages"][0]
 
 

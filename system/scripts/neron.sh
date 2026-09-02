@@ -6,6 +6,8 @@ set -euo pipefail
 REPO="/etc/neronOS"
 VENV="$REPO/venv"
 API_URL="${NERON_API_URL:-http://localhost:8010}"
+# Phase 2E : l API Goal appartient au service goal, plus a Core.
+GOAL_URL="${NERON_GOAL_URL:-http://127.0.1.3:8030}"
 
 # Inventaire decouvert, jamais fige : tout ce qui porte le prefixe neron-
 # ou une instance du gabarit neron@. ollama reste explicite, il n a pas le prefixe.
@@ -129,9 +131,20 @@ cmd_goal() {
     exit 1
   fi
 
+  # Phase 2E : cible Goal:8030 et non plus Core:8010. Cette commande echouait
+  # deja en 401 : Core montait la route de Goal derriere une auth que ce script
+  # n envoyait pas. La cle est prise dans l environnement ; on echoue avec un
+  # message clair plutot qu avec un 401 muet.
+  if [ -z "${NERON_API_KEY:-}" ]; then
+    echo "Erreur: NERON_API_KEY absente de l'environnement."
+    echo "Exemple: NERON_API_KEY=\$(grep -oP '(?<=^NERON_API_KEY=).*' /etc/neronOS/secrets.env) neron goal \"...\""
+    exit 1
+  fi
+
   curl -s \
-    -X POST "$API_URL/goal" \
+    -X POST "$GOAL_URL/goal" \
     -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $NERON_API_KEY" \
     -d "{\"goal\":\"$goal\"}"
 
   echo
