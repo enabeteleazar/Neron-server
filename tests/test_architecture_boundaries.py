@@ -48,7 +48,7 @@ BASELINE: dict[str, int] = {
     "agents->voice": 2,
     "calendars->common": 2,
     "core->agents": 20,
-    "core->common": 15,
+    "core->common": 17,
     # Phase 2D : 26 -> 22. Retires : task_routes.py (code mort non monte, 2),
     # plan_storage_factory (injection morte, 1), planner_from_goal migre vers
     # GoalClient (1). Voir phase2d-goal-boundary-decision.md.
@@ -69,8 +69,10 @@ BASELINE: dict[str, int] = {
     "integrations->common": 2,
     "integrations->core": 1,
     "integrations->tools": 1,
-    "llm->common": 4,
-    "llm->core": 2,
+    "llm->common": 5,
+    # Phase 2F : llm->core retire (etait 2). Les contrats de providers
+    # (models, protocol) vivent desormais dans server/common/providers : le
+    # Coeur n a plus a dependre de Core pour parler son propre langage.
     "memory->common": 2,
     "modules->agents": 4,
     "modules->common": 18,
@@ -206,8 +208,9 @@ def test_baseline_has_no_stale_entry(edges):
 # Sites d'import pointant vers Core depuis une autre plateforme.
 # Phase 2A : 57. Phase 2B apres extraction du Runtime Governor : 49.
 # Phase 2D : 42 (facades du noyau en Phase 2C + suppression de code mort).
+# Phase 2F : 40 (contrats de providers extraits vers le noyau).
 # Cible du plan de migration : ~22 une fois tout le noyau extrait.
-MAX_IMPORTS_INTO_CORE = 42
+MAX_IMPORTS_INTO_CORE = 40
 
 
 def test_dependencies_on_core_do_not_grow(edges):

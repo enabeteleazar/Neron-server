@@ -81,8 +81,16 @@ def mount_metrics(app, service: str) -> None:
 
     from fastapi import Response
 
+    # Pas d'annotation de retour ici : `Response` est importe dans cette
+    # fonction (pour ne pas imposer fastapi a l'import du module), alors que
+    # FastAPI resout les annotations dans les globals du MODULE. L'annotation
+    # `-> Response` y etait donc introuvable et cassait la generation du
+    # schema : GET /openapi.json renvoyait 500 sur TOUS les services montant
+    # cette route — llm, memory et goal. Core n'utilisait pas ce squelette et
+    # n'etait pas touche, ce qui a longtemps fait passer le defaut pour un
+    # probleme propre a Goal.
     @app.get("/metrics")
-    def prometheus_metrics() -> Response:
+    def prometheus_metrics():
         return Response(
             content=export(service),
             media_type=CONTENT_TYPE_LATEST,
