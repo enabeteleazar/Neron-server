@@ -12,12 +12,9 @@ MEMORY_CONTENT = (
 )
 
 
-class DummyEmbedder:
-    model_name = "dummy"
-    model = None
-
-    def embed(self, text: str) -> list[float]:
-        return [1.0 if text else 0.0]
+# `DummyEmbedder` a ete retire avec le paquet `oblivia/semantic` : il
+# doublait un embedder qui etait lui-meme factice (un vecteur a une seule
+# dimension) et que rien n'appelait.
 
 
 def test_normalize_text_ignores_accents_and_case():
@@ -39,12 +36,11 @@ def test_normalize_text_ignores_accents_and_case():
     assert normalize_text("  mémoire   de   Néron  ") == "memoire   de   neron"
 
 
-def test_manager_search_is_accent_insensitive(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        "memory.oblivia.semantic.vector_index.LocalEmbedder",
-        DummyEmbedder,
-    )
-
+def test_manager_search_is_accent_insensitive(tmp_path):
+    # Le monkeypatch de `memory.oblivia.semantic.vector_index.LocalEmbedder`
+    # a ete retire avec le paquet `oblivia/semantic` (04/09/2026) : c'etait
+    # une couche factice — embedder a une dimension, SemanticSearch vide —
+    # qu'aucun code n'appelait. Le patch reussissait donc sans effet.
     manager = ObliviaMemoryManager(
         sqlite_path=str(tmp_path / "neron_memory.db"),
         obsidian_path=str(tmp_path / "obsidian"),

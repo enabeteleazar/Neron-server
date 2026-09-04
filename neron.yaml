@@ -63,12 +63,15 @@ llm:
   # (qwen3.5:4b, 3,4 Go) et chaque appel partait en ReadTimeout.
   model: qwen3:1.7b
 
-  # Timeout d'un appel a Ollama. Etait 300 s, soit 600 s avec les 2 retries du
-  # manager : plus long que le timeout de Core (240 s), donc Core abandonnait
-  # pendant que le LLM calculait encore — du travail perdu qui chargeait la
-  # machine pour rien. La regle est desormais respectee : l'appelant (Core,
-  # 100 s) couvre l'appele (45 s x 2 retries = 90 s).
-  timeout: 45
+  # Timeout d'un appel a Ollama. Etait 300 s (600 s avec les retries), soit
+  # plus que le timeout de Core : Core abandonnait pendant que le LLM
+  # calculait encore. Ramene a 45 s, puis porte a 120 s le 04/09/2026 : le
+  # juge memoire recoit un prompt d'environ 1000 caracteres et doit rendre un
+  # JSON de triplets ; a 45 s il expirait systematiquement et plus aucun fait
+  # n'etait extrait des conversations.
+  # Ce plafond n'est pas une cible : une reponse de conversation revient en
+  # 10 a 30 s. Il ne mord que sur les generations reellement longues.
+  timeout: 120
   race_timeout: 30
 
   # Durée pendant laquelle Ollama garde un modèle chargé en RAM après une
@@ -95,13 +98,12 @@ llm:
   ollama_think: false
 
   # Plafond de tokens generes par reponse (0 = illimite).
-  # Debit mesure sur cette machine le 03/09/2026 : ~1 token/s (2 coeurs, pas
-  # de GPU). Sans plafond, le modele visait sa limite naturelle (2048+ tokens)
-  # et n'aboutissait JAMAIS avant le timeout de 45 s : le service renvoyait un
-  # texte vide a chaque fois. 40 tokens tiennent dans le budget et donnent une
-  # reponse courte mais reelle. A relever franchement (512+) des que la machine
-  # dispose d'un GPU, en gardant : num_predict / debit < timeout.
-  ollama_num_predict: 40
+  # Remis a 0 le 04/09/2026 apres mesure : avec `ollama_think: false`, le
+  # modele s'arrete de lui-meme (12 tokens pour « Bonjour, comment puis-je
+  # vous aider ? »). Le plafond de 40 tokens etait un pansement pose quand le
+  # mode « thinking » devorait tout le budget — il etranglait le juge memoire,
+  # qui doit produire un JSON de triplets et ne tenait pas en 40 tokens.
+  ollama_num_predict: 0
 
   llama_cpp_host: http://127.0.0.1:8080
   llama_cpp_max_connections: 4
