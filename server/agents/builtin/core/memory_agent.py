@@ -106,6 +106,13 @@ class MemoryAgent:
 
     @staticmethod
     def _entries(value: Any) -> list[dict[str, Any]]:
+        # Le service memoire repond {"count", "results", ...} ; cette fonction
+        # n'acceptait qu'une liste nue et rendait donc TOUJOURS [] depuis que
+        # la memoire est un service distant. Consequence : search() ne trouvait
+        # rien et get_context() rendait None, donc aucun agent n'a jamais recu
+        # de contexte memoire.
+        if isinstance(value, dict):
+            value = value.get("results") or []
         if not isinstance(value, list):
             return []
         entries = []
