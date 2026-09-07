@@ -40,7 +40,7 @@ import pytest
 from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia import ObliviaMemoryManager
+from tests._memory_stack import memory_stack
 from memory.oblivia.ontology import PREDICATES, SUPPORTED_LIFECYCLES
 
 
@@ -49,15 +49,6 @@ class ForbiddenAgentRouter:
         raise AssertionError("known memory cases must not use the LLM")
 
 
-def memory_stack(tmp_path: Path):
-    manager = ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )
-    provider = ObliviaProvider(manager)
-    registry = ProviderRegistry()
-    registry.register(provider)
-    return registry, provider
 
 
 def orchestrator(tmp_path, monkeypatch):

@@ -11,12 +11,12 @@ def _reload_logging_setup(monkeypatch):
     for handler in list(logger.handlers):
         logger.removeHandler(handler)
         handler.close()
-    sys.modules.pop("core.logging.setup", None)
+    sys.modules.pop("core.neron_logging.setup", None)
     monkeypatch.setattr(
         "logging.handlers.RotatingFileHandler",
         lambda *args, **kwargs: logging.NullHandler(),
     )
-    return importlib.import_module("core.logging.setup")
+    return importlib.import_module("core.neron_logging.setup")
 
 
 def test_logging_uses_configured_logs_dir(tmp_path, monkeypatch):

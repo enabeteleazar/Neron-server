@@ -7,13 +7,26 @@ from modules.evolution import routes as evolution_routes
 from core import app as core_app
 
 
+from core.infrastructure.auth import INVALID_API_KEY_DETAIL
+
 API_KEY = "internal-test-key"
 
 
 def _set_api_key(monkeypatch) -> None:
     monkeypatch.setattr(auth.settings, "API_KEY", API_KEY)
     monkeypatch.setattr(core_app.settings, "API_KEY", API_KEY)
-    monkeypatch.setattr(core_app, "world_model", type("WorldModel", (), {"get": lambda self: {"ok": True}})())
+    # Le modele du monde n'est plus un attribut de core.app : il vit dans
+    # modules.world_model.world_model et les routes y accedent par
+    # get_world_model() / load_world_model_state().
+    import modules.world_model.world_model as world_model_module
+
+    monkeypatch.setattr(
+        world_model_module, "get_world_model",
+        lambda: type("WorldModel", (), {"get": lambda self: {"ok": True}})(),
+    )
+    monkeypatch.setattr(
+        world_model_module, "load_world_model_state", lambda: {"ok": True}
+    )
 
     class _Supervisor:
         def status(self):
@@ -36,7 +49,7 @@ async def test_internal_orchestration_endpoints_reject_missing_api_key(monkeypat
         for path in ("/planner/status", "/tasks/status", "/evolution/status"):
             response = await client.get(path)
             assert response.status_code == 401, path
-            assert response.json()["detail"] == "API Key manquante"
+            assert response.json()["detail"] == INVALID_API_KEY_DETAIL
 
 
 async def test_internal_orchestration_endpoints_reject_invalid_api_key(monkeypatch):
@@ -45,8 +58,11 @@ async def test_internal_orchestration_endpoints_reject_invalid_api_key(monkeypat
     async with _client() as client:
         response = await client.get("/planner/status", headers={"Authorization": "Bearer wrong"})
 
-    assert response.status_code == 403
-    assert response.json()["detail"] == "API Key invalide"
+    # Cle absente et cle fausse partagent desormais 401 et un message
+    # unique : ne pas distinguer les deux evite de renseigner un attaquant
+    # sur l'existence d'une cle.
+    assert response.status_code == 401
+    assert response.json()["detail"] == INVALID_API_KEY_DETAIL
 
 
 async def test_internal_orchestration_endpoints_accept_valid_api_key(monkeypatch):
@@ -99,7 +115,7 @@ async def test_api_key_empty_is_rejected(monkeypatch):
         )
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "API Key manquante"
+    assert response.json()["detail"] == INVALID_API_KEY_DETAIL
 
 
 async def test_default_api_key_configuration_fails_closed(monkeypatch):
@@ -162,7 +178,7 @@ async def test_all_explicitly_protected_router_surfaces_reject_bad_key(monkeypat
                 path,
                 headers={"Authorization": "Bearer wrong"},
             )
-            assert response.status_code == 403, (method, path, response.text)
+            assert response.status_code == 401, (method, path, response.text)
 
 
 async def test_sensitive_route_accepts_valid_api_key(monkeypatch):

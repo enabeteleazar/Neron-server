@@ -14,6 +14,7 @@ EXPECTED_DECISION_KEYS = {
     "requires_llm",
     "requires_timer",
     "requires_memory",
+    "requires_knowledge",
     "requires_tool",
     "requires_resolver",
     "requires_agent_factory",
@@ -26,7 +27,8 @@ EXPECTED_DECISION_KEYS = {
 @pytest.mark.parametrize(
     ("query", "expected_route"),
     [
-        ("Salut Neron", "llm_provider"),
+        # Les civilites sont repondues localement, sans modele de langage.
+        ("Salut Neron", "smalltalk"),
         ("Explique-moi Kubernetes", "llm_provider"),
         ("Quelle est ta mission ?", "identity_provider"),
         ("Comment fonctionnes-tu ?", "identity_provider"),
@@ -35,7 +37,7 @@ EXPECTED_DECISION_KEYS = {
         ("Souviens-toi de mon projet Neron", "memory_provider"),
         ("Cree un outil pour surveiller systemd", "goal_engine"),
         ("Analyse cette demande complexe", "goal_engine"),
-        ("/goal cree un agent meteo", "goal_pipeline"),
+        ("/goal cree un agent meteo", "goal_engine"),
         ("/help", "help_provider"),
     ],
 )
@@ -208,11 +210,14 @@ async def test_orchestrator_routes_status(monkeypatch):
         fake_status,
     )
 
-    result = await CoreOrchestrator().handle("Comment vas-tu ?")
+    # "Comment vas-tu ?" est une CIVILITE, repondue localement sans modele
+    # de langage — elle ne doit plus atteindre le module d'etat. On teste ici
+    # une vraie demande d'etat de sante.
+    result = await CoreOrchestrator().handle("Quel est ton etat de sante ?")
 
     assert result.decision.selected_route == "status_provider"
     assert result.executor == "status_module"
-    assert calls == [("health_query", "Comment vas-tu ?", False)]
+    assert calls == [("status_query", "Quel est ton etat de sante ?", False)]
     assert result.metadata["status_llm_used"] is False
 
 
@@ -237,24 +242,36 @@ async def test_orchestrator_routes_goal():
 
 @pytest.mark.asyncio
 async def test_goal_pipeline_only_runs_for_explicit_core_decision():
-    class FakeGoalPipeline:
+    """Une commande /goal explicite atteint bien le moteur Goal.
+
+    `goal_orchestrator_factory` est deprecie et IGNORE depuis la phase 3 :
+    le Coeur ne porte plus de pipeline Goal en process, il passe par le
+    moteur (qui appelle le service goal en HTTP). Le test injecte donc un
+    faux moteur au lieu d'un faux pipeline.
+    """
+
+    class FakeGoalResult:
+        response = "objectif termine"
+
+        def to_orchestrator_metadata(self):
+            return {"status": "plan_finished"}
+
+    class FakeGoalEngine:
         def __init__(self) -> None:
             self.calls = []
 
-        async def run_goal(self, objective, source="api"):
-            self.calls.append((objective, source))
-            return {"status": "plan_finished", "response": "objectif termine"}
+        async def execute(self, request):
+            self.calls.append((request.objective, request.source))
+            return FakeGoalResult()
 
-    pipeline = FakeGoalPipeline()
-    orchestrator = CoreOrchestrator(
-        goal_orchestrator_factory=lambda: pipeline,
-    )
+    engine = FakeGoalEngine()
+    orchestrator = CoreOrchestrator(goal_engine_instance=engine)
 
     result = await orchestrator.handle(
         "/goal cree un agent meteo",
         source_channel="telegram",
     )
 
-    assert result.decision.selected_route == "goal_pipeline"
-    assert pipeline.calls == [("cree un agent meteo", "telegram")]
+    assert result.decision.selected_route == "goal_engine"
+    assert engine.calls == [("cree un agent meteo", "telegram")]
     assert result.response == "objectif termine"

@@ -46,3 +46,11 @@ os.environ["NERON_AGENT_PROPOSALS_PATH"] = str(
 )
 
 atexit.register(shutil.rmtree, _TEST_ROOT, ignore_errors=True)
+
+# Garde-fou : sans surcharge, ObliviaProvider vise son defaut
+# http://127.0.1.4:8040 — la memoire de PRODUCTION. Un test qui memorise
+# ecrirait dans les vrais souvenirs. On pointe vers un port ferme : les
+# tests qui passent par tests/_memory_stack.py sont branches en process par
+# transport ASGI et ne s'en servent pas ; les autres echouent vite et fort
+# au lieu de polluer la production en silence.
+os.environ["NERON_MEMORY_URL"] = "http://127.0.0.1:9"

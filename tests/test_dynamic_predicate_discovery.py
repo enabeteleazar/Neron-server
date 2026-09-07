@@ -40,7 +40,7 @@ from core.modules.memory import detect_memory_intent
 from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia import ObliviaMemoryManager
+from tests._memory_stack import memory_stack
 from memory.oblivia.ontology import PREDICATES
 from memory.oblivia.predicate_discovery import PredicateDiscovery
 
@@ -51,13 +51,7 @@ class ForbiddenAgentRouter:
 
 
 def orchestrator(tmp_path: Path, monkeypatch):
-    manager = ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )
-    provider = ObliviaProvider(manager)
-    registry = ProviderRegistry()
-    registry.register(provider)
+    registry, provider = memory_stack(tmp_path)
     monkeypatch.setattr(
         "core.pipeline.orchestrator.provider_registry",
         registry,
@@ -130,7 +124,7 @@ async def test_iphone_purchase_is_structured_and_recallable_without_llm(
     purchases = await core.handle("Qu’est-ce que j’ai acheté ?")
 
     assert remembered.intent == "memory_remember"
-    assert remembered.executor == "oblivia"
+    assert remembered.executor == "oblivia-memory"
     assert remembered.metadata["a2a_used"] is True
     assert remembered.metadata["llm_used"] is False
     assert phone.response == "Ton téléphone est un iPhone 16."

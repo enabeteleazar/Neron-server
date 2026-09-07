@@ -192,7 +192,7 @@ async def test_existing_public_route_handlers_remain_callable(monkeypatch):
     import os
     from pathlib import Path
 
-    from core.api import self_model_context_routes
+    from core.api import self_model_routes as self_model_context_routes
 
     monkeypatch.setattr(Path, "mkdir", lambda self, parents=False, exist_ok=False: None)
     monkeypatch.setattr(os, "access", lambda path, mode: True)
@@ -215,10 +215,15 @@ async def test_existing_public_route_handlers_remain_callable(monkeypatch):
             return None
 
         def to_dict(self):
+            # self_model_status lit health / runtime_mode / generated_at :
+            # la doublure doit respecter le contrat reel de to_dict().
             return {
                 "identity": {"name": "Néron"},
                 "active_goal": "objectif actif",
                 "runtime": {},
+                "runtime_mode": "test",
+                "health": {},
+                "generated_at": "2026-01-01T00:00:00+00:00",
                 "diagnostics": [],
                 "recommendations": [],
             }

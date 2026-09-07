@@ -9,7 +9,7 @@ from core.pipeline.intent.intent_router import Intent, IntentRouter
 from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia import ObliviaMemoryManager
+from tests._memory_stack import memory_stack
 from memory.oblivia import MemoryRecord
 
 
@@ -52,13 +52,7 @@ class ForbiddenAgentRouter:
 
 
 def orchestrator(tmp_path: Path, monkeypatch):
-    manager = ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )
-    provider = ObliviaProvider(manager)
-    registry = ProviderRegistry()
-    registry.register(provider)
+    registry, provider = memory_stack(tmp_path)
     monkeypatch.setattr(
         "core.pipeline.orchestrator.provider_registry",
         registry,
@@ -140,7 +134,7 @@ async def test_natural_profile_questions_use_user_facts_only(
     assert "Alice" in result.response
     assert "SECRET_PROJET" not in result.response
     assert result.intent == "memory_recall"
-    assert result.executor == "oblivia"
+    assert result.executor == "oblivia-memory"
     assert result.metadata["a2a_used"] is True
     assert result.metadata["llm_used"] is False
 
@@ -249,6 +243,6 @@ async def test_latest_fact_excludes_project_and_routes_via_a2a(
     assert "emploi : Constructel" in result.response
     assert "SECRET_PROJET" not in result.response
     assert result.intent == "memory_recall"
-    assert result.executor == "oblivia"
+    assert result.executor == "oblivia-memory"
     assert result.metadata["a2a_used"] is True
     assert result.metadata["llm_used"] is False

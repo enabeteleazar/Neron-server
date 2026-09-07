@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from tests._memory_stack import memory_stack
+
 from modules.events.event import Event
 from modules.events.event_bus import EventBus
 
@@ -65,11 +67,7 @@ async def test_memory_save_emits_update_after_persistence(monkeypatch, tmp_path)
     from core.providers.registry import ProviderRegistry
     from memory.oblivia import ObliviaMemoryManager
 
-    registry = ProviderRegistry()
-    registry.register(ObliviaProvider(ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )))
+    registry, _provider = memory_stack(tmp_path)
     monkeypatch.setattr(memory_agent, "provider_registry", registry)
     emitted = []
 

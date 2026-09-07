@@ -10,7 +10,7 @@ from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.models import ProviderRequest
 from core.providers.registry import ProviderRegistry
-from memory.oblivia import ObliviaMemoryManager
+from tests._memory_stack import memory_stack
 
 
 class ForbiddenAgentRouter:
@@ -18,15 +18,6 @@ class ForbiddenAgentRouter:
         raise AssertionError("cognitive memory must not use the LLM")
 
 
-def memory_stack(tmp_path: Path) -> tuple[ProviderRegistry, ObliviaProvider]:
-    manager = ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )
-    provider = ObliviaProvider(manager)
-    registry = ProviderRegistry()
-    registry.register(provider)
-    return registry, provider
 
 
 @pytest.mark.parametrize(
@@ -172,7 +163,7 @@ async def test_explicit_personal_fact_routes_to_oblivia_and_is_structured(
     response = await orchestrator.handle(statement)
 
     assert response.intent == "memory_remember"
-    assert response.executor == "oblivia"
+    assert response.executor == "oblivia-memory"
     assert response.metadata["selected_route"] == "memory_provider"
     assert response.metadata["memory_action"] == "remember"
     assert response.metadata["a2a_used"] is True
@@ -187,7 +178,7 @@ async def test_memory_provider_executes_through_a2a(tmp_path):
     client = A2AClient()
 
     response = await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="remember",
             payload={"content": "Je suis papa."},
@@ -203,7 +194,7 @@ async def test_memory_provider_executes_through_a2a(tmp_path):
     assert fact["predicate"] == "is"
     assert fact["object"] == "papa"
     assert fact["confidence"] == 1.0
-    assert client.get_agent("provider:oblivia") is not None
+    assert client.get_agent("provider:oblivia-memory") is not None
 
 
 @pytest.mark.asyncio
@@ -211,14 +202,14 @@ async def test_oblivia_understands_raw_memory_directive_over_a2a(tmp_path):
     registry, _provider = memory_stack(tmp_path)
 
     remembered = await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="remember",
             payload={"content": "Mémorise que ma femme s'appelle Alice."},
         ),
     )
     recalled = await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="recall",
             payload={"query": "Comment s'appelle ma femme ?"},
@@ -270,13 +261,13 @@ async def test_structured_fact_extraction_and_natural_recall(
     recalled = await orchestrator.handle(question)
 
     assert remembered.intent == "memory_remember"
-    assert remembered.executor == "oblivia"
+    assert remembered.executor == "oblivia-memory"
     assert remembered.metadata["selected_route"] == "memory_provider"
     assert remembered.metadata["memory_action"] == "remember"
     assert remembered.metadata["a2a_used"] is True
     assert remembered.metadata["llm_used"] is False
     assert recalled.response == answer
-    assert recalled.executor == "oblivia"
+    assert recalled.executor == "oblivia-memory"
     assert recalled.metadata["a2a_used"] is True
     assert recalled.metadata["memory_facts"]
     assert recalled.metadata["llm_used"] is False
@@ -328,7 +319,7 @@ async def test_personal_fact_end_to_end_remember_then_recall(
     assert remembered.intent == "memory_remember"
     assert recalled.intent == "memory_recall"
     assert recalled.response == answer
-    assert recalled.executor == "oblivia"
+    assert recalled.executor == "oblivia-memory"
     assert recalled.metadata["selected_route"] == "memory_provider"
     assert recalled.metadata["memory_action"] == "recall"
     assert recalled.metadata["a2a_used"] is True
@@ -383,7 +374,7 @@ async def test_lives_at_temporal_transition_history_and_idempotence(
         recalled = await orchestrator.handle(question)
         assert recalled.intent == "memory_recall"
         assert recalled.response == answer
-        assert recalled.executor == "oblivia"
+        assert recalled.executor == "oblivia-memory"
         assert recalled.metadata["memory_action"] == "recall"
         assert recalled.metadata["a2a_used"] is True
         assert recalled.metadata["llm_used"] is False
@@ -392,7 +383,7 @@ async def test_lives_at_temporal_transition_history_and_idempotence(
         fact.model_dump(mode="json")
         for fact in provider._manager.sqlite.list_lives_at()
     ]
-    record_count = provider._manager.sqlite.status()["records"]
+    fact_count = len(provider._manager.sqlite.list_facts())
     repeated = await orchestrator.handle("J'habite à Troyes.")
     after_repeat = [
         fact.model_dump(mode="json")
@@ -401,7 +392,12 @@ async def test_lives_at_temporal_transition_history_and_idempotence(
 
     assert repeated.intent == "memory_remember"
     assert after_repeat == before_repeat
-    assert provider._manager.sqlite.status()["records"] == record_count
+    # L'idempotence porte sur les FAITS, pas sur les messages bruts :
+    # save_record insere une ligne par message (id neuf a chaque fois) et
+    # la memoire garde deliberement chaque message recu. Repeter une phrase
+    # ne doit donc rien changer au savoir, mais ajoute bien une ligne au
+    # journal des messages.
+    assert len(provider._manager.sqlite.list_facts()) == fact_count
 
 
 @pytest.mark.asyncio
@@ -488,7 +484,7 @@ async def test_previous_lives_at_without_history_has_clean_non_llm_answer(
         "Je ne connais pas de lieu où tu habitais avant."
     )
     assert recalled.intent == "memory_recall"
-    assert recalled.executor == "oblivia"
+    assert recalled.executor == "oblivia-memory"
     assert recalled.metadata["a2a_used"] is True
     assert recalled.metadata["llm_used"] is False
 
@@ -525,14 +521,19 @@ async def test_add_historical_residence_preserves_current_and_is_idempotent(
     assert history.response == "Tu as vécu à Laz, puis à Troyes."
 
     before = [fact.model_dump() for fact in timeline]
-    record_count = provider._manager.sqlite.status()["records"]
+    fact_count = len(provider._manager.sqlite.list_facts())
     await orchestrator.handle("J’ai habité à Laz il y a 4 ans.")
     after = [
         fact.model_dump()
         for fact in provider._manager.sqlite.list_lives_at()
     ]
     assert after == before
-    assert provider._manager.sqlite.status()["records"] == record_count
+    # L'idempotence porte sur les FAITS, pas sur les messages bruts :
+    # save_record insere une ligne par message (id neuf a chaque fois) et
+    # la memoire garde deliberement chaque message recu. Repeter une phrase
+    # ne doit donc rien changer au savoir, mais ajoute bien une ligne au
+    # journal des messages.
+    assert len(provider._manager.sqlite.list_facts()) == fact_count
 
 
 @pytest.mark.asyncio
@@ -573,14 +574,19 @@ async def test_retract_current_residence_keeps_audit_and_is_idempotent(
     assert history.metadata["llm_used"] is False
 
     before = [fact.model_dump() for fact in audit]
-    record_count = provider._manager.sqlite.status()["records"]
+    fact_count = len(provider._manager.sqlite.list_facts())
     await orchestrator.handle("Je n’ai jamais habité à Troyes.")
     after = [
         fact.model_dump()
         for fact in provider._manager.sqlite.list_lives_at()
     ]
     assert after == before
-    assert provider._manager.sqlite.status()["records"] == record_count
+    # L'idempotence porte sur les FAITS, pas sur les messages bruts :
+    # save_record insere une ligne par message (id neuf a chaque fois) et
+    # la memoire garde deliberement chaque message recu. Repeter une phrase
+    # ne doit donc rien changer au savoir, mais ajoute bien une ligne au
+    # journal des messages.
+    assert len(provider._manager.sqlite.list_facts()) == fact_count
 
 
 @pytest.mark.asyncio
@@ -640,7 +646,7 @@ async def test_children_collection_end_to_end_remember_then_recall(
     )
 
     assert remembered.intent == "memory_remember"
-    assert remembered.executor == "oblivia"
+    assert remembered.executor == "oblivia-memory"
     assert remembered.metadata["a2a_used"] is True
     facts = provider._manager.sqlite.list_facts()
     assert {
@@ -672,7 +678,7 @@ async def test_children_collection_end_to_end_remember_then_recall(
         recalled = await orchestrator.handle(question)
         assert recalled.intent == "memory_recall"
         assert recalled.response == answer
-        assert recalled.executor == "oblivia"
+        assert recalled.executor == "oblivia-memory"
         assert recalled.metadata["selected_route"] == "memory_provider"
         assert recalled.metadata["memory_action"] == "recall"
         assert recalled.metadata["a2a_used"] is True
@@ -684,32 +690,32 @@ async def test_existing_knowledge_is_updated_then_forgotten(tmp_path):
     registry, _provider = memory_stack(tmp_path)
 
     await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="remember",
             payload={"content": "Ma femme s'appelle Alice."},
         ),
     )
     await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="update",
             payload={"content": "Ma femme s'appelle Claire."},
         ),
     )
     recalled = await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="recall",
             payload={"query": "Comment s'appelle ma femme ?"},
         ),
     )
     forgotten = await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(action="forget", payload={"query": "ma femme"}),
     )
     after_forget = await registry.execute_via_a2a(
-        "oblivia",
+        "oblivia-memory",
         ProviderRequest(
             action="recall",
             payload={"query": "Comment s'appelle ma femme ?"},

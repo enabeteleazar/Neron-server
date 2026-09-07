@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 import inspect
 from pathlib import Path
@@ -36,14 +38,25 @@ def test_self_model_has_no_direct_operational_collectors():
 
 
 def test_legacy_self_model_imports_point_to_canonical_module():
-    import core.modules.self_model.service as canonical
-    import core.self_model.self_model as core_legacy
-    import modules.self_model.self_model as modules_legacy
+    """Un seul modele de soi, et plus aucun chemin d'acces herite.
 
-    assert core_legacy.SelfModel is canonical.SelfModel
-    assert modules_legacy.SelfModel is canonical.SelfModel
-    assert core_legacy.build_self_model_snapshot is canonical.build_self_model_snapshot
-    assert modules_legacy.get_self_model is canonical.get_self_model
+    Ce test verifiait que core.self_model et modules.self_model
+    reexportaient l'implementation canonique. La consolidation est finie :
+    ces deux passerelles ont ete supprimees. Le garde-fou devient donc leur
+    ABSENCE — sans quoi une reimplementation parallele pourrait revenir
+    sans qu'on le voie.
+    """
+    import importlib
+
+    import core.modules.self_model.service as canonical
+
+    assert canonical.SelfModel is not None
+    assert canonical.build_self_model_snapshot is not None
+    assert canonical.get_self_model is not None
+
+    for herite in ("core.self_model.self_model", "modules.self_model.self_model"):
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module(herite)
 
 
 def test_status_keeps_operational_payload_responsibility():
@@ -59,12 +72,15 @@ def test_status_keeps_operational_payload_responsibility():
 
 
 def test_self_model_routes_use_structured_snapshot():
-    from core.api import self_model_context_routes
+    from core.api import self_model_routes as self_model_context_routes
 
     status = asyncio.run(self_model_context_routes.self_model_status())
     context = asyncio.run(self_model_context_routes.self_model_context())
 
-    assert "status" in status
+    # /self-model/status expose l'etat de sante sous "health" ; la cle
+    # "status" appartient a /self-model/context.
+    assert "health" in status
+    assert "runtime_mode" in status
     assert "identity" in context
     assert "memory" in context
     assert "status" in context

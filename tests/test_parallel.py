@@ -389,6 +389,18 @@ def test_auth_disabled_when_no_env_var():
     print("\n  AUTH DISABLED: no key set → requests pass through")
 
 
+def _fake_request():
+    """Requete minimale pour _require_api_key.
+
+    La dependance prend desormais `request` en premier argument :
+    get_app_settings(request) lit request.app.state.settings et retombe sur
+    le cache module quand l'attribut manque, ce que reproduit ce double.
+    """
+    from types import SimpleNamespace
+
+    return SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+
+
 def test_auth_rejects_missing_key():
     """When NERON_API_KEY is set, a missing header returns 403."""
     import importlib
@@ -399,7 +411,7 @@ def test_auth_rejects_missing_key():
         importlib.reload(routes_mod)
 
         try:
-            asyncio.run(routes_mod._require_api_key(key=None))
+            asyncio.run(routes_mod._require_api_key(_fake_request(), key=None))
             assert False, "Should have raised HTTPException"
         except HTTPException as exc:
             assert exc.status_code == 403
@@ -417,7 +429,7 @@ def test_auth_rejects_wrong_key():
         importlib.reload(routes_mod)
 
         try:
-            asyncio.run(routes_mod._require_api_key(key="wrong-key"))
+            asyncio.run(routes_mod._require_api_key(_fake_request(), key="wrong-key"))
             assert False, "Should have raised HTTPException"
         except HTTPException as exc:
             assert exc.status_code == 403
@@ -434,7 +446,7 @@ def test_auth_accepts_correct_key():
         import llm.api.routes as routes_mod
         importlib.reload(routes_mod)
 
-        result = asyncio.run(routes_mod._require_api_key(key="secret-test-key"))
+        result = asyncio.run(routes_mod._require_api_key(_fake_request(), key="secret-test-key"))
         assert result is None
 
     print("\n  AUTH: correct key → 200")

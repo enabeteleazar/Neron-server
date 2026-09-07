@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from tests._memory_stack import memory_stack
+
 from core.modules.memory import build_memory_response_async
 from core.providers.memory import ObliviaProvider
 from core.providers.models import ProviderRequest
@@ -55,11 +57,7 @@ def test_no_python_source_imports_legacy_oblivia_module():
 
 @pytest.mark.asyncio
 async def test_core_memory_gateway_uses_registry_a2a(monkeypatch, tmp_path):
-    registry = ProviderRegistry()
-    registry.register(ObliviaProvider(ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )))
+    registry, _provider = memory_stack(tmp_path)
     monkeypatch.setattr("core.modules.memory.service.provider_registry", registry)
 
     remembered = await build_memory_response_async(
@@ -70,15 +68,12 @@ async def test_core_memory_gateway_uses_registry_a2a(monkeypatch, tmp_path):
 
     assert remembered["a2a_used"] is True
     assert recalled["a2a_used"] is True
-    assert recalled["agent"] == "oblivia"
+    assert recalled["agent"] == "oblivia-memory"
 
 
 @pytest.mark.asyncio
 async def test_public_provider_remember_recall_search_status_and_health(tmp_path):
-    provider = ObliviaProvider(ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    ))
+    _registry, provider = memory_stack(tmp_path)
 
     health = await provider.health()
     remembered = await provider.execute(ProviderRequest(
@@ -99,4 +94,6 @@ async def test_public_provider_remember_recall_search_status_and_health(tmp_path
     assert remembered.status == "healthy"
     assert recalled.result["results"]
     assert searched.result
-    assert status.result["ok"] is True
+    # /status expose l'etat des backends sous "backends" (memory/app.py),
+    # pas un "ok" a la racine.
+    assert status.result["backends"]["ok"] is True

@@ -92,7 +92,7 @@ def test_self_model_identity_is_refreshed_from_neron_markdown(monkeypatch, tmp_p
 
 
 def test_self_model_context_uses_identity_loader(monkeypatch, tmp_path):
-    from core.api import self_model_context_routes
+    from core.api import self_model_routes as self_model_context_routes
 
     identity_path = tmp_path / "NERON.md"
     _write_identity(identity_path, name="Atlas")

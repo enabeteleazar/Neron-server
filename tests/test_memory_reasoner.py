@@ -8,7 +8,7 @@ from core.modules.memory import detect_memory_intent
 from core.pipeline.orchestrator import CoreOrchestrator
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia import ObliviaMemoryManager
+from tests._memory_stack import memory_stack
 from memory.oblivia import MemoryRecord
 
 
@@ -17,15 +17,6 @@ class ForbiddenAgentRouter:
         raise AssertionError("memory reasoner cases must not use the LLM")
 
 
-def memory_stack(tmp_path: Path):
-    manager = ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )
-    provider = ObliviaProvider(manager)
-    registry = ProviderRegistry()
-    registry.register(provider)
-    return registry, provider
 
 
 def orchestrator(tmp_path, monkeypatch):
@@ -99,7 +90,7 @@ async def test_user_profile_synthesis_routes_to_oblivia_without_llm(
         "Tu aimes le café et le Monster."
     )
     assert result.intent == "memory_recall"
-    assert result.executor == "oblivia"
+    assert result.executor == "oblivia-memory"
     assert result.metadata["selected_route"] == "memory_provider"
     assert result.metadata["memory_action"] == "recall"
     assert result.metadata["a2a_used"] is True
@@ -136,7 +127,7 @@ async def test_spouse_semantic_alias(question, tmp_path, monkeypatch):
     result = await core.handle(question)
 
     assert result.response == "Ta femme s'appelle Alice."
-    assert result.executor == "oblivia"
+    assert result.executor == "oblivia-memory"
     assert result.metadata["a2a_used"] is True
     assert result.metadata["llm_used"] is False
 

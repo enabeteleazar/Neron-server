@@ -6,19 +6,16 @@ from agents.builtin.core import memory_agent
 from agents.builtin.core.memory_agent import MemoryAgent
 from core.providers.memory import ObliviaProvider
 from core.providers.registry import ProviderRegistry
-from memory.oblivia import ObliviaMemoryManager
+from tests._memory_stack import memory_stack
 
 
 @pytest.fixture
 def isolated_memory(monkeypatch, tmp_path):
-    manager = ObliviaMemoryManager(
-        sqlite_path=str(tmp_path / "memory.db"),
-        obsidian_path=str(tmp_path / "obsidian"),
-    )
-    registry = ProviderRegistry()
-    registry.register(ObliviaProvider(manager))
+    registry, provider = memory_stack(tmp_path)
     monkeypatch.setattr(memory_agent, "provider_registry", registry)
-    return manager
+    # La fixture rend le manager en process : les tests constatent l'etat
+    # stocke apres avoir ecrit via le provider (donc via HTTP).
+    return provider._manager
 
 
 @pytest.mark.asyncio
@@ -43,6 +40,13 @@ async def test_memory_agent_async_save_uses_oblivia_source_of_truth(
     recent = isolated_memory.recent(limit=1)
 
     assert record_id
-    assert recent[0].record.id == record_id
-    assert recent[0].record.metadata == {}
-    assert "Utilisateur: question" in recent[0].record.content
+    # manager.recent() rend des MemoryRecord, pas des resultats de
+    # recherche : il n'y a pas de niveau .record.
+    assert recent[0].id == record_id
+    # MemoryAgent.save construit lui-meme ses metadonnees episodiques
+    # (input, response, memory_type) et y ajoute celles de l'appelant : elles
+    # sont persistees, pas jetees.
+    assert recent[0].metadata["source"] == "test"
+    assert recent[0].metadata["memory_type"] == "episodic"
+    assert recent[0].metadata["input"] == "question"
+    assert "Utilisateur: question" in recent[0].content
